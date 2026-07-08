@@ -1,0 +1,111 @@
+import { useState } from "react";
+import { joinRoom, releaseControl, requestControl } from "./api";
+import { ChatPanel } from "./components/ChatPanel";
+import { ControlPanel } from "./components/ControlPanel";
+import { JoinRoomForm } from "./components/JoinRoomForm";
+import { RobotVideo } from "./components/RobotVideo";
+import { StatusBar } from "./components/StatusBar";
+import { useLiveKitRoom } from "./useLiveKitRoom";
+import { useRoomSocket } from "./useRoomSocket";
+import type { JoinRoomRequest, JoinRoomResponse, WebRole } from "./types";
+
+export function App() {
+  const [session, setSession] = useState<JoinRoomResponse | null>(null);
+  const [actionPending, setActionPending] = useState(false);
+  const [notice, setNotice] = useState("");
+  const roomSocket = useRoomSocket(session);
+  const liveKitRoom = useLiveKitRoom(session);
+
+  async function handleJoin(payload: JoinRoomRequest) {
+    const response = await joinRoom(payload);
+    setSession(response);
+    setNotice(response.role === "controller" ? "Control granted" : "Joined as viewer");
+  }
+
+  async function handleRequestControl() {
+    if (!session) {
+      return;
+    }
+
+    setNotice("");
+    setActionPending(true);
+    try {
+      const response = await requestControl(session.roomName, session.participantId);
+      setSession({ ...session, role: (response.role ?? "viewer") as WebRole });
+      setNotice(response.message);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Control request failed");
+    } finally {
+      setActionPending(false);
+    }
+  }
+
+  async function handleReleaseControl() {
+    if (!session) {
+      return;
+    }
+
+    setNotice("");
+    setActionPending(true);
+    try {
+      const response = await releaseControl(session.roomName, session.participantId);
+      setSession({ ...session, role: "viewer" });
+      setNotice(response.message);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Control release failed");
+    } finally {
+      setActionPending(false);
+    }
+  }
+
+  if (!session) {
+    return <JoinRoomForm onJoin={handleJoin} />;
+  }
+
+  const effectiveRole = roomSocket.role ?? session.role;
+  const activeNotice = roomSocket.lastError || liveKitRoom.lastError || notice;
+
+  return (
+    <main className="app-shell">
+      <StatusBar
+        roomName={session.roomName}
+        participantName={session.participantName}
+        role={effectiveRole}
+        backendState="connected"
+        webSocketState={roomSocket.connectionState}
+        liveKitState={liveKitRoom.connectionState}
+        robotOnline={roomSocket.robotOnline}
+        currentControllerName={roomSocket.currentControllerName}
+        participants={roomSocket.participants}
+        onRequestControl={handleRequestControl}
+        onReleaseControl={handleReleaseControl}
+        actionPending={actionPending}
+      />
+
+      {activeNotice ? <p className="notice">{activeNotice}</p> : null}
+
+      <div className="workspace-grid">
+        <div className="primary-column">
+          <RobotVideo
+            liveKitState={liveKitRoom.connectionState}
+            robotOnline={roomSocket.robotOnline}
+            robotVideoTrack={liveKitRoom.robotVideoTrack}
+            robotEvents={roomSocket.robotEvents}
+          />
+          <ControlPanel
+            role={effectiveRole}
+            robotOnline={roomSocket.robotOnline}
+            connectionState={roomSocket.connectionState}
+            onControl={roomSocket.sendControl}
+          />
+        </div>
+
+        <ChatPanel
+          messages={roomSocket.chatMessages}
+          onSend={roomSocket.sendChat}
+          disabled={roomSocket.connectionState !== "connected"}
+        />
+      </div>
+    </main>
+  );
+}
