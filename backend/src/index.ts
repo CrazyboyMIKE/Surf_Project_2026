@@ -20,6 +20,14 @@ const liveKitTokenService = new LiveKitTokenService({
 });
 const webSocketHub = attachWebSocketServer(server, roomStore);
 
+app.use((req, res, next) => {
+  const startedAt = Date.now();
+  res.on("finish", () => {
+    console.log(`${req.method} ${req.path} ${res.statusCode} ${Date.now() - startedAt}ms`);
+  });
+  next();
+});
+
 app.use(
   cors({
     origin(origin, callback) {
@@ -61,7 +69,9 @@ app.use((error: Error, _req: express.Request, res: express.Response, _next: expr
 });
 
 server.listen(config.port, () => {
-  console.log(`Backend listening on http://localhost:${config.port}`);
-  console.log(`WebSocket listening on ws://localhost:${config.port}/ws`);
+  const wsBaseUrl = config.publicBaseUrl.replace(/^http/, "ws").replace(/\/$/, "");
+  console.log(`Backend listening on ${config.publicBaseUrl}`);
+  console.log(`WebSocket listening on ${wsBaseUrl}/ws`);
+  console.log(`Node environment: ${config.nodeEnv}`);
   console.log(`LiveKit token mode: ${liveKitTokenService.tokenMode}`);
 });

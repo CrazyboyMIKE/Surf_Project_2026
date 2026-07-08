@@ -34,6 +34,10 @@ function getPlaceholderText(liveKitState: LiveKitConnectionState, robotOnline: b
     return "Connecting to LiveKit video";
   }
 
+  if (liveKitState === "connected") {
+    return "Waiting for robot video";
+  }
+
   return "Robot video will appear here";
 }
 

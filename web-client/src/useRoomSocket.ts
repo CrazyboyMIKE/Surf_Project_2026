@@ -51,6 +51,7 @@ export function useRoomSocket(session: JoinRoomResponse | null) {
 
     socket.addEventListener("open", () => {
       setConnectionState("connected");
+      setLastError("");
       socket.send(
         JSON.stringify({
           type: "hello",
@@ -61,7 +62,13 @@ export function useRoomSocket(session: JoinRoomResponse | null) {
     });
 
     socket.addEventListener("message", (event) => {
-      const message = JSON.parse(event.data as string) as RoomSocketMessage;
+      let message: RoomSocketMessage;
+      try {
+        message = JSON.parse(event.data as string) as RoomSocketMessage;
+      } catch {
+        setLastError("WebSocket received an invalid message");
+        return;
+      }
 
       if (message.type === "hello" && message.participantId === participantId) {
         if (message.role === "controller" || message.role === "viewer") {
@@ -100,13 +107,16 @@ export function useRoomSocket(session: JoinRoomResponse | null) {
       }
     });
 
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
       setConnectionState("closed");
+      if (!event.wasClean) {
+        setLastError("WebSocket closed unexpectedly. Check the public WSS URL and backend health.");
+      }
     });
 
     socket.addEventListener("error", () => {
       setConnectionState("error");
-      setLastError("WebSocket connection error");
+      setLastError("WebSocket connection error. Check VITE_WS_BASE_URL, HTTPS/WSS, and backend CORS.");
     });
 
     return () => {

@@ -71,7 +71,7 @@ export class LiveKitTokenService {
       roomJoin: true,
       room: request.roomName,
       canPublish,
-      canSubscribe: !canPublish,
+      canSubscribe: true,
       canPublishData: false
     });
 

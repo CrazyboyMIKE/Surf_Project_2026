@@ -6,13 +6,32 @@ Base URL in development:
 http://localhost:3001
 ```
 
+Base URL in production:
+
+```text
+https://your-backend.example.com
+```
+
 WebSocket URL in development:
 
 ```text
 ws://localhost:3001/ws
 ```
 
+WebSocket URL in production:
+
+```text
+wss://your-backend.example.com/ws
+```
+
 All HTTP APIs use JSON.
+
+Production notes:
+
+- Public backend URL is configured by deployment env, not hard-coded.
+- Web uses `VITE_API_BASE_URL` and `VITE_WS_BASE_URL`.
+- Android operator enters the public `https://` backend URL.
+- LiveKit API secret is never returned by any endpoint.
 
 ## 1. GET /health
 
@@ -74,7 +93,7 @@ Rules:
 
 ## 3. POST /api/robots/join
 
-Registers a robot as online in a room and returns a LiveKit robot token.
+Registers a robot as online in a room and returns a LiveKit robot token. This endpoint is used by both the browser robot publisher and the Android robot app.
 
 Request:
 
@@ -103,8 +122,13 @@ Response:
 Rules:
 
 - Robot token identity is `robot-${robotId}`.
+- Robot token name is the submitted `robotId`.
+- Robot token can join the exact requested room when `tokenMode` is `livekit`.
 - Robot token can publish media when `tokenMode` is `livekit`.
+- Robot token can subscribe when `tokenMode` is `livekit`, so a future Android round can receive LiveKit data or room media if needed.
+- Robot token cannot expose or contain the LiveKit API secret in the response.
 - The web client prioritizes LiveKit participants whose identity or name contains `robot`.
+- Android robot clients must use the returned token as-is and must not store LiveKit API keys or secrets.
 
 ## 4. POST /api/rooms/control/request
 
@@ -188,7 +212,7 @@ Server acknowledges:
 
 The backend rejects later `chat` and `robot_control` messages when `senderId` does not match the `hello` identity.
 
-Robot web publisher also opens `hello` with its `robot-*` participant ID so backend can broadcast online/offline state.
+Robot web publisher and Android robot app also open `hello` with their `robot-*` participant ID so backend can broadcast online/offline state and relay mock `robot_control` messages.
 
 ## 7. Chat Message
 
@@ -267,6 +291,13 @@ Backend rejects if:
 - Sender is not controller.
 - Command is not `1002`, `1003`, or `1000`.
 - Robot is not online.
+
+Android robot behavior in the fourth round:
+
+- Android receives this broadcast through backend WebSocket `/ws` after sending `hello`.
+- Android only displays or logs accepted commands.
+- Android ignores disallowed command IDs.
+- Android does not call real motor, navigation, vendor SDK, or MQTT code.
 
 ## 9. Role Update Message
 

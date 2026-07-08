@@ -1,6 +1,11 @@
 .DS_Store
 node_modules/
 dist/
+build/
+.gradle/
+local.properties
+*.apk
+*.aab
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts

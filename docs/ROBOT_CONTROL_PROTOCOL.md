@@ -2,9 +2,9 @@
 
 ## 1. Purpose
 
-This document defines the safe first-MVP robot control protocol.
+This document defines the safe MVP robot control protocol.
 
-The first round does not move real hardware. It only validates command permissions and message flow.
+The current fourth round still does not move real hardware. It validates command permissions, public backend relay, and Android receipt/display only.
 
 ## 2. Allowed Commands
 
@@ -18,7 +18,7 @@ Only these commands are allowed:
 
 Meaning:
 
-| Command | Meaning | First-round behavior |
+| Command | Meaning | Current behavior |
 |---|---|---|
 | `1002` | Move specified distance | Mock log / relay |
 | `1003` | Rotate specified angle | Mock log / relay |
@@ -96,6 +96,12 @@ SENDER_MISMATCH
 ```
 
 ## 8. Safety Rules for Later Real Robot Integration
+
+Fourth-round Android behavior:
+
+- `RobotControlMessageHandler` receives broadcast `robot_control` messages.
+- `MockRobotControlAdapter` displays/logs `1002`, `1003`, and `1000`.
+- No Android code calls motors, vendor navigation SDKs, or MQTT.
 
 When real robot control is added:
 

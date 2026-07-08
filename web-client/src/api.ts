@@ -1,7 +1,17 @@
 import type { ControlResponse, JoinRoomRequest, JoinRoomResponse } from "./types";
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
-export const WS_URL = import.meta.env.VITE_WS_URL ?? API_BASE_URL.replace(/^http/, "ws") + "/ws";
+function stripTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+function resolveWebSocketUrl(apiBaseUrl: string): string {
+  const configuredWsUrl = import.meta.env.VITE_WS_BASE_URL ?? import.meta.env.VITE_WS_URL;
+  const baseUrl = stripTrailingSlash(configuredWsUrl ?? apiBaseUrl.replace(/^http/, "ws"));
+  return baseUrl.endsWith("/ws") ? baseUrl : `${baseUrl}/ws`;
+}
+
+export const API_BASE_URL = stripTrailingSlash(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001");
+export const WS_URL = resolveWebSocketUrl(API_BASE_URL);
 
 async function requestJson<TResponse>(path: string, options?: RequestInit): Promise<TResponse> {
   const response = await fetch(`${API_BASE_URL}${path}`, {

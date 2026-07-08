@@ -11,6 +11,36 @@ npm run dev
 
 The backend listens on `http://localhost:3001` by default.
 
+## Production
+
+Build:
+
+```bash
+npm run build
+```
+
+Start:
+
+```bash
+npm run start
+```
+
+Production env example:
+
+```text
+NODE_ENV=production
+PORT=3001
+PUBLIC_BASE_URL=https://your-backend.example.com
+CORS_ORIGIN=https://your-web.example.com
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=your-api-key
+LIVEKIT_API_SECRET=your-api-secret
+LIVEKIT_TOKEN_TTL=1h
+MOCK_ROBOT_ONLINE=false
+```
+
+`PUBLIC_BASE_URL` is for startup logs and operator clarity. Public access must be HTTPS/WSS in production.
+
 ## LiveKit
 
 Create `backend/.env` locally:
@@ -38,3 +68,5 @@ npm run build
 - WebSocket `/ws` handles `hello`, `chat`, and `robot_control`.
 - LiveKit token service returns real JWTs when configured and mock tokens otherwise.
 - Robot control is mock relay/logging only.
+- `GET /health` is the deployment health check.
+- Request logs include method, path, status, and duration, but not secrets.

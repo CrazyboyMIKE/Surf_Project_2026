@@ -11,6 +11,22 @@ npm run dev
 
 Open `http://localhost:5174`.
 
+## Environment
+
+Local:
+
+```text
+VITE_API_BASE_URL=http://localhost:3001
+VITE_WS_BASE_URL=ws://localhost:3001
+```
+
+Production or public fallback testing:
+
+```text
+VITE_API_BASE_URL=https://your-backend.example.com
+VITE_WS_BASE_URL=wss://your-backend.example.com
+```
+
 ## Behavior
 
 - Calls `POST /api/robots/join` to get a robot LiveKit token.
