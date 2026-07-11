@@ -49,6 +49,17 @@ The fourth round prepares public deployment:
 - LiveKit should be LiveKit Cloud or another publicly reachable LiveKit server.
 - Public users can join the same room from different networks.
 
+The sixth round adds basic multi-party meeting media:
+
+- Backend generates role-aware LiveKit media grants.
+- `robot` and `controller` can publish and subscribe.
+- `viewer` can subscribe but cannot publish by default.
+- `ALLOW_VIEWER_PUBLISH=true` can enable viewer microphone/camera publishing for test rooms.
+- Web controller can manually turn microphone and camera on/off.
+- Web viewers see disabled media publishing controls unless backend grants publish permission.
+- Web users can see and hear non-robot remote participants.
+- Android robot subscribes to remote LiveKit audio so controller audio can play through the robot speaker path.
+
 ## 3. In Scope
 
 Backend:
@@ -63,6 +74,8 @@ Backend:
 - Real LiveKit token generation when credentials are configured.
 - Mock LiveKit token mode when credentials are absent.
 - Robot token grants `roomJoin`, `canPublish`, and `canSubscribe`.
+- Controller token grants `roomJoin`, `canPublish`, and `canSubscribe`.
+- Viewer token grants `roomJoin` and `canSubscribe`; `canPublish` is false unless `ALLOW_VIEWER_PUBLISH=true`.
 - No LiveKit API secret returned to Web, Android, or robot publisher.
 - Production config through `PORT`, `PUBLIC_BASE_URL`, `CORS_ORIGIN`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, and `NODE_ENV`.
 - Basic request logs without printing secrets.
@@ -72,6 +85,9 @@ Web:
 - Join room form.
 - Backend, WebSocket, LiveKit, robot, role, and controller status display.
 - Real LiveKit remote robot video rendering.
+- Controller microphone and camera controls, manual only.
+- Viewer media publishing locked by default according to backend token grants.
+- Remote non-robot participant panel with audio/video status and video tiles.
 - Prefer LiveKit participant identity/name containing `robot`.
 - Show `Robot offline` when backend says robot is offline.
 - Show `Waiting for robot video` when robot is online but no video track is subscribed.
@@ -90,6 +106,7 @@ Android robot:
 - LiveKit Android SDK connection.
 - Camera publishing.
 - Optional microphone publishing switch, default off.
+- Remote audio subscription for controller audio playback.
 - Runtime camera/audio permission handling.
 - Clear error display for permission denial, connection failure, and camera-open failure.
 - Mock `RobotControlAdapter` only.
@@ -112,7 +129,7 @@ Docs:
 
 ## 4. Out of Scope
 
-Fourth round does not include:
+Sixth round does not include:
 
 - Real robot movement.
 - Robot vendor navigation SDK integration.
@@ -123,6 +140,7 @@ Fourth round does not include:
 - Account system.
 - Complex UI.
 - Recording.
+- Screen sharing.
 - Billing.
 - Admin dashboard.
 - Multi-robot scheduling.
@@ -143,8 +161,11 @@ Rules:
 - One room can have at most one controller.
 - Viewer can watch video and chat but cannot control.
 - Controller can watch video, chat, and send whitelisted mock control.
+- Controller can manually publish microphone and camera media.
+- Viewer can watch/listen and chat but cannot publish media by default.
 - Robot can publish camera video through LiveKit.
-- Robot can receive control messages but must not move hardware in the fourth round.
+- Robot can subscribe to controller audio.
+- Robot can receive control messages but must not move hardware in the sixth round.
 
 ## 6. Accepted Commands
 
@@ -170,7 +191,7 @@ Current Web mapping:
 - Right: `1003` with `{ "angleDeg": 15 }`
 - Stop: `1000`
 
-Fourth-round Android behavior:
+Current Android behavior:
 
 - `1002`, `1003`, and `1000` are shown/logged in the Android app.
 - Disallowed command IDs are ignored.
@@ -218,7 +239,7 @@ cd android-robot
 
 ## 8. Acceptance Criteria
 
-Fourth-round MVP is accepted when:
+Sixth-round MVP is accepted when:
 
 1. Backend starts locally.
 2. Web client starts locally.
@@ -237,3 +258,9 @@ Fourth-round MVP is accepted when:
 15. Controller can still send only `1002`, `1003`, and `1000`.
 16. Android app displays received control messages but does not move hardware.
 17. No LiveKit secret is hard-coded or returned to clients.
+18. Controller can manually enable/disable microphone.
+19. Controller can manually enable/disable camera.
+20. Viewer publish controls are disabled when `ALLOW_VIEWER_PUBLISH=false`.
+21. Non-robot remote participants appear in the participants panel.
+22. Remote audio can be enabled when browser autoplay policy blocks sound.
+23. Android robot shows remote audio subscription/playback status for controller audio.

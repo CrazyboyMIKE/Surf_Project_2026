@@ -25,6 +25,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var webSocketStatusView: TextView
     private lateinit var liveKitStatusView: TextView
     private lateinit var cameraStatusView: TextView
+    private lateinit var remoteAudioStatusView: TextView
     private lateinit var lastControlView: TextView
     private lateinit var errorView: TextView
 
@@ -41,6 +42,7 @@ class MainActivity : ComponentActivity() {
             scope = lifecycleScope,
             onStatus = { status -> runOnUiThread { liveKitStatusView.text = status } },
             onCameraStatus = { status -> runOnUiThread { cameraStatusView.text = status } },
+            onRemoteAudioStatus = { status -> runOnUiThread { remoteAudioStatusView.text = status } },
         )
     }
 
@@ -57,7 +59,7 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode != REQUEST_MEDIA_PERMISSIONS) {
             return
@@ -98,6 +100,7 @@ class MainActivity : ComponentActivity() {
             try {
                 backendStatusView.text = "Joining backend"
                 cameraStatusView.text = "Camera idle"
+                remoteAudioStatusView.text = "Remote audio idle"
                 lastControlView.text = "No control messages yet"
 
                 val response = robotJoinApi.joinRobot(backendUrl, roomName, robotId)
@@ -108,6 +111,7 @@ class MainActivity : ComponentActivity() {
                 if (response.tokenMode != "livekit" || response.liveKitUrl.startsWith("mock://")) {
                     liveKitStatusView.text = "LiveKit mock token"
                     cameraStatusView.text = "Configure LiveKit backend env to publish camera"
+                    remoteAudioStatusView.text = "Configure LiveKit backend env to receive controller audio"
                     return@launch
                 }
 
@@ -125,6 +129,7 @@ class MainActivity : ComponentActivity() {
         webSocketStatusView.text = "WebSocket disconnected"
         liveKitStatusView.text = "LiveKit disconnected"
         cameraStatusView.text = "Camera stopped"
+        remoteAudioStatusView.text = "Remote audio disconnected"
     }
 
     private fun requestNeededPermissions(publishAudio: Boolean) {
@@ -159,6 +164,7 @@ class MainActivity : ComponentActivity() {
         webSocketStatusView = statusText("WebSocket: idle")
         liveKitStatusView = statusText("LiveKit: idle")
         cameraStatusView = statusText("Camera: idle")
+        remoteAudioStatusView = statusText("Remote audio: idle")
         lastControlView = statusText("No control messages yet")
         errorView = statusText("")
 
@@ -189,6 +195,7 @@ class MainActivity : ComponentActivity() {
             addView(webSocketStatusView)
             addView(liveKitStatusView)
             addView(cameraStatusView)
+            addView(remoteAudioStatusView)
             addView(section("Last control message"))
             addView(lastControlView)
             addView(section("Errors"))
@@ -204,7 +211,7 @@ class MainActivity : ComponentActivity() {
         return EditText(this).apply {
             hint = label
             setText(value)
-            singleLine = true
+            setSingleLine(true)
         }
     }
 

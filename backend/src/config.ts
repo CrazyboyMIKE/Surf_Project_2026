@@ -8,7 +8,10 @@ export type AppConfig = {
   liveKitApiSecret?: string;
   liveKitTokenTtl: string;
   mockRobotOnline: boolean;
+  allowViewerPublish: boolean;
 };
+
+export type LiveKitTokenMode = "mock" | "livekit";
 
 function readBoolean(value: string | undefined, defaultValue: boolean): boolean {
   if (value === undefined) {
@@ -16,6 +19,35 @@ function readBoolean(value: string | undefined, defaultValue: boolean): boolean 
   }
 
   return value.toLowerCase() === "true";
+}
+
+export function getLiveKitTokenMode(liveKitUrl: string): LiveKitTokenMode {
+  return liveKitUrl.startsWith("mock://") ? "mock" : "livekit";
+}
+
+export function validateLiveKitConfig(values: {
+  liveKitUrl: string;
+  liveKitApiKey?: string;
+  liveKitApiSecret?: string;
+}): void {
+  const { liveKitUrl, liveKitApiKey, liveKitApiSecret } = values;
+
+  if (!liveKitUrl.startsWith("mock://") && !liveKitUrl.startsWith("ws://") && !liveKitUrl.startsWith("wss://")) {
+    throw new Error("LIVEKIT_URL must start with mock://, ws://, or wss://");
+  }
+
+  if (getLiveKitTokenMode(liveKitUrl) === "mock") {
+    return;
+  }
+
+  const missingValues = [
+    liveKitApiKey ? undefined : "LIVEKIT_API_KEY",
+    liveKitApiSecret ? undefined : "LIVEKIT_API_SECRET"
+  ].filter((name): name is string => Boolean(name));
+
+  if (missingValues.length > 0) {
+    throw new Error(`${missingValues.join(" and ")} must be set when LIVEKIT_URL uses ws:// or wss://`);
+  }
 }
 
 export function loadConfig(): AppConfig {
@@ -28,16 +60,26 @@ export function loadConfig(): AppConfig {
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
+  const liveKitUrl = process.env.LIVEKIT_URL?.trim() || "mock://livekit";
+  const liveKitApiKey = process.env.LIVEKIT_API_KEY?.trim() || undefined;
+  const liveKitApiSecret = process.env.LIVEKIT_API_SECRET?.trim() || undefined;
+
+  validateLiveKitConfig({
+    liveKitUrl,
+    liveKitApiKey,
+    liveKitApiSecret
+  });
 
   return {
     port: Number.isFinite(port) ? port : 3001,
     publicBaseUrl,
     nodeEnv,
     corsOrigins,
-    liveKitUrl: process.env.LIVEKIT_URL?.trim() || "mock://livekit",
-    liveKitApiKey: process.env.LIVEKIT_API_KEY?.trim() || undefined,
-    liveKitApiSecret: process.env.LIVEKIT_API_SECRET?.trim() || undefined,
+    liveKitUrl,
+    liveKitApiKey,
+    liveKitApiSecret,
     liveKitTokenTtl: process.env.LIVEKIT_TOKEN_TTL?.trim() || "1h",
-    mockRobotOnline: readBoolean(process.env.MOCK_ROBOT_ONLINE, true)
+    mockRobotOnline: readBoolean(process.env.MOCK_ROBOT_ONLINE, true),
+    allowViewerPublish: readBoolean(process.env.ALLOW_VIEWER_PUBLISH, false)
   };
 }

@@ -1,0 +1,32 @@
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    command: --config /etc/livekit/livekit.yaml
+    restart: unless-stopped
+    ports:
+      # In production, 7880 is commonly proxied by HTTPS/WSS at livekit.example.com.
+      - "7880:7880/tcp"
+      - "7881:7881/tcp"
+      - "50000-60000:50000-60000/udp"
+    volumes:
+      - ./livekit.yaml.example:/etc/livekit/livekit.yaml:ro
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - livekit-redis-data:/data
+
+volumes:
+  livekit-redis-data:
+
+# Cloud firewall checklist:
+# - 7880 TCP: LiveKit HTTP/WebSocket, usually behind HTTPS/WSS reverse proxy.
+# - 7881 TCP: RTC TCP fallback.
+# - 50000-60000 UDP: WebRTC media ports.
+# - If TURN is enabled, also open the configured TURN TCP/UDP/TLS ports.
+#
+# This file uses placeholder config only. Do not put real secrets in this example file.

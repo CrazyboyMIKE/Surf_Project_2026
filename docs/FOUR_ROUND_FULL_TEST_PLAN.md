@@ -237,6 +237,14 @@ Pass criteria:
 - Robot participant identity/name contains `robot`.
 - Web `RobotVideo` renders the robot participant video track.
 
+Evidence to capture:
+
+- Backend startup log showing `LiveKit token mode: livekit`, with no secrets.
+- Web status area showing backend, WebSocket, LiveKit, and robot states.
+- Robot publisher status showing camera publishing.
+- Web video area showing the robot camera.
+- Do not capture token values from network responses.
+
 ## 8. Android Robot Camera Test
 
 Preconditions:
@@ -283,6 +291,14 @@ Pass criteria:
 - Web subscribes to Android robot participant video.
 - Android displays any received `robot_control`.
 - Android does not move real hardware.
+
+Evidence to capture:
+
+- Android status screen after join.
+- Android camera permission prompt/result.
+- Web status area showing `robot online`.
+- Web video area showing Android camera video.
+- Android last control message after Web controller sends `1002`, `1003`, and `1000`.
 
 ## 9. Controller/Viewer Permission Test
 
@@ -427,3 +443,22 @@ Final sign-off:
 - [ ] All blocked items have a real environment reason.
 - [ ] Evidence screenshots/logs are captured without secrets.
 - [ ] Any failed item has an owner and next action.
+- [ ] `docs/FIFTH_ROUND_REAL_ENV_READINESS_REPORT.md` records the latest readiness result.
+
+## 13. Sixth-Round Meeting Addendum
+
+Use `docs/SIXTH_ROUND_MEETING_TEST_PLAN.md` for the full meeting-media验收.
+
+Additional checks after the first four rounds pass:
+
+- [ ] Backend returns `mediaPermissions` in Web and robot join responses.
+- [ ] Controller token has LiveKit publish and subscribe permission.
+- [ ] Viewer token has subscribe-only permission when `ALLOW_VIEWER_PUBLISH=false`.
+- [ ] Controller can manually turn microphone on/off.
+- [ ] Controller can manually turn camera on/off.
+- [ ] Viewer mic/camera buttons are disabled by default.
+- [ ] Remote non-robot participants appear in the participants panel.
+- [ ] Remote audio plays after browser audio playback is enabled.
+- [ ] Android robot shows remote controller audio subscription/playback status.
+- [ ] Robot video still renders while meeting audio/video is active.
+- [ ] Chat and controller/viewer robot-control permission tests still pass.

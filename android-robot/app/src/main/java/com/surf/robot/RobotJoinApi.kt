@@ -19,7 +19,7 @@ class RobotJoinApi(
                 .put("roomName", roomName)
                 .put("robotId", robotId)
                 .toString()
-                .toRequestBody(JSON.toMediaType())
+                .toRequestBody(JSON)
 
             val request = Request.Builder()
                 .url("$normalizedBackendUrl/api/robots/join")

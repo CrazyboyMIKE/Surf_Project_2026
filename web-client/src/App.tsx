@@ -3,6 +3,8 @@ import { joinRoom, releaseControl, requestControl } from "./api";
 import { ChatPanel } from "./components/ChatPanel";
 import { ControlPanel } from "./components/ControlPanel";
 import { JoinRoomForm } from "./components/JoinRoomForm";
+import { MediaControls } from "./components/MediaControls";
+import { ParticipantsPanel } from "./components/ParticipantsPanel";
 import { RobotVideo } from "./components/RobotVideo";
 import { StatusBar } from "./components/StatusBar";
 import { useLiveKitRoom } from "./useLiveKitRoom";
@@ -31,7 +33,14 @@ export function App() {
     setActionPending(true);
     try {
       const response = await requestControl(session.roomName, session.participantId);
-      setSession({ ...session, role: (response.role ?? "viewer") as WebRole });
+      setSession({
+        ...session,
+        role: (response.role ?? "viewer") as WebRole,
+        liveKitUrl: response.liveKitUrl ?? session.liveKitUrl,
+        token: response.token ?? session.token,
+        tokenMode: response.tokenMode ?? session.tokenMode,
+        mediaPermissions: response.mediaPermissions ?? session.mediaPermissions
+      });
       setNotice(response.message);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Control request failed");
@@ -49,7 +58,14 @@ export function App() {
     setActionPending(true);
     try {
       const response = await releaseControl(session.roomName, session.participantId);
-      setSession({ ...session, role: "viewer" });
+      setSession({
+        ...session,
+        role: "viewer",
+        liveKitUrl: response.liveKitUrl ?? session.liveKitUrl,
+        token: response.token ?? session.token,
+        tokenMode: response.tokenMode ?? session.tokenMode,
+        mediaPermissions: response.mediaPermissions ?? session.mediaPermissions
+      });
       setNotice(response.message);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Control release failed");
@@ -97,6 +113,21 @@ export function App() {
             robotOnline={roomSocket.robotOnline}
             connectionState={roomSocket.connectionState}
             onControl={roomSocket.sendControl}
+          />
+          <MediaControls
+            mediaPermissions={session.mediaPermissions}
+            tokenMode={session.tokenMode}
+            liveKitState={liveKitRoom.connectionState}
+            localAudioState={liveKitRoom.localAudioState}
+            localVideoState={liveKitRoom.localVideoState}
+            localVideoTrack={liveKitRoom.localVideoTrack}
+            onToggleMicrophone={liveKitRoom.toggleMicrophone}
+            onToggleCamera={liveKitRoom.toggleCamera}
+          />
+          <ParticipantsPanel
+            participants={liveKitRoom.remoteParticipants}
+            canPlaybackAudio={liveKitRoom.canPlaybackAudio}
+            onEnableAudio={liveKitRoom.enableAudioPlayback}
           />
         </div>
 

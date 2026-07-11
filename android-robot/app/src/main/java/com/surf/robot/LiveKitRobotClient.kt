@@ -11,6 +11,7 @@ class LiveKitRobotClient(
     private val scope: CoroutineScope,
     private val onStatus: (String) -> Unit,
     private val onCameraStatus: (String) -> Unit,
+    private val onRemoteAudioStatus: (String) -> Unit,
 ) {
     private val room: Room = LiveKit.create(context.applicationContext)
 
@@ -20,6 +21,7 @@ class LiveKitRobotClient(
                 onStatus("LiveKit connecting")
                 room.connect(liveKitUrl, token)
                 onStatus("LiveKit connected")
+                onRemoteAudioStatus("Remote audio subscribed; waiting for controller audio")
 
                 onCameraStatus("Opening camera")
                 room.localParticipant.setCameraEnabled(true)
@@ -34,6 +36,7 @@ class LiveKitRobotClient(
             } catch (error: Throwable) {
                 onStatus("LiveKit error: ${error.message ?: "unknown"}")
                 onCameraStatus("Camera failed. Check permission or camera occupancy.")
+                onRemoteAudioStatus("Remote audio disconnected")
             }
         }
     }
@@ -47,6 +50,7 @@ class LiveKitRobotClient(
             }
             onStatus("LiveKit disconnected")
             onCameraStatus("Camera stopped")
+            onRemoteAudioStatus("Remote audio disconnected")
         }
     }
 }

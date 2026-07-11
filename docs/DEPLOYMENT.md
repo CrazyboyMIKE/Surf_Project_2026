@@ -75,6 +75,15 @@ Pre-deployment checklist:
 - Public access uses HTTPS/WSS.
 - No real `.env` file is committed.
 
+Deployment readiness gates:
+
+- Backend build has passed with `npm run build`.
+- Backend start command is `npm run start` after build output exists.
+- Platform routes WebSocket upgrade requests for `/ws` to the same backend service.
+- `CORS_ORIGIN` is a comma-separated list of exact Web origins, not `*`, for production.
+- Logs show token mode and request paths only; they do not print LiveKit tokens or secrets.
+- A test request to `/api/robots/join` returns `tokenMode: "livekit"` after production LiveKit env is configured.
+
 Build command:
 
 ```bash
@@ -128,6 +137,14 @@ Pre-deployment checklist:
 - Web hosting serves the app over HTTPS.
 - Browser console has no mixed-content errors.
 - The deployed Web origin is included in backend `CORS_ORIGIN`.
+
+Deployment readiness gates:
+
+- Web build has passed with `npm run build`.
+- The hosting provider injects `VITE_API_BASE_URL` and `VITE_WS_BASE_URL` at build time.
+- `VITE_WS_BASE_URL` uses `wss://`, not `https://` and not `ws://`, for public tests.
+- The deployed Web page can call backend `/health` through the same public backend origin used by the app.
+- Browser devtools show no CORS, mixed-content, or WebSocket upgrade errors.
 
 Build command:
 

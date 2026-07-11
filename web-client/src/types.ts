@@ -7,6 +7,13 @@ export type ControlParameters = {
   angleDeg?: number;
 };
 
+export type MediaPermissions = {
+  canSubscribe: boolean;
+  canPublish: boolean;
+  canPublishAudio: boolean;
+  canPublishVideo: boolean;
+};
+
 export type JoinRoomRequest = {
   roomName: string;
   participantName: string;
@@ -22,6 +29,7 @@ export type JoinRoomResponse = {
   liveKitUrl: string;
   token: string;
   tokenMode: "mock" | "livekit";
+  mediaPermissions: MediaPermissions;
   robotOnline: boolean;
   currentControllerId?: string;
   currentControllerName?: string;
@@ -32,6 +40,10 @@ export type ControlResponse = {
   role?: WebRole;
   message: string;
   code?: string;
+  liveKitUrl?: string;
+  token?: string;
+  tokenMode?: "mock" | "livekit";
+  mediaPermissions?: MediaPermissions;
 };
 
 export type ParticipantSummary = {

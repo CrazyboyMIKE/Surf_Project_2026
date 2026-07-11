@@ -116,7 +116,8 @@ export function createApiRouter(dependencies: RouterDependencies): Router {
           requestedControllerGranted: result.requestedControllerGranted,
           liveKitUrl: token.liveKitUrl,
           token: token.token,
-          tokenMode: token.isMock ? "mock" : "livekit"
+          tokenMode: token.isMock ? "mock" : "livekit",
+          mediaPermissions: token.mediaPermissions
         },
         roomStore.getRoomSnapshot(roomName)
       )
@@ -155,11 +156,12 @@ export function createApiRouter(dependencies: RouterDependencies): Router {
       online: true,
       liveKitUrl: token.liveKitUrl,
       token: token.token,
-      tokenMode: token.isMock ? "mock" : "livekit"
+      tokenMode: token.isMock ? "mock" : "livekit",
+      mediaPermissions: token.mediaPermissions
     });
   }));
 
-  router.post("/api/rooms/control/request", (req, res) => {
+  router.post("/api/rooms/control/request", asyncRoute(async (req, res) => {
     const body = readBody(req, res);
     if (!body) {
       return;
@@ -185,14 +187,25 @@ export function createApiRouter(dependencies: RouterDependencies): Router {
     }
 
     broadcastRoleUpdate(roomName);
+    const token = await liveKitTokenService.generateToken({
+      roomName,
+      identity: result.participant.id,
+      name: result.participant.name,
+      role: result.participant.role
+    });
+
     res.json({
       ok: true,
       role: result.participant.role,
-      message: result.message
+      message: result.message,
+      liveKitUrl: token.liveKitUrl,
+      token: token.token,
+      tokenMode: token.isMock ? "mock" : "livekit",
+      mediaPermissions: token.mediaPermissions
     });
-  });
+  }));
 
-  router.post("/api/rooms/control/release", (req, res) => {
+  router.post("/api/rooms/control/release", asyncRoute(async (req, res) => {
     const body = readBody(req, res);
     if (!body) {
       return;
@@ -213,11 +226,26 @@ export function createApiRouter(dependencies: RouterDependencies): Router {
     }
 
     broadcastRoleUpdate(roomName);
+    const participant = result.room.participants.get(participantId);
+    const token = participant
+      ? await liveKitTokenService.generateToken({
+          roomName,
+          identity: participant.id,
+          name: participant.name,
+          role: participant.role
+        })
+      : undefined;
+
     res.json({
       ok: true,
-      message: result.message
+      role: participant?.role,
+      message: result.message,
+      liveKitUrl: token?.liveKitUrl,
+      token: token?.token,
+      tokenMode: token ? (token.isMock ? "mock" : "livekit") : undefined,
+      mediaPermissions: token?.mediaPermissions
     });
-  });
+  }));
 
   return router;
 }

@@ -26,7 +26,8 @@ Open in Android Studio:
 2. Open the `android-robot/` directory.
 3. Let Gradle sync finish.
 4. Install the requested Android SDK Platform, Build-Tools, and Platform-Tools from SDK Manager.
-5. Build APK from Android Studio, or use the command line below.
+5. Install Android SDK Platform 27 as well, so the Android 8.1/API 27 minimum can be validated.
+6. Build APK from Android Studio, or use the command line below.
 
 From `android-robot/`:
 
@@ -49,6 +50,8 @@ gradle wrapper
 ```
 
 Do not hand-write the Gradle wrapper files. Generate them with Gradle or Android Studio.
+
+If `gradle`, `adb`, or `ANDROID_HOME` is missing, install Android Studio or Android SDK command-line tools first. A reproducible APK build needs the Android SDK, Platform-Tools, and either a generated wrapper or system Gradle.
 
 The debug APK is normally created at:
 

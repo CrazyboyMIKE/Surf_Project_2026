@@ -1,0 +1,34 @@
+# LiveKit Server example config for self-hosted deployment.
+# Replace every YOUR_* placeholder before production use.
+
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 60000
+  use_external_ip: true
+
+keys:
+  YOUR_LIVEKIT_API_KEY: YOUR_LIVEKIT_API_SECRET
+
+# Redis is recommended for production or multi-node operation.
+redis:
+  address: redis:6379
+
+# TURN is often needed when Web users or Android robots are behind restrictive NAT,
+# mobile networks, campus networks, or corporate firewalls.
+# Configure a real domain and TLS cert before enabling in production.
+#
+# turn:
+#   enabled: true
+#   domain: turn.example.com
+#   tls_port: 5349
+#   udp_port: 3478
+#   cert_file: /etc/livekit/certs/fullchain.pem
+#   key_file: /etc/livekit/certs/privkey.pem
+
+# Production recommendation:
+# - Put LiveKit behind a trusted HTTPS/WSS certificate.
+# - Use Let's Encrypt or another trusted CA.
+# - Do not use self-signed certificates for Android robot tests.

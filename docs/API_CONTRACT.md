@@ -76,6 +76,12 @@ Success response:
   "liveKitUrl": "wss://example.livekit.cloud",
   "token": "jwt-or-mock-token",
   "tokenMode": "livekit",
+  "mediaPermissions": {
+    "canSubscribe": true,
+    "canPublish": false,
+    "canPublishAudio": false,
+    "canPublishVideo": false
+  },
   "robotOnline": true,
   "currentControllerId": "user-controller",
   "currentControllerName": "Alice"
@@ -89,7 +95,9 @@ Rules:
 - `tokenMode` is `livekit` only when backend has `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET`.
 - `tokenMode` is `mock` when LiveKit configuration is missing.
 - LiveKit API secret is never returned.
-- Web users get LiveKit subscribe permission but no media publish permission.
+- Controller Web users get LiveKit publish and subscribe permission.
+- Viewer Web users get LiveKit subscribe permission and no media publish permission by default.
+- Viewer media publish permission is granted only when backend env `ALLOW_VIEWER_PUBLISH=true`.
 
 ## 3. POST /api/robots/join
 
@@ -115,7 +123,13 @@ Response:
   "online": true,
   "liveKitUrl": "wss://example.livekit.cloud",
   "token": "jwt-or-mock-token",
-  "tokenMode": "livekit"
+  "tokenMode": "livekit",
+  "mediaPermissions": {
+    "canSubscribe": true,
+    "canPublish": true,
+    "canPublishAudio": true,
+    "canPublishVideo": true
+  }
 }
 ```
 
@@ -149,9 +163,24 @@ Success:
 {
   "ok": true,
   "role": "controller",
-  "message": "Control granted"
+  "message": "Control granted",
+  "liveKitUrl": "wss://example.livekit.cloud",
+  "token": "new-controller-jwt-or-mock-token",
+  "tokenMode": "livekit",
+  "mediaPermissions": {
+    "canSubscribe": true,
+    "canPublish": true,
+    "canPublishAudio": true,
+    "canPublishVideo": true
+  }
 }
 ```
+
+Rules:
+
+- A successful controller request returns a fresh LiveKit token with controller publish permission.
+- The Web client reconnects LiveKit with the backend-returned token before enabling microphone/camera publishing.
+- LiveKit publish permission does not grant robot movement; robot control is still checked separately through backend WebSocket role validation.
 
 Failure when another controller is active:
 
@@ -182,11 +211,51 @@ Response:
 ```json
 {
   "ok": true,
-  "message": "Control released"
+  "role": "viewer",
+  "message": "Control released",
+  "liveKitUrl": "wss://example.livekit.cloud",
+  "token": "new-viewer-jwt-or-mock-token",
+  "tokenMode": "livekit",
+  "mediaPermissions": {
+    "canSubscribe": true,
+    "canPublish": false,
+    "canPublishAudio": false,
+    "canPublishVideo": false
+  }
 }
 ```
 
-## 6. WebSocket Connection
+Rules:
+
+- A successful release returns a fresh viewer token.
+- With default `ALLOW_VIEWER_PUBLISH=false`, the released user can keep watching/listening but cannot publish microphone or camera.
+
+## 6. LiveKit Media Permission Model
+
+Backend token generation uses the participant role:
+
+| Role | canJoin | canSubscribe | canPublish |
+| --- | --- | --- | --- |
+| robot | true | true | true |
+| controller | true | true | true |
+| viewer | true | true | false by default |
+
+Environment switch:
+
+```text
+ALLOW_VIEWER_PUBLISH=false
+```
+
+When `ALLOW_VIEWER_PUBLISH=true`, viewer tokens also receive publish permission for microphone/camera testing.
+
+Security rules:
+
+- Frontend and Android must use only backend-issued tokens.
+- Frontend must disable media publishing controls when `mediaPermissions.canPublish=false`.
+- Viewer publish attempts with a default viewer token should be rejected by LiveKit grants.
+- `LIVEKIT_API_SECRET` is never returned in API responses.
+
+## 7. WebSocket Connection
 
 Client identifies itself after opening the socket:
 
@@ -214,7 +283,7 @@ The backend rejects later `chat` and `robot_control` messages when `senderId` do
 
 Robot web publisher and Android robot app also open `hello` with their `robot-*` participant ID so backend can broadcast online/offline state and relay mock `robot_control` messages.
 
-## 7. Chat Message
+## 8. Chat Message
 
 Client sends:
 
@@ -246,7 +315,7 @@ Validation:
 - Maximum message length is 500 characters.
 - Message is only broadcast inside the same room.
 
-## 8. Robot Control Message
+## 9. Robot Control Message
 
 Client sends:
 

@@ -2,6 +2,13 @@ export type Role = "robot" | "controller" | "viewer";
 export type WebRole = "controller" | "viewer";
 export type RobotCommand = "1002" | "1003" | "1000";
 
+export type MediaPermissions = {
+  canSubscribe: boolean;
+  canPublish: boolean;
+  canPublishAudio: boolean;
+  canPublishVideo: boolean;
+};
+
 export type ControlParameters = {
   distanceCm?: number;
   angleDeg?: number;

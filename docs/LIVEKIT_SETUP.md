@@ -17,6 +17,7 @@ LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_API_KEY=your-api-key
 LIVEKIT_API_SECRET=your-api-secret
 LIVEKIT_TOKEN_TTL=1h
+ALLOW_VIEWER_PUBLISH=false
 MOCK_ROBOT_ONLINE=false
 ```
 
@@ -52,13 +53,47 @@ LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_API_KEY=your-api-key
 LIVEKIT_API_SECRET=your-api-secret
 LIVEKIT_TOKEN_TTL=1h
+ALLOW_VIEWER_PUBLISH=false
 MOCK_ROBOT_ONLINE=false
 ```
+
+Keep these values backend-only:
+
+- `LIVEKIT_URL`
+- `LIVEKIT_API_KEY`
+- `LIVEKIT_API_SECRET`
+
+Do not copy them into `web-client/.env`, `robot-web-publisher/.env`, Android source, screenshots, chat messages, or reports.
 
 After backend starts, confirm the log says:
 
 ```text
 LiveKit token mode: livekit
+```
+
+You can also confirm real token mode without printing token contents:
+
+```bash
+curl -s http://localhost:3001/api/robots/join \
+  -H "Content-Type: application/json" \
+  -d '{"robotId":"robot-001","roomName":"robot-room-001"}'
+```
+
+Expected fields:
+
+- `tokenMode` is `livekit`.
+- `liveKitUrl` is your `wss://...livekit.cloud` URL.
+- `participantId` starts with `robot-`.
+- The response includes a `token`, but you should not paste it into reports or screenshots.
+- The response must not include `LIVEKIT_API_SECRET`.
+
+If you want to avoid printing the token while checking the response, use:
+
+```bash
+curl -s http://localhost:3001/api/robots/join \
+  -H "Content-Type: application/json" \
+  -d '{"robotId":"robot-001","roomName":"robot-room-001"}' \
+  | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const j=JSON.parse(s);console.log({tokenMode:j.tokenMode,liveKitUrl:j.liveKitUrl,participantId:j.participantId,hasToken:Boolean(j.token),hasSecretField:Object.prototype.hasOwnProperty.call(j,"LIVEKIT_API_SECRET")});})'
 ```
 
 ## 4. Mock Mode
@@ -102,6 +137,14 @@ For online deployment, `LIVEKIT_URL` must be reachable from public Web clients a
 
 Use this test before Android device testing. It validates the real LiveKit media path with the browser camera.
 
+Before starting, confirm:
+
+- Backend `.env` has real LiveKit values.
+- Backend startup log says `LiveKit token mode: livekit`.
+- `MOCK_ROBOT_ONLINE=false` if you want robot online/offline to reflect real robot publisher WebSocket state.
+- `backend/.env` CORS includes both `http://localhost:5173` and `http://localhost:5174`.
+- Browser camera permission is available for `localhost`.
+
 Start backend:
 
 ```bash
@@ -130,10 +173,19 @@ Test:
 3. Open `http://localhost:5174`.
 4. Join room `robot-room-001` as `robot-001`.
 5. Allow browser camera permission.
-6. Confirm robot publisher shows a publishing status.
-7. Confirm Web status shows `LiveKit connected`.
-8. Confirm Web status shows `Robot online`.
-9. Confirm the Web robot video area shows the robot publisher camera.
+6. Confirm robot publisher shows:
+   - Backend joined or robot online.
+   - WebSocket connected.
+   - LiveKit connected.
+   - Publish publishing.
+   - Token livekit.
+7. Confirm Web status shows:
+   - backend connected.
+   - websocket connected.
+   - livekit connected.
+   - robot online.
+8. Confirm the Web robot video area shows the robot publisher camera.
+9. Open browser developer tools only if needed, and do not copy the returned token into notes.
 
 If the Web side does not show video:
 
@@ -143,6 +195,9 @@ If the Web side does not show video:
 - Check robot participant identity/name contains `robot`.
 - Check `LIVEKIT_URL` starts with `wss://` for cloud tests.
 - Refresh the Web client and rejoin if the token expired.
+- Check that `MOCK_ROBOT_ONLINE=false` is set when validating real robot online/offline behavior.
+- Check that the browser did not block camera access because the page is not `localhost` or HTTPS.
+- Check LiveKit Cloud project status and usage limits.
 
 ## 7. Confirming the Robot Video Track
 
@@ -162,7 +217,74 @@ For low-level inspection:
 4. Do not copy or share the returned LiveKit token.
 5. Check console for LiveKit connection errors.
 
-## 8. Local Ports
+## 8. Meeting Media Test
+
+Sixth-round meeting media uses the same LiveKit room as robot video.
+
+Backend media grant defaults:
+
+```text
+ALLOW_VIEWER_PUBLISH=false
+```
+
+With this default:
+
+- `controller` can manually publish microphone and camera.
+- `viewer` can subscribe to audio/video but cannot publish microphone or camera.
+- `robot` can publish camera and subscribe to controller audio.
+
+To test viewer publishing in a controlled development room only:
+
+```text
+ALLOW_VIEWER_PUBLISH=true
+```
+
+Restart backend after changing the value.
+
+Controller microphone/camera test:
+
+1. Configure real LiveKit credentials and confirm backend log says `LiveKit token mode: livekit`.
+2. Start backend, Web client, and either Android robot or `robot-web-publisher`.
+3. Join Web as Alice requesting `controller`.
+4. Confirm Web status shows `livekit connected`.
+5. Click `Turn mic on`.
+6. Allow browser microphone permission.
+7. Confirm local media status shows `Mic on`.
+8. Click `Turn camera on`.
+9. Allow browser camera permission.
+10. Confirm local preview appears.
+11. Join another Web user in the same room and confirm Alice appears in `Participants`.
+
+Viewer locked test:
+
+1. Join Web as Bob requesting `viewer`.
+2. Confirm Meeting Media shows `viewer locked`.
+3. Confirm mic/camera buttons are disabled.
+4. If Bob tries to publish by bypassing UI, the LiveKit token grant should reject publishing while `ALLOW_VIEWER_PUBLISH=false`.
+
+Remote audio playback:
+
+- Browser autoplay policy may block remote audio until a user gesture.
+- If the Web client shows `Enable sound`, click it.
+- Make sure the computer output device is not muted.
+- Use HTTPS or `localhost`; browsers may block media devices on insecure origins.
+
+Permission troubleshooting:
+
+- `permission denied`: unblock microphone/camera in browser site settings and reload.
+- `device not found`: connect a microphone/camera or close broken virtual devices.
+- Camera busy: close other video apps.
+- LiveKit connected but no audio: check that the publishing participant actually clicked `Turn mic on`.
+
+Android robot controller-audio test:
+
+1. Android joins the same LiveKit room with real token mode.
+2. Web controller turns microphone on.
+3. Android status should indicate remote audio is subscribed or connected.
+4. Confirm robot speaker volume is up and no Bluetooth/output routing issue exists.
+5. If no sound is heard, check Android system volume, LiveKit connection, token mode, and whether controller mic permission was granted.
+
+## 9. Local Ports
 
 Default local services:
 
@@ -186,7 +308,7 @@ web-client: https://your-web.example.com
 android-robot backendUrl: https://your-backend.example.com
 ```
 
-## 9. Verification
+## 10. Verification
 
 1. Start backend.
 2. Join a Web user.
@@ -196,7 +318,7 @@ android-robot backendUrl: https://your-backend.example.com
 6. Allow camera permission.
 7. Confirm Web client shows the robot camera.
 
-## 10. Common Problems
+## 11. Common Problems
 
 `tokenMode` is `mock`:
 
