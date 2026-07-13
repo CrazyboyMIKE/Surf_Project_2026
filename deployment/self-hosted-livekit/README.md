@@ -21,10 +21,18 @@ Web、robot-web-publisher 和 Android 都不需要 `LIVEKIT_API_SECRET`。它们
 - `livekit.yaml.example`: LiveKit Server 示例配置。
 - `docker-compose.example.yml`: LiveKit + Redis 示例 compose。
 - `nginx-livekit.example.conf`: `livekit.example.com` 的 WSS 反向代理示例。
+- `nginx-backend.example.conf`: `api.example.com` 的 HTTPS API + `/ws` 反向代理示例。
+- `nginx-web.example.conf`: `web.example.com` 静态 Web 前端示例。
 - `backend.env.selfhost.example`: backend 连接自建 LiveKit 的环境变量示例。
+- `backend.env.cloud.example`: 云端真实联调用 backend env 示例。
 - `web.env.selfhost.example`: Web client 连接线上 backend 的环境变量示例。
+- `web.env.cloud.example`: 云端真实联调用 Web env 示例。
 - `robot-web-publisher.env.selfhost.example`: robot web publisher 连接线上 backend 的环境变量示例。
+- `robot-web-publisher.env.cloud.example`: 云端真实联调用 publisher env 示例。
 - `android-config.selfhost.example.md`: Android robot app 的自建 LiveKit 配置说明。
+- `android-cloud-config.example.md`: Android 公网云端联调配置说明。
+- `CLOUD_DEPLOYMENT_RUNBOOK.md`: 云服务器逐步部署 runbook。
+- `CLOUD_DEPLOYMENT_STEP_LOG_TEMPLATE.md`: 部署过程打勾记录模板。
 
 ## 3. Basic Flow
 
@@ -42,6 +50,7 @@ Web、robot-web-publisher 和 Android 都不需要 `LIVEKIT_API_SECRET`。它们
 
 云服务器至少需要开放：
 
+- `443/tcp`: HTTPS/WSS for Web, backend API/WebSocket, and LiveKit WSS proxy.
 - `7880/tcp`: LiveKit HTTP/WebSocket，通常放在 Nginx HTTPS/WSS 反向代理后。
 - `7881/tcp`: LiveKit RTC TCP fallback。
 - `50000-60000/udp`: WebRTC UDP media ports。
@@ -51,6 +60,13 @@ Web、robot-web-publisher 和 Android 都不需要 `LIVEKIT_API_SECRET`。它们
   - `5349/tcp` for TLS TURN
 
 如果用户或机器人在严格 NAT、校园网、公司网、移动网络下连接失败，通常需要配置 TURN。
+
+注意：
+
+- Nginx 只代理 HTTPS/WSS/API。
+- LiveKit WebRTC UDP media ports `50000-60000/udp` 不经过 Nginx，必须在云厂商安全组和服务器系统防火墙中直接放行。
+- `7880/tcp` 是否公网暴露取决于你的 Nginx 方案；如果只允许 Nginx 访问，可以只在内网/本机开放。
+- 云厂商安全组和服务器系统防火墙都要检查。
 
 ## 5. Cost Notes
 
@@ -69,5 +85,6 @@ Web、robot-web-publisher 和 Android 都不需要 `LIVEKIT_API_SECRET`。它们
 - 不要使用 `YOUR_LIVEKIT_API_KEY` 或 `YOUR_LIVEKIT_API_SECRET` 作为真实值。
 - 不要把 `LIVEKIT_API_SECRET` 放进 Web、robot-web-publisher、Android 或截图。
 - 生产 Web/Android 应使用 `https://` 和 `wss://`。
-- Android 8.1 可能拒绝自签证书；生产环境使用 Let's Encrypt 或其他可信证书。
+- Android 8.1 和手机公网测试不要使用自签证书；生产环境使用 Let's Encrypt 或其他可信证书。
 - backend 仍负责 controller/viewer 权限和 robot_control whitelist。
+- 云端最小闭环优先验证 LiveKit、Redis、Nginx、backend token、robot-web-publisher 摄像头、两个 Web 用户观看/聊天、viewer 越权拒绝、`1002`、`1003`、`1000 stop` 和 Android 真机摄像头。

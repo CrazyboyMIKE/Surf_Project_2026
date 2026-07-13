@@ -17,7 +17,8 @@ redis:
   address: redis:6379
 
 # TURN is often needed when Web users or Android robots are behind restrictive NAT,
-# mobile networks, campus networks, or corporate firewalls.
+# 4G/5G mobile networks, campus networks, company networks, or when cross-NAT
+# users can join the room but cannot see/hear video.
 # Configure a real domain and TLS cert before enabling in production.
 #
 # turn:

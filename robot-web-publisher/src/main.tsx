@@ -27,18 +27,71 @@ function resolveWebSocketUrl(apiBaseUrl: string): string {
 const API_BASE_URL = stripTrailingSlash(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001");
 const WS_URL = resolveWebSocketUrl(API_BASE_URL);
 
-async function joinRobot(roomName: string, robotId: string): Promise<JoinRobotResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/robots/join`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ roomName, robotId })
-  });
+function validateRuntimeConfig() {
+  if (!/^https?:\/\//.test(API_BASE_URL)) {
+    throw new Error("API address configuration error: VITE_API_BASE_URL must start with http:// or https://.");
+  }
 
-  const data = (await response.json()) as JoinRobotResponse & { message?: string };
+  if (!/^wss?:\/\//.test(WS_URL)) {
+    throw new Error("WebSocket address configuration error: VITE_WS_BASE_URL must start with ws:// or wss://.");
+  }
+}
+
+function describeUnknownError(error: unknown): string {
+  return error instanceof Error ? error.message : "unknown error";
+}
+
+function describeCameraError(error: unknown): string {
+  if (error instanceof DOMException) {
+    if (error.name === "NotAllowedError" || error.name === "SecurityError" || error.name === "PermissionDeniedError") {
+      return "Camera permission denied. Allow camera access in the browser site settings, then retry.";
+    }
+
+    if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
+      return "No camera was detected. Connect a camera or close broken virtual camera devices, then retry.";
+    }
+
+    if (error.name === "NotReadableError" || error.name === "TrackStartError") {
+      return "Camera is busy or unavailable. Close other camera apps and retry.";
+    }
+  }
+
+  return `Camera failed to start: ${describeUnknownError(error)}`;
+}
+
+function describeLiveKitPublishError(error: unknown): string {
+  return `LiveKit publish failed. Check robot token canPublish permission, LiveKit connection state, camera track, and server logs. Details: ${describeUnknownError(
+    error
+  )}`;
+}
+
+async function joinRobot(roomName: string, robotId: string): Promise<JoinRobotResponse> {
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}/api/robots/join`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ roomName, robotId })
+    });
+  } catch (error) {
+    throw new Error(
+      `Backend token request failed. Check VITE_API_BASE_URL, backend /health, HTTPS certificate, and CORS. Details: ${describeUnknownError(
+        error
+      )}`
+    );
+  }
+
+  let data: JoinRobotResponse & { message?: string };
+  try {
+    data = (await response.json()) as JoinRobotResponse & { message?: string };
+  } catch {
+    throw new Error(`Backend token request failed: expected JSON from ${API_BASE_URL}/api/robots/join. Check Nginx API proxy.`);
+  }
   if (!response.ok) {
-    throw new Error(data.message ?? "Robot join failed");
+    throw new Error(`Backend token request failed: ${data.message ?? `HTTP ${response.status}`}`);
   }
 
   return data;
@@ -111,6 +164,7 @@ function App() {
     setPublishState("idle");
 
     try {
+      validateRuntimeConfig();
       const joinResponse = await joinRobot(roomName.trim(), robotId.trim());
       setBackendState(joinResponse.online ? "robot online" : "joined");
       setTokenMode(joinResponse.tokenMode);
@@ -129,7 +183,10 @@ function App() {
         );
       });
       socket.addEventListener("close", () => setWebSocketState("closed"));
-      socket.addEventListener("error", () => setWebSocketState("error"));
+      socket.addEventListener("error", () => {
+        setWebSocketState("error");
+        setError(`WebSocket connection failed. Check VITE_WS_BASE_URL, backend WSS /ws proxy, and HTTPS certificate: ${WS_URL}`);
+      });
 
       if (joinResponse.tokenMode === "mock" || joinResponse.liveKitUrl.startsWith("mock://")) {
         setLiveKitState("mock token");
@@ -146,18 +203,39 @@ function App() {
       room.on(RoomEvent.Disconnected, () => setLiveKitState("disconnected"));
 
       setLiveKitState("connecting");
-      await room.connect(joinResponse.liveKitUrl, joinResponse.token, { autoSubscribe: false });
+      try {
+        await room.connect(joinResponse.liveKitUrl, joinResponse.token, { autoSubscribe: false });
+      } catch (error) {
+        throw new Error(
+          `LiveKit connection failed. Check LIVEKIT_URL, WSS certificate, firewall ports, and token mode. Details: ${describeUnknownError(
+            error
+          )}`
+        );
+      }
 
       setPublishState("requesting camera");
-      const videoTrack = await createLocalVideoTrack();
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("Browser does not support camera API. Use a modern browser and open the page through HTTPS or localhost.");
+      }
+
+      let videoTrack: LocalVideoTrack;
+      try {
+        videoTrack = await createLocalVideoTrack();
+      } catch (error) {
+        throw new Error(describeCameraError(error));
+      }
       localTrackRef.current = videoTrack;
       setLocalTrack(videoTrack);
 
       setPublishState("publishing camera");
-      await room.localParticipant.publishTrack(videoTrack, {
-        source: Track.Source.Camera,
-        name: `${joinResponse.robotId}-camera`
-      });
+      try {
+        await room.localParticipant.publishTrack(videoTrack, {
+          source: Track.Source.Camera,
+          name: `${joinResponse.robotId}-camera`
+        });
+      } catch (error) {
+        throw new Error(describeLiveKitPublishError(error));
+      }
       setPublishState("publishing");
     } catch (error) {
       setError(error instanceof Error ? error.message : "Robot publisher failed");

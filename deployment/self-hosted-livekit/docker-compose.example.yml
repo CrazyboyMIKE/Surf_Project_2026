@@ -13,6 +13,9 @@ services:
     depends_on:
       - redis
 
+    # Replace every placeholder in livekit.yaml.example before production use.
+    # Do not use YOUR_LIVEKIT_API_KEY or YOUR_LIVEKIT_API_SECRET as real credentials.
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -24,9 +27,13 @@ volumes:
   livekit-redis-data:
 
 # Cloud firewall checklist:
+# - 443 TCP: HTTPS/WSS through Nginx or your cloud load balancer.
 # - 7880 TCP: LiveKit HTTP/WebSocket, usually behind HTTPS/WSS reverse proxy.
 # - 7881 TCP: RTC TCP fallback.
 # - 50000-60000 UDP: WebRTC media ports.
 # - If TURN is enabled, also open the configured TURN TCP/UDP/TLS ports.
+#
+# Nginx can run on the host or in another compose stack. This example does not
+# include Nginx so production certificate renewal can be managed by the host.
 #
 # This file uses placeholder config only. Do not put real secrets in this example file.

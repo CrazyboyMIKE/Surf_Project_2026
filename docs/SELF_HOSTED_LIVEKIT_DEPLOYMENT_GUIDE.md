@@ -68,10 +68,18 @@ Files:
 - `livekit.yaml.example`
 - `docker-compose.example.yml`
 - `nginx-livekit.example.conf`
+- `nginx-backend.example.conf`
+- `nginx-web.example.conf`
 - `backend.env.selfhost.example`
+- `backend.env.cloud.example`
 - `web.env.selfhost.example`
+- `web.env.cloud.example`
 - `robot-web-publisher.env.selfhost.example`
+- `robot-web-publisher.env.cloud.example`
 - `android-config.selfhost.example.md`
+- `android-cloud-config.example.md`
+- `CLOUD_DEPLOYMENT_RUNBOOK.md`
+- `CLOUD_DEPLOYMENT_STEP_LOG_TEMPLATE.md`
 
 All key, secret, domain, and certificate paths are placeholders.
 
@@ -79,6 +87,7 @@ All key, secret, domain, and certificate paths are placeholders.
 
 Minimum LiveKit ports:
 
+- `443/tcp`: HTTPS/WSS for public Web, backend, and LiveKit proxy.
 - `7880/tcp`: LiveKit HTTP/WebSocket. Usually reverse proxied as HTTPS/WSS.
 - `7881/tcp`: RTC TCP fallback.
 - `50000-60000/udp`: WebRTC media UDP range.
@@ -88,10 +97,13 @@ Production recommendation:
 - Use trusted HTTPS/WSS certificates, such as Let's Encrypt.
 - Avoid self-signed certs for Android tests.
 - Enable TURN when users or robots are behind restrictive NAT or mobile networks.
+- Nginx proxies HTTPS/WSS/API only. LiveKit UDP media ports do not pass through Nginx.
+- Check both cloud security group and server firewall.
 
 ## 6. Backend Config
 
-Use `deployment/self-hosted-livekit/backend.env.selfhost.example` as a template.
+For cloud testing, use `deployment/self-hosted-livekit/backend.env.cloud.example` as the template.
+The older `backend.env.selfhost.example` remains available for generic self-hosted examples.
 
 Required values:
 
@@ -127,7 +139,7 @@ This checks whether `LIVEKIT_URL` is `mock://`, `ws://`, or `wss://` and whether
 
 ## 7. Web Client Config
 
-Use `deployment/self-hosted-livekit/web.env.selfhost.example`:
+For cloud testing, use `deployment/self-hosted-livekit/web.env.cloud.example`:
 
 ```text
 VITE_API_BASE_URL=https://api.example.com
@@ -138,7 +150,7 @@ The Web client does not need `LIVEKIT_URL`, `LIVEKIT_API_KEY`, or `LIVEKIT_API_S
 
 ## 8. Robot Web Publisher Config
 
-Use `deployment/self-hosted-livekit/robot-web-publisher.env.selfhost.example`:
+For cloud testing, use `deployment/self-hosted-livekit/robot-web-publisher.env.cloud.example`:
 
 ```text
 VITE_API_BASE_URL=https://api.example.com
@@ -211,3 +223,23 @@ It does not change:
 - Android `MockRobotControlAdapter`.
 - no real robot movement.
 - no backend audio/video frame proxying.
+
+## 13. Minimum Cloud Loop Goal
+
+Do not add larger features before this loop is verified:
+
+1. Self-hosted LiveKit starts.
+2. Redis starts.
+3. Nginx HTTPS/WSS works.
+4. Backend generates self-hosted LiveKit token.
+5. robot-web-publisher publishes camera.
+6. Two Web users watch video.
+7. Two Web users chat.
+8. Controller can turn microphone/camera on if current build supports it.
+9. Viewer cannot control.
+10. Controller sends `1002`.
+11. Controller sends `1003`.
+12. Controller sends `1000 stop`.
+13. Android true device joins and publishes camera.
+
+If phone 4G/5G can join but cannot see video, record TURN as a follow-up instead of claiming the video link passed.
