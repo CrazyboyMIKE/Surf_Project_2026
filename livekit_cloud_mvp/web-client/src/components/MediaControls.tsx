@@ -67,7 +67,7 @@ export function MediaControls({
     <section className="tool-panel" aria-labelledby="media-title">
       <div className="panel-heading">
         <h2 id="media-title">Meeting Media</h2>
-        <span>{mediaPermissions.canPublish ? "publish allowed" : "viewer locked"}</span>
+        <span>{mediaPermissions.canPublish ? "publish allowed" : "media locked"}</span>
       </div>
 
       <div className="media-status-grid">

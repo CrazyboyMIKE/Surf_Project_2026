@@ -16,8 +16,7 @@ const liveKitTokenService = new LiveKitTokenService({
   liveKitUrl: config.liveKitUrl,
   apiKey: config.liveKitApiKey,
   apiSecret: config.liveKitApiSecret,
-  tokenTtl: config.liveKitTokenTtl,
-  allowViewerPublish: config.allowViewerPublish
+  tokenTtl: config.liveKitTokenTtl
 });
 const webSocketHub = attachWebSocketServer(server, roomStore);
 
@@ -75,5 +74,5 @@ server.listen(config.port, () => {
   console.log(`WebSocket listening on ${wsBaseUrl}/ws`);
   console.log(`Node environment: ${config.nodeEnv}`);
   console.log(`LiveKit token mode: ${liveKitTokenService.tokenMode}`);
-  console.log(`Viewer media publishing: ${config.allowViewerPublish ? "enabled" : "disabled"}`);
+  console.log("Viewer media publishing: enabled");
 });

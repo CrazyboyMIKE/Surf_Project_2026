@@ -49,5 +49,5 @@ npm run build
 - Disable robot-control buttons for viewer.
 - Allow controller to send only `1002`, `1003`, and `1000`.
 - Provide an explicit stop button for `1000`.
-- Controller may manually turn microphone/camera on when backend grants publish permission.
-- Viewer is subscribe-only by default.
+- Controller and viewer may manually turn microphone/camera on when backend grants publish permission.
+- Viewer media publishing does not grant robot-control permission.

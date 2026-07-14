@@ -23,8 +23,7 @@ Implemented in this isolated project:
 - chat over backend WebSocket
 - LiveKit Cloud token generation in backend
 - robot publisher token with publish permission
-- viewer subscribe-only media permission by default
-- controller token can publish media when meeting controls are enabled
+- viewer/controller tokens can publish microphone and camera media
 - robot video subscription in Web
 - robot-web-publisher camera publishing
 - Android robot camera publishing code copied from the main MVP
@@ -56,7 +55,6 @@ LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_API_KEY=YOUR_LIVEKIT_CLOUD_API_KEY
 LIVEKIT_API_SECRET=YOUR_LIVEKIT_CLOUD_API_SECRET
 LIVEKIT_TOKEN_TTL=1h
-ALLOW_VIEWER_PUBLISH=false
 MOCK_ROBOT_ONLINE=false
 ```
 
@@ -74,6 +72,8 @@ backendUrl=https://api.example.com
 ```
 
 Web, robot-web-publisher, and Android never need `LIVEKIT_API_SECRET`.
+
+Viewer and controller users can both manually turn microphone/camera on in Web after joining with a LiveKit Cloud token. Robot movement/control permissions are still separate: only the active controller can send `1002`, `1003`, or `1000`.
 
 ## Local Development
 

@@ -8,7 +8,6 @@ export type AppConfig = {
   liveKitApiSecret?: string;
   liveKitTokenTtl: string;
   mockRobotOnline: boolean;
-  allowViewerPublish: boolean;
 };
 
 export type LiveKitTokenMode = "mock" | "livekit";
@@ -86,7 +85,6 @@ export function loadConfig(): AppConfig {
     liveKitApiKey,
     liveKitApiSecret,
     liveKitTokenTtl: process.env.LIVEKIT_TOKEN_TTL?.trim() || "1h",
-    mockRobotOnline: readBoolean(process.env.MOCK_ROBOT_ONLINE, true),
-    allowViewerPublish: readBoolean(process.env.ALLOW_VIEWER_PUBLISH, false)
+    mockRobotOnline: readBoolean(process.env.MOCK_ROBOT_ONLINE, true)
   };
 }

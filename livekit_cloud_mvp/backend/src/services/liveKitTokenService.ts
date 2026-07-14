@@ -23,7 +23,6 @@ export class LiveKitTokenService {
       apiKey?: string;
       apiSecret?: string;
       tokenTtl: string;
-      allowViewerPublish: boolean;
     }
   ) {}
 
@@ -66,7 +65,7 @@ export class LiveKitTokenService {
   }
 
   private getMediaPermissions(role: Role): MediaPermissions {
-    const canPublish = role === "robot" || role === "controller" || (role === "viewer" && this.options.allowViewerPublish);
+    const canPublish = role === "robot" || role === "controller" || role === "viewer";
 
     return {
       canSubscribe: true,

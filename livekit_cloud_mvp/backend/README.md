@@ -17,7 +17,6 @@ LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_API_KEY=YOUR_LIVEKIT_CLOUD_API_KEY
 LIVEKIT_API_SECRET=YOUR_LIVEKIT_CLOUD_API_SECRET
 LIVEKIT_TOKEN_TTL=1h
-ALLOW_VIEWER_PUBLISH=false
 MOCK_ROBOT_ONLINE=false
 ```
 
@@ -38,9 +37,9 @@ MOCK_ROBOT_ONLINE=false
 |---|---:|---:|
 | robot | yes | yes |
 | controller | yes | yes |
-| viewer | yes | no by default |
+| viewer | yes | yes |
 
-Set `ALLOW_VIEWER_PUBLISH=true` only for explicit meeting tests. It should stay `false` for the default MVP.
+Viewer media publishing only affects microphone/camera. Viewer robot-control attempts are still rejected by backend controller ownership checks.
 
 ## Run
 

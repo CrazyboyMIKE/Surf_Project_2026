@@ -54,9 +54,9 @@ Android robot:
 |---|---:|---:|
 | robot | yes | yes |
 | controller | yes | yes |
-| viewer | yes | no by default |
+| viewer | yes | yes |
 
-Viewer publish can be enabled only with backend `ALLOW_VIEWER_PUBLISH=true`.
+Viewer media publishing is allowed for Web microphone/camera participation. Robot-control permission remains backend-owned and controller-only.
 
 ## Security Boundary
 
