@@ -14,7 +14,9 @@ function createRoom(): RoomState {
           id: "user-controller",
           name: "Alice",
           role: "controller",
-          connected: true
+          connected: true,
+          joinedAt: Date.now(),
+          lastSeenAt: Date.now()
         }
       ],
       [
@@ -23,10 +25,13 @@ function createRoom(): RoomState {
           id: "user-viewer",
           name: "Bob",
           role: "viewer",
-          connected: true
+          connected: true,
+          joinedAt: Date.now(),
+          lastSeenAt: Date.now()
         }
       ]
-    ])
+    ]),
+    updatedAt: Date.now()
   };
 }
 

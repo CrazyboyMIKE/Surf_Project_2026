@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import cors from "cors";
 import express from "express";
 import { loadConfig } from "./config.js";
+import { createAdminRouter } from "./http/adminRoutes.js";
 import { createApiRouter } from "./http/routes.js";
 import { LiveKitTokenService } from "./services/liveKitTokenService.js";
 import { RoomStore } from "./state/roomStore.js";
@@ -51,6 +52,17 @@ app.use(
   })
 );
 
+app.use(
+  createAdminRouter({
+    roomStore,
+    adminEnabled: config.adminEnabled,
+    adminToken: config.adminToken,
+    broadcastRoleUpdate: webSocketHub.broadcastRoleUpdate,
+    broadcastRobotStatus: webSocketHub.broadcastRobotStatus,
+    broadcastRoomUpdate: webSocketHub.broadcastRoomUpdate
+  })
+);
+
 app.use((_req, res) => {
   res.status(404).json({
     ok: false,
@@ -75,4 +87,5 @@ server.listen(config.port, () => {
   console.log(`Node environment: ${config.nodeEnv}`);
   console.log(`LiveKit token mode: ${liveKitTokenService.tokenMode}`);
   console.log("Viewer media publishing: enabled");
+  console.log(`Admin API: ${config.adminEnabled ? "enabled" : "disabled"}`);
 });

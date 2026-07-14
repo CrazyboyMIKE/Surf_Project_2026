@@ -27,7 +27,16 @@ Do not mark tests as passed unless they were run against a real LiveKit Cloud pr
 19. [ ] Android true device publishes camera.
 20. [ ] Phone 4G/5G can watch Web robot video.
 21. [ ] LiveKit Cloud dashboard usage is checked.
-22. [ ] Issues are recorded with timestamp, room name, participant type, browser/device, and logs without secrets.
+22. [ ] With `ADMIN_ENABLED=false`, admin API is unavailable.
+23. [ ] With admin enabled, missing/wrong admin token returns 401/403.
+24. [ ] With correct admin token, `/admin` shows room list and room details.
+25. [ ] Admin can release current controller.
+26. [ ] Admin can cleanup offline participants without affecting online users.
+27. [ ] Admin cannot close a non-empty room.
+28. [ ] Admin can close an empty room.
+29. [ ] Admin page and admin API do not display LiveKit token, API secret, or admin token.
+30. [ ] Admin page does not provide robot movement command buttons.
+31. [ ] Issues are recorded with timestamp, room name, participant type, browser/device, and logs without secrets.
 
 ## Evidence To Capture
 
@@ -42,3 +51,4 @@ Do not mark tests as passed unless they were run against a real LiveKit Cloud pr
 - `1000 stop` mock receipt.
 - Android camera publishing screenshot or log.
 - LiveKit Cloud usage page screenshot without secrets.
+- Admin console screenshot with token/secret fields hidden.

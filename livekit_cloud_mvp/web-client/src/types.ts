@@ -51,6 +51,57 @@ export type ParticipantSummary = {
   name: string;
   role: Role;
   connected: boolean;
+  joinedAt?: number;
+  lastSeenAt?: number;
+  disconnectedAt?: number;
+};
+
+export type AdminParticipant = {
+  participantId: string;
+  identity: string;
+  displayName: string;
+  role: Role;
+  connected: boolean;
+  joinedAt: number;
+  lastSeenAt: number;
+  disconnectedAt?: number;
+};
+
+export type AdminRoomSummary = {
+  roomName: string;
+  liveKitRoomName: string;
+  robotId?: string;
+  robotOnline: boolean;
+  currentControllerId?: string;
+  currentControllerName?: string;
+  viewerCount: number;
+  participantCount: number;
+  connectedParticipantCount: number;
+  updatedAt: number;
+  canClose: boolean;
+  closeDisabledReason?: string;
+};
+
+export type AdminRoomDetail = AdminRoomSummary & {
+  participants: AdminParticipant[];
+};
+
+export type AdminRoomsResponse = {
+  ok: true;
+  rooms: AdminRoomSummary[];
+};
+
+export type AdminRoomResponse = {
+  ok: true;
+  room: AdminRoomDetail;
+};
+
+export type AdminActionResponse = {
+  ok: true;
+  message?: string;
+  released?: boolean;
+  removedCount?: number;
+  room?: AdminRoomDetail;
 };
 
 export type ChatMessage = {

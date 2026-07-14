@@ -1,4 +1,11 @@
-import type { ControlResponse, JoinRoomRequest, JoinRoomResponse } from "./types";
+import type {
+  AdminActionResponse,
+  AdminRoomResponse,
+  AdminRoomsResponse,
+  ControlResponse,
+  JoinRoomRequest,
+  JoinRoomResponse
+} from "./types";
 
 function stripTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
@@ -30,6 +37,12 @@ async function requestJson<TResponse>(path: string, options?: RequestInit): Prom
   return data;
 }
 
+function adminHeaders(adminToken: string): HeadersInit {
+  return {
+    Authorization: `Bearer ${adminToken}`
+  };
+}
+
 export function joinRoom(payload: JoinRoomRequest): Promise<JoinRoomResponse> {
   return requestJson<JoinRoomResponse>("/api/rooms/join", {
     method: "POST",
@@ -48,5 +61,38 @@ export function releaseControl(roomName: string, participantId: string): Promise
   return requestJson<ControlResponse>("/api/rooms/control/release", {
     method: "POST",
     body: JSON.stringify({ roomName, participantId })
+  });
+}
+
+export function listAdminRooms(adminToken: string): Promise<AdminRoomsResponse> {
+  return requestJson<AdminRoomsResponse>("/api/admin/rooms", {
+    headers: adminHeaders(adminToken)
+  });
+}
+
+export function getAdminRoom(adminToken: string, roomName: string): Promise<AdminRoomResponse> {
+  return requestJson<AdminRoomResponse>(`/api/admin/rooms/${encodeURIComponent(roomName)}`, {
+    headers: adminHeaders(adminToken)
+  });
+}
+
+export function adminReleaseController(adminToken: string, roomName: string): Promise<AdminActionResponse> {
+  return requestJson<AdminActionResponse>(`/api/admin/rooms/${encodeURIComponent(roomName)}/control/release`, {
+    method: "POST",
+    headers: adminHeaders(adminToken)
+  });
+}
+
+export function adminCleanupParticipants(adminToken: string, roomName: string): Promise<AdminActionResponse> {
+  return requestJson<AdminActionResponse>(`/api/admin/rooms/${encodeURIComponent(roomName)}/participants/cleanup`, {
+    method: "POST",
+    headers: adminHeaders(adminToken)
+  });
+}
+
+export function adminCloseRoom(adminToken: string, roomName: string): Promise<AdminActionResponse> {
+  return requestJson<AdminActionResponse>(`/api/admin/rooms/${encodeURIComponent(roomName)}`, {
+    method: "DELETE",
+    headers: adminHeaders(adminToken)
   });
 }

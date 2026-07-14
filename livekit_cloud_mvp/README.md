@@ -25,6 +25,7 @@ Implemented in this isolated project:
 - robot publisher token with publish permission
 - viewer/controller tokens can publish microphone and camera media
 - robot video subscription in Web
+- `/admin` room management console protected by backend admin token
 - robot-web-publisher camera publishing
 - Android robot camera publishing code copied from the main MVP
 - mock-only robot control commands: `1002`, `1003`, `1000`
@@ -56,6 +57,8 @@ LIVEKIT_API_KEY=YOUR_LIVEKIT_CLOUD_API_KEY
 LIVEKIT_API_SECRET=YOUR_LIVEKIT_CLOUD_API_SECRET
 LIVEKIT_TOKEN_TTL=1h
 MOCK_ROBOT_ONLINE=false
+ADMIN_ENABLED=false
+ADMIN_TOKEN=CHANGE_ME_ADMIN_TOKEN
 ```
 
 Web and robot publisher example:
@@ -74,6 +77,8 @@ backendUrl=https://api.example.com
 Web, robot-web-publisher, and Android never need `LIVEKIT_API_SECRET`.
 
 Viewer and controller users can both manually turn microphone/camera on in Web after joining with a LiveKit Cloud token. Robot movement/control permissions are still separate: only the active controller can send `1002`, `1003`, or `1000`.
+
+Admin console is available at `/admin` when backend `ADMIN_ENABLED=true` and a strong `ADMIN_TOKEN` is configured.
 
 ## Local Development
 

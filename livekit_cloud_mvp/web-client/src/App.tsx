@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { joinRoom, releaseControl, requestControl } from "./api";
+import { AdminConsole } from "./components/AdminConsole";
 import { ChatPanel } from "./components/ChatPanel";
 import { ControlPanel } from "./components/ControlPanel";
 import { JoinRoomForm } from "./components/JoinRoomForm";
@@ -12,6 +13,14 @@ import { useRoomSocket } from "./useRoomSocket";
 import type { JoinRoomRequest, JoinRoomResponse, WebRole } from "./types";
 
 export function App() {
+  if (window.location.pathname === "/admin") {
+    return <AdminConsole />;
+  }
+
+  return <RoomApp />;
+}
+
+function RoomApp() {
   const [session, setSession] = useState<JoinRoomResponse | null>(null);
   const [actionPending, setActionPending] = useState(false);
   const [notice, setNotice] = useState("");

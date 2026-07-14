@@ -19,6 +19,9 @@ export type Participant = {
   name: string;
   role: Role;
   connected: boolean;
+  joinedAt: number;
+  lastSeenAt: number;
+  disconnectedAt?: number;
 };
 
 export type RoomState = {
@@ -27,6 +30,7 @@ export type RoomState = {
   robotOnline: boolean;
   participants: Map<string, Participant>;
   currentControllerId?: string;
+  updatedAt: number;
   lastRobotControl?: {
     command: RobotCommand;
     parameters: ControlParameters;
@@ -46,7 +50,40 @@ export type RoomSnapshot = {
     name: string;
     role: Role;
     connected: boolean;
+    joinedAt: number;
+    lastSeenAt: number;
+    disconnectedAt?: number;
   }>;
+};
+
+export type AdminParticipantSnapshot = {
+  participantId: string;
+  identity: string;
+  displayName: string;
+  role: Role;
+  connected: boolean;
+  joinedAt: number;
+  lastSeenAt: number;
+  disconnectedAt?: number;
+};
+
+export type AdminRoomSummary = {
+  roomName: string;
+  liveKitRoomName: string;
+  robotId?: string;
+  robotOnline: boolean;
+  currentControllerId?: string;
+  currentControllerName?: string;
+  viewerCount: number;
+  participantCount: number;
+  connectedParticipantCount: number;
+  updatedAt: number;
+  canClose: boolean;
+  closeDisabledReason?: string;
+};
+
+export type AdminRoomDetail = AdminRoomSummary & {
+  participants: AdminParticipantSnapshot[];
 };
 
 export type ApiErrorCode =
@@ -57,4 +94,8 @@ export type ApiErrorCode =
   | "COMMAND_NOT_ALLOWED"
   | "INVALID_PARAMETERS"
   | "ROBOT_OFFLINE"
-  | "CONTROLLER_BUSY";
+  | "CONTROLLER_BUSY"
+  | "ADMIN_DISABLED"
+  | "UNAUTHORIZED"
+  | "FORBIDDEN"
+  | "ROOM_NOT_EMPTY";

@@ -18,9 +18,13 @@ LIVEKIT_API_KEY=YOUR_LIVEKIT_CLOUD_API_KEY
 LIVEKIT_API_SECRET=YOUR_LIVEKIT_CLOUD_API_SECRET
 LIVEKIT_TOKEN_TTL=1h
 MOCK_ROBOT_ONLINE=false
+ADMIN_ENABLED=false
+ADMIN_TOKEN=CHANGE_ME_ADMIN_TOKEN
 ```
 
 `LIVEKIT_URL` must point to LiveKit Cloud, for example `wss://your-project.livekit.cloud`.
+
+Set `ADMIN_ENABLED=true` only when you need `/admin`. Replace `ADMIN_TOKEN` with a strong random value before enabling it.
 
 ## API
 
@@ -29,6 +33,11 @@ MOCK_ROBOT_ONLINE=false
 - `POST /api/robots/join`
 - `POST /api/rooms/control/request`
 - `POST /api/rooms/control/release`
+- `GET /api/admin/rooms`
+- `GET /api/admin/rooms/:roomName`
+- `POST /api/admin/rooms/:roomName/control/release`
+- `POST /api/admin/rooms/:roomName/participants/cleanup`
+- `DELETE /api/admin/rooms/:roomName`
 - WebSocket `/ws`
 
 ## Media Grants
@@ -72,5 +81,6 @@ npm run check:livekit-env
 - `LIVEKIT_API_SECRET` stays backend-only.
 - API responses return a short-lived LiveKit token, not the API secret.
 - Logs must not print key, secret, or token values.
+- Admin APIs require `Authorization: Bearer <ADMIN_TOKEN>` and never return tokens or secrets.
 - Viewer robot-control attempts are rejected by backend business logic.
 - Allowed robot-control commands are `1002`, `1003`, and `1000`.

@@ -475,9 +475,193 @@ button:focus-visible {
   margin-top: 12px;
 }
 
+.admin-shell {
+  width: min(1380px, 100%);
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.admin-topbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(280px, 420px) auto;
+  gap: 18px;
+  align-items: end;
+  border-bottom: 1px solid #c6d3d0;
+  padding-bottom: 18px;
+}
+
+.admin-subtle {
+  margin: 6px 0 0;
+  color: #587073;
+  font-size: 0.9rem;
+}
+
+.admin-token-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.checkbox-row {
+  display: flex;
+  grid-template-columns: none;
+  gap: 8px;
+  align-items: center;
+  color: #53676a;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.checkbox-row input {
+  width: auto;
+}
+
+.admin-actions,
+.admin-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(420px, 0.9fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.admin-card {
+  min-width: 0;
+  border: 1px solid #c6d3d0;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 16px;
+}
+
+.admin-table-wrap {
+  overflow-x: auto;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.admin-table th,
+.admin-table td {
+  border-bottom: 1px solid #dbe5e3;
+  padding: 10px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.admin-table th {
+  color: #52676a;
+  background: #f4f8f7;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.admin-table td span {
+  display: block;
+  color: #64787a;
+  font-size: 0.82rem;
+}
+
+.selected-row {
+  background: #eef7f4;
+}
+
+.text-button {
+  color: #1d545d;
+  background: transparent;
+  padding: 0;
+  font-weight: 800;
+}
+
+.danger-button {
+  min-height: 42px;
+  border-radius: 6px;
+  color: #ffffff;
+  background: #b5432f;
+  padding: 0 14px;
+  font-weight: 800;
+}
+
+.danger-button:disabled {
+  color: #8a9897;
+  background: #edf2f1;
+}
+
+.state-pill,
+.role-pill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.state-pill.online {
+  color: #155a38;
+  background: #dff4e8;
+}
+
+.state-pill.offline {
+  color: #6f4838;
+  background: #f5e8df;
+}
+
+.role-pill {
+  color: #1f4d55;
+  background: #e4efed;
+}
+
+.role-controller {
+  color: #75400e;
+  background: #f7ead8;
+}
+
+.role-robot {
+  color: #5a2240;
+  background: #f2e0ea;
+}
+
+.admin-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.admin-detail-grid div {
+  border: 1px solid #d5dfdd;
+  border-radius: 6px;
+  background: #f8fbfa;
+  padding: 10px;
+}
+
+.admin-detail-grid dt {
+  color: #587073;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.admin-detail-grid dd {
+  overflow-wrap: anywhere;
+  margin: 4px 0 0;
+  color: #172026;
+  font-weight: 800;
+}
+
 @media (max-width: 900px) {
   .status-bar,
-  .workspace-grid {
+  .workspace-grid,
+  .admin-topbar,
+  .admin-grid {
     grid-template-columns: 1fr;
   }
 
@@ -491,7 +675,8 @@ button:focus-visible {
 }
 
 @media (max-width: 560px) {
-  .app-shell {
+  .app-shell,
+  .admin-shell {
     padding: 14px;
   }
 
@@ -501,7 +686,8 @@ button:focus-visible {
 
   .status-grid,
   .control-pad,
-  .media-status-grid {
+  .media-status-grid,
+  .admin-detail-grid {
     grid-template-columns: 1fr;
   }
 

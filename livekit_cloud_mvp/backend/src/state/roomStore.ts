@@ -1,5 +1,16 @@
 import { randomUUID } from "node:crypto";
-import type { ControlParameters, Participant, RobotCommand, RoomSnapshot, RoomState, WebRole } from "../types.js";
+import type {
+  AdminRoomDetail,
+  AdminRoomSummary,
+  ControlParameters,
+  Participant,
+  RobotCommand,
+  RoomSnapshot,
+  RoomState,
+  WebRole
+} from "../types.js";
+
+const OFFLINE_CLEANUP_AFTER_MS = 30_000;
 
 export type JoinWebParticipantResult = {
   room: RoomState;
@@ -42,6 +53,46 @@ export type ControlReleaseResult =
       message: string;
     };
 
+export type AdminReleaseControlResult =
+  | {
+      ok: true;
+      room: RoomState;
+      released: boolean;
+      message: string;
+    }
+  | {
+      ok: false;
+      status: number;
+      code: "ROOM_NOT_FOUND";
+      message: string;
+    };
+
+export type CleanupParticipantsResult =
+  | {
+      ok: true;
+      room: RoomState;
+      removedCount: number;
+    }
+  | {
+      ok: false;
+      status: number;
+      code: "ROOM_NOT_FOUND";
+      message: string;
+    };
+
+export type CloseRoomResult =
+  | {
+      ok: true;
+      message: string;
+    }
+  | {
+      ok: false;
+      status: number;
+      code: "ROOM_NOT_FOUND" | "ROOM_NOT_EMPTY";
+      message: string;
+      room?: RoomState;
+    };
+
 export class RoomStore {
   private readonly rooms = new Map<string, RoomState>();
 
@@ -60,7 +111,8 @@ export class RoomStore {
     const room: RoomState = {
       roomName,
       robotOnline: this.options.mockRobotOnline,
-      participants: new Map()
+      participants: new Map(),
+      updatedAt: Date.now()
     };
 
     this.rooms.set(roomName, room);
@@ -69,6 +121,7 @@ export class RoomStore {
 
   joinWebParticipant(roomName: string, participantName: string, requestedRole: WebRole): JoinWebParticipantResult {
     const room = this.getOrCreateRoom(roomName);
+    const now = Date.now();
     const participantId = `user-${randomUUID()}`;
     const canGrantController = requestedRole === "controller" && !room.currentControllerId;
     const role: WebRole = canGrantController ? "controller" : "viewer";
@@ -77,13 +130,16 @@ export class RoomStore {
       id: participantId,
       name: participantName,
       role,
-      connected: false
+      connected: false,
+      joinedAt: now,
+      lastSeenAt: now
     };
 
     room.participants.set(participantId, participant);
     if (role === "controller") {
       room.currentControllerId = participantId;
     }
+    this.touchRoom(room);
 
     return {
       room,
@@ -94,17 +150,21 @@ export class RoomStore {
 
   joinRobot(roomName: string, robotId: string): JoinRobotResult {
     const room = this.getOrCreateRoom(roomName);
+    const now = Date.now();
     const participantId = `robot-${robotId}`;
     const participant: Participant = {
       id: participantId,
       name: robotId,
       role: "robot",
-      connected: true
+      connected: true,
+      joinedAt: now,
+      lastSeenAt: now
     };
 
     room.robotId = robotId;
     room.robotOnline = true;
     room.participants.set(participantId, participant);
+    this.touchRoom(room);
 
     return {
       room,
@@ -150,6 +210,8 @@ export class RoomStore {
 
     participant.role = "controller";
     room.currentControllerId = participantId;
+    participant.lastSeenAt = Date.now();
+    this.touchRoom(room);
 
     return {
       ok: true,
@@ -185,6 +247,8 @@ export class RoomStore {
       room.currentControllerId = undefined;
     }
     participant.role = "viewer";
+    participant.lastSeenAt = Date.now();
+    this.touchRoom(room);
 
     return {
       ok: true,
@@ -195,9 +259,19 @@ export class RoomStore {
   }
 
   markParticipantConnected(roomName: string, participantId: string): Participant | undefined {
-    const participant = this.rooms.get(roomName)?.participants.get(participantId);
+    const room = this.rooms.get(roomName);
+    const participant = room?.participants.get(participantId);
     if (participant) {
+      const now = Date.now();
       participant.connected = true;
+      participant.lastSeenAt = now;
+      participant.disconnectedAt = undefined;
+      if (room && participant.role === "robot") {
+        room.robotOnline = true;
+      }
+      if (room) {
+        this.touchRoom(room, now);
+      }
     }
     return participant;
   }
@@ -213,11 +287,15 @@ export class RoomStore {
       return { controllerReleased: false, robotStatusChanged: false };
     }
 
+    const now = Date.now();
     participant.connected = false;
+    participant.lastSeenAt = now;
+    participant.disconnectedAt = now;
     const robotStatusChanged = participant.role === "robot" && room.robotOnline;
     if (robotStatusChanged) {
       room.robotOnline = false;
     }
+    this.touchRoom(room, now);
 
     if (room.currentControllerId === participantId) {
       room.currentControllerId = undefined;
@@ -240,6 +318,7 @@ export class RoomStore {
       from,
       timestamp
     };
+    this.touchRoom(room, timestamp);
   }
 
   getRoomSnapshot(roomName: string): RoomSnapshot | undefined {
@@ -260,8 +339,188 @@ export class RoomStore {
         id: participant.id,
         name: participant.name,
         role: participant.role,
-        connected: participant.connected
+        connected: participant.connected,
+        joinedAt: participant.joinedAt,
+        lastSeenAt: participant.lastSeenAt,
+        disconnectedAt: participant.disconnectedAt
       }))
     };
+  }
+
+  listAdminRoomSummaries(): AdminRoomSummary[] {
+    return Array.from(this.rooms.values())
+      .map((room) => this.toAdminRoomSummary(room))
+      .sort((left, right) => right.updatedAt - left.updatedAt);
+  }
+
+  getAdminRoomDetail(roomName: string): AdminRoomDetail | undefined {
+    const room = this.rooms.get(roomName);
+    if (!room) {
+      return undefined;
+    }
+
+    return {
+      ...this.toAdminRoomSummary(room),
+      participants: Array.from(room.participants.values())
+        .map((participant) => ({
+          participantId: participant.id,
+          identity: participant.id,
+          displayName: participant.name,
+          role: participant.role,
+          connected: participant.connected,
+          joinedAt: participant.joinedAt,
+          lastSeenAt: participant.lastSeenAt,
+          disconnectedAt: participant.disconnectedAt
+        }))
+        .sort((left, right) => left.role.localeCompare(right.role) || left.displayName.localeCompare(right.displayName))
+    };
+  }
+
+  releaseControllerByAdmin(roomName: string): AdminReleaseControlResult {
+    const room = this.rooms.get(roomName);
+    if (!room) {
+      return {
+        ok: false,
+        status: 404,
+        code: "ROOM_NOT_FOUND",
+        message: "Room does not exist"
+      };
+    }
+
+    const controllerId = room.currentControllerId;
+    if (!controllerId) {
+      return {
+        ok: true,
+        room,
+        released: false,
+        message: "No active controller to release"
+      };
+    }
+
+    const controller = room.participants.get(controllerId);
+    if (controller && controller.role !== "robot") {
+      controller.role = "viewer";
+      controller.lastSeenAt = Date.now();
+    }
+    room.currentControllerId = undefined;
+    this.touchRoom(room);
+
+    return {
+      ok: true,
+      room,
+      released: true,
+      message: "Controller released by admin"
+    };
+  }
+
+  cleanupDisconnectedParticipants(roomName: string): CleanupParticipantsResult {
+    const room = this.rooms.get(roomName);
+    if (!room) {
+      return {
+        ok: false,
+        status: 404,
+        code: "ROOM_NOT_FOUND",
+        message: "Room does not exist"
+      };
+    }
+
+    const now = Date.now();
+    let removedCount = 0;
+    for (const participant of Array.from(room.participants.values())) {
+      const offlineLongEnough = !participant.connected && now - participant.lastSeenAt >= OFFLINE_CLEANUP_AFTER_MS;
+      if (!offlineLongEnough) {
+        continue;
+      }
+
+      room.participants.delete(participant.id);
+      removedCount += 1;
+      if (room.currentControllerId === participant.id) {
+        room.currentControllerId = undefined;
+      }
+      if (participant.role === "robot") {
+        room.robotOnline = false;
+        if (room.robotId === participant.name) {
+          room.robotId = undefined;
+        }
+      }
+    }
+
+    if (removedCount > 0) {
+      this.touchRoom(room, now);
+    }
+
+    return {
+      ok: true,
+      room,
+      removedCount
+    };
+  }
+
+  closeRoomIfEmpty(roomName: string): CloseRoomResult {
+    const room = this.rooms.get(roomName);
+    if (!room) {
+      return {
+        ok: false,
+        status: 404,
+        code: "ROOM_NOT_FOUND",
+        message: "Room does not exist"
+      };
+    }
+
+    const closeGuard = this.getCloseGuard(room);
+    if (!closeGuard.canClose) {
+      return {
+        ok: false,
+        status: 409,
+        code: "ROOM_NOT_EMPTY",
+        message: closeGuard.reason ?? "Room still has online participants",
+        room
+      };
+    }
+
+    this.rooms.delete(roomName);
+    return {
+      ok: true,
+      message: "Room closed"
+    };
+  }
+
+  private touchRoom(room: RoomState, timestamp = Date.now()): void {
+    room.updatedAt = timestamp;
+  }
+
+  private toAdminRoomSummary(room: RoomState): AdminRoomSummary {
+    const participants = Array.from(room.participants.values());
+    const currentController = room.currentControllerId ? room.participants.get(room.currentControllerId) : undefined;
+    const connectedParticipantCount = participants.filter((participant) => participant.connected).length;
+    const viewerCount = participants.filter((participant) => participant.role === "viewer").length;
+    const closeGuard = this.getCloseGuard(room);
+
+    return {
+      roomName: room.roomName,
+      liveKitRoomName: room.roomName,
+      robotId: room.robotId,
+      robotOnline: room.robotOnline,
+      currentControllerId: room.currentControllerId,
+      currentControllerName: currentController?.name,
+      viewerCount,
+      participantCount: participants.length,
+      connectedParticipantCount,
+      updatedAt: room.updatedAt,
+      canClose: closeGuard.canClose,
+      closeDisabledReason: closeGuard.reason
+    };
+  }
+
+  private getCloseGuard(room: RoomState): { canClose: boolean; reason?: string } {
+    const connectedParticipants = Array.from(room.participants.values()).filter((participant) => participant.connected);
+    if (connectedParticipants.length > 0) {
+      return {
+        canClose: false,
+        reason: "Room has online participants"
+      };
+    }
+
+    return { canClose: true };
   }
 }

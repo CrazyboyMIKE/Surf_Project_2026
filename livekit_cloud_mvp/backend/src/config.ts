@@ -8,6 +8,8 @@ export type AppConfig = {
   liveKitApiSecret?: string;
   liveKitTokenTtl: string;
   mockRobotOnline: boolean;
+  adminEnabled: boolean;
+  adminToken?: string;
 };
 
 export type LiveKitTokenMode = "mock" | "livekit";
@@ -69,12 +71,18 @@ export function loadConfig(): AppConfig {
   const liveKitUrl = process.env.LIVEKIT_URL?.trim() || "mock://livekit";
   const liveKitApiKey = process.env.LIVEKIT_API_KEY?.trim() || undefined;
   const liveKitApiSecret = process.env.LIVEKIT_API_SECRET?.trim() || undefined;
+  const adminEnabled = readBoolean(process.env.ADMIN_ENABLED, false);
+  const adminToken = process.env.ADMIN_TOKEN?.trim() || undefined;
 
   validateLiveKitConfig({
     liveKitUrl,
     liveKitApiKey,
     liveKitApiSecret
   });
+
+  if (adminEnabled && (!adminToken || adminToken === "CHANGE_ME_ADMIN_TOKEN")) {
+    throw new Error("ADMIN_TOKEN must be set to a strong non-default value when ADMIN_ENABLED=true");
+  }
 
   return {
     port: Number.isFinite(port) ? port : 3001,
@@ -85,6 +93,8 @@ export function loadConfig(): AppConfig {
     liveKitApiKey,
     liveKitApiSecret,
     liveKitTokenTtl: process.env.LIVEKIT_TOKEN_TTL?.trim() || "1h",
-    mockRobotOnline: readBoolean(process.env.MOCK_ROBOT_ONLINE, true)
+    mockRobotOnline: readBoolean(process.env.MOCK_ROBOT_ONLINE, true),
+    adminEnabled,
+    adminToken
   };
 }

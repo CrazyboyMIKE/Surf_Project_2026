@@ -61,7 +61,11 @@ LIVEKIT_API_KEY=YOUR_LIVEKIT_CLOUD_API_KEY
 LIVEKIT_API_SECRET=YOUR_LIVEKIT_CLOUD_API_SECRET
 LIVEKIT_TOKEN_TTL=1h
 MOCK_ROBOT_ONLINE=false
+ADMIN_ENABLED=false
+ADMIN_TOKEN=CHANGE_ME_ADMIN_TOKEN
 ```
+
+For the admin console, set `ADMIN_ENABLED=true` and replace `ADMIN_TOKEN` with a strong random value. Do not use `CHANGE_ME_ADMIN_TOKEN` on a public deployment.
 
 Start with pm2 or systemd:
 

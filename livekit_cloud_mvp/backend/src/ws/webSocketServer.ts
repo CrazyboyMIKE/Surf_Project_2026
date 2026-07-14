@@ -22,6 +22,7 @@ type WebSocketMessage = {
 export type WebSocketHub = {
   broadcastRoleUpdate: (roomName: string) => void;
   broadcastRobotStatus: (roomName: string) => void;
+  broadcastRoomUpdate: (roomName: string) => void;
 };
 
 function isRecord(value: unknown): value is WebSocketMessage {
@@ -119,6 +120,20 @@ export function attachWebSocketServer(server: Server, roomStore: RoomStore): Web
       roomName,
       robotId: snapshot.robotId,
       online: snapshot.robotOnline,
+      timestamp: Date.now()
+    });
+  }
+
+  function broadcastRoomUpdate(roomName: string): void {
+    const snapshot = roomStore.getRoomSnapshot(roomName);
+    if (!snapshot) {
+      return;
+    }
+
+    broadcast(roomName, {
+      type: "room_update",
+      roomName,
+      room: snapshot,
       timestamp: Date.now()
     });
   }
@@ -261,6 +276,7 @@ export function attachWebSocketServer(server: Server, roomStore: RoomStore): Web
 
   return {
     broadcastRoleUpdate,
-    broadcastRobotStatus
+    broadcastRobotStatus,
+    broadcastRoomUpdate
   };
 }

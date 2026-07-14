@@ -29,6 +29,14 @@ npm run dev
 
 Open `http://localhost:5173`.
 
+Admin console:
+
+```text
+http://localhost:5173/admin
+```
+
+The admin page asks for `ADMIN_TOKEN` at runtime and can optionally keep it in `sessionStorage` for the current browser session. It must not be hard-coded into Web source or `.env`.
+
 ## Checks
 
 ```bash
@@ -51,3 +59,4 @@ npm run build
 - Provide an explicit stop button for `1000`.
 - Controller and viewer may manually turn microphone/camera on when backend grants publish permission.
 - Viewer media publishing does not grant robot-control permission.
+- `/admin` shows in-memory rooms and safe room operations when backend admin API is enabled.
