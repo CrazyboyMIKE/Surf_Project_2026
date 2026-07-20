@@ -9,7 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "check:livekit-env": "tsx src/tools/checkLiveKitEnv.ts",
     "lint": "tsc --noEmit",
-    "test": "npm run build && node dist/control/commandValidation.test.js && node dist/services/liveKitTokenService.test.js && node dist/http/adminRoutes.test.js"
+    "test": "npm run build && node dist/control/commandValidation.test.js && node dist/robotControl/adapter.test.js && node dist/state/controlTransfer.test.js && node dist/services/liveKitTokenService.test.js && node dist/http/adminRoutes.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

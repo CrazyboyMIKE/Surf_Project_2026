@@ -52,6 +52,10 @@ function readRequestedRole(value: unknown): WebRole | undefined {
   return value === "viewer" || value === "controller" ? value : undefined;
 }
 
+function isSafeRoomName(value: string): boolean {
+  return /^[A-Za-z0-9._:-]+$/.test(value);
+}
+
 function asyncRoute(handler: (req: Request, res: Response) => Promise<void>) {
   return (req: Request, res: Response, next: NextFunction): void => {
     void handler(req, res).catch(next);
@@ -244,6 +248,45 @@ export function createApiRouter(dependencies: RouterDependencies): Router {
       token: token?.token,
       tokenMode: token ? (token.isMock ? "mock" : "livekit") : undefined,
       mediaPermissions: token?.mediaPermissions
+    });
+  }));
+
+  router.post("/api/rooms/control/transfer", asyncRoute(async (req, res) => {
+    const body = readBody(req, res);
+    if (!body) {
+      return;
+    }
+
+    const roomName = readTrimmedString(body, "roomName", MAX_ROOM_LENGTH);
+    const fromParticipantId = readTrimmedString(body, "fromParticipantId", MAX_NAME_LENGTH);
+    const targetParticipantId = readTrimmedString(body, "targetParticipantId", MAX_NAME_LENGTH);
+
+    if (!roomName || !fromParticipantId || !targetParticipantId) {
+      sendError(res, 400, "INVALID_REQUEST", "roomName, fromParticipantId, and targetParticipantId are required");
+      return;
+    }
+    if (!isSafeRoomName(roomName)) {
+      sendError(res, 400, "INVALID_REQUEST", "roomName contains unsupported characters");
+      return;
+    }
+
+    const result = roomStore.transferControl(roomName, fromParticipantId, targetParticipantId);
+    if (!result.ok) {
+      sendError(res, result.status, result.code, result.message);
+      return;
+    }
+
+    broadcastRoleUpdate(roomName);
+
+    res.json({
+      ok: true,
+      message: result.message,
+      roomName,
+      previousControllerId: result.previousController.id,
+      previousControllerName: result.previousController.name,
+      currentControllerId: result.newController.id,
+      currentControllerName: result.newController.name,
+      participants: roomStore.getRoomSnapshot(roomName)?.participants ?? []
     });
   }));
 

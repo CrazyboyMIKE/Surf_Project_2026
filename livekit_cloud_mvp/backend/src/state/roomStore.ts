@@ -53,6 +53,27 @@ export type ControlReleaseResult =
       message: string;
     };
 
+export type ControlTransferResult =
+  | {
+      ok: true;
+      room: RoomState;
+      previousController: Participant;
+      newController: Participant;
+      message: string;
+    }
+  | {
+      ok: false;
+      room?: RoomState;
+      status: number;
+      code:
+        | "ROOM_NOT_FOUND"
+        | "PARTICIPANT_NOT_FOUND"
+        | "NOT_CONTROLLER"
+        | "TARGET_NOT_VIEWER"
+        | "TARGET_OFFLINE";
+      message: string;
+    };
+
 export type AdminReleaseControlResult =
   | {
       ok: true;
@@ -255,6 +276,86 @@ export class RoomStore {
       room,
       released,
       message: released ? "Control released" : "Participant was not the active controller"
+    };
+  }
+
+  transferControl(roomName: string, fromParticipantId: string, targetParticipantId: string): ControlTransferResult {
+    const room = this.getRoom(roomName);
+    if (!room) {
+      return {
+        ok: false,
+        status: 404,
+        code: "ROOM_NOT_FOUND",
+        message: "Room does not exist"
+      };
+    }
+
+    const fromParticipant = room.participants.get(fromParticipantId);
+    if (!fromParticipant || fromParticipant.role === "robot") {
+      return {
+        ok: false,
+        room,
+        status: 404,
+        code: "PARTICIPANT_NOT_FOUND",
+        message: "Current controller participant is not in this room"
+      };
+    }
+
+    if (room.currentControllerId !== fromParticipantId || fromParticipant.role !== "controller") {
+      return {
+        ok: false,
+        room,
+        status: 403,
+        code: "NOT_CONTROLLER",
+        message: "Only the active controller can transfer control"
+      };
+    }
+
+    const targetParticipant = room.participants.get(targetParticipantId);
+    if (!targetParticipant) {
+      return {
+        ok: false,
+        room,
+        status: 404,
+        code: "PARTICIPANT_NOT_FOUND",
+        message: "Target participant is not in this room"
+      };
+    }
+
+    if (targetParticipant.role !== "viewer") {
+      return {
+        ok: false,
+        room,
+        status: 400,
+        code: "TARGET_NOT_VIEWER",
+        message: "Control can only be transferred to an online viewer"
+      };
+    }
+
+    if (!targetParticipant.connected) {
+      return {
+        ok: false,
+        room,
+        status: 409,
+        code: "TARGET_OFFLINE",
+        message: "Target viewer is offline"
+      };
+    }
+
+    const now = Date.now();
+    fromParticipant.role = "viewer";
+    fromParticipant.lastSeenAt = now;
+    targetParticipant.role = "controller";
+    targetParticipant.lastSeenAt = now;
+    room.currentControllerId = targetParticipant.id;
+    this.touchRoom(room, now);
+
+    return {
+      ok: true,
+      room,
+      previousController: fromParticipant,
+      newController: targetParticipant,
+      message: "Control transferred"
     };
   }
 

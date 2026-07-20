@@ -76,6 +76,11 @@ h2 {
   font-size: 1rem;
 }
 
+h3 {
+  margin: 0;
+  font-size: 0.96rem;
+}
+
 .join-form {
   display: grid;
   gap: 16px;
@@ -340,6 +345,53 @@ button:focus-visible {
   border-color: #d5dfdd;
   color: #8a9897;
   background: #edf2f1;
+}
+
+.transfer-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  border-top: 1px solid #d5dfdd;
+  padding-top: 14px;
+}
+
+.transfer-list {
+  display: grid;
+  gap: 8px;
+}
+
+.transfer-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid #d5dfdd;
+  border-radius: 6px;
+  background: #f8fbfa;
+  padding: 8px 10px;
+}
+
+.transfer-row span {
+  min-width: 0;
+  overflow: hidden;
+  color: #172026;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transfer-button {
+  min-height: 36px;
+  border-radius: 6px;
+  color: #ffffff;
+  background: #1d545d;
+  padding: 0 12px;
+  font-weight: 800;
+}
+
+.transfer-button:disabled {
+  color: #748482;
+  background: #d7e0de;
 }
 
 .media-status-grid {

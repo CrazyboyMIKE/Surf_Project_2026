@@ -5,6 +5,7 @@ export type RobotCommand = "1002" | "1003" | "1000";
 export type ControlParameters = {
   distanceCm?: number;
   angleDeg?: number;
+  speed?: number;
 };
 
 export type MediaPermissions = {
@@ -44,6 +45,18 @@ export type ControlResponse = {
   token?: string;
   tokenMode?: "mock" | "livekit";
   mediaPermissions?: MediaPermissions;
+};
+
+export type ControlTransferResponse = {
+  ok: boolean;
+  message: string;
+  roomName?: string;
+  previousControllerId?: string;
+  previousControllerName?: string;
+  currentControllerId?: string;
+  currentControllerName?: string;
+  participants?: ParticipantSummary[];
+  code?: string;
 };
 
 export type ParticipantSummary = {
@@ -122,6 +135,17 @@ export type RobotControlEvent = {
   timestamp: number;
 };
 
+export type RobotControlResultEvent = {
+  type: "robot_control_result";
+  roomName: string;
+  ok: boolean;
+  command: RobotCommand;
+  mode: "mock" | "real";
+  message: string;
+  code?: string;
+  timestamp: number;
+};
+
 export type RoleUpdateMessage = {
   type: "role_update";
   roomName: string;
@@ -148,6 +172,7 @@ export type ServerErrorMessage = {
 export type RoomSocketMessage =
   | ChatMessage
   | RobotControlEvent
+  | RobotControlResultEvent
   | RoleUpdateMessage
   | RobotStatusMessage
   | ServerErrorMessage

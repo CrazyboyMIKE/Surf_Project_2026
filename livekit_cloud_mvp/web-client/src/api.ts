@@ -3,6 +3,7 @@ import type {
   AdminRoomResponse,
   AdminRoomsResponse,
   ControlResponse,
+  ControlTransferResponse,
   JoinRoomRequest,
   JoinRoomResponse
 } from "./types";
@@ -61,6 +62,17 @@ export function releaseControl(roomName: string, participantId: string): Promise
   return requestJson<ControlResponse>("/api/rooms/control/release", {
     method: "POST",
     body: JSON.stringify({ roomName, participantId })
+  });
+}
+
+export function transferControl(
+  roomName: string,
+  fromParticipantId: string,
+  targetParticipantId: string
+): Promise<ControlTransferResponse> {
+  return requestJson<ControlTransferResponse>("/api/rooms/control/transfer", {
+    method: "POST",
+    body: JSON.stringify({ roomName, fromParticipantId, targetParticipantId })
   });
 }
 

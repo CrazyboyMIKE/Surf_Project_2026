@@ -102,6 +102,13 @@ export function useRoomSocket(session: JoinRoomResponse | null) {
         return;
       }
 
+      if (message.type === "robot_control_result") {
+        if (!message.ok) {
+          setLastError(`${message.code ?? "ROBOT_CONTROL_FAILED"}: ${message.message}`);
+        }
+        return;
+      }
+
       if (message.type === "error") {
         setLastError(`${message.code}: ${message.message}`);
       }

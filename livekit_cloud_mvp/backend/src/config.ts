@@ -1,3 +1,5 @@
+import { readRobotControlConfig, type RobotControlConfig } from "./robotControl/config.js";
+
 export type AppConfig = {
   port: number;
   publicBaseUrl: string;
@@ -8,6 +10,7 @@ export type AppConfig = {
   liveKitApiSecret?: string;
   liveKitTokenTtl: string;
   mockRobotOnline: boolean;
+  robotControl: RobotControlConfig;
   adminEnabled: boolean;
   adminToken?: string;
 };
@@ -94,6 +97,7 @@ export function loadConfig(): AppConfig {
     liveKitApiSecret,
     liveKitTokenTtl: process.env.LIVEKIT_TOKEN_TTL?.trim() || "1h",
     mockRobotOnline: readBoolean(process.env.MOCK_ROBOT_ONLINE, true),
+    robotControl: readRobotControlConfig(),
     adminEnabled,
     adminToken
   };

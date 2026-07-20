@@ -4,6 +4,7 @@ export const ALLOWED_COMMANDS = ["1002", "1003", "1000"] as const;
 
 const MAX_DISTANCE_CM = 100;
 const MAX_ROTATION_DEG = 180;
+const MAX_SPEED = 100;
 
 type ValidationSuccess = {
   ok: true;
@@ -16,6 +17,13 @@ type ValidationFailure = {
   code: ApiErrorCode;
   message: string;
 };
+
+type SpeedValidationResult =
+  | {
+      ok: true;
+      speed?: number;
+    }
+  | ValidationFailure;
 
 export type RobotControlValidationResult = ValidationSuccess | ValidationFailure;
 
@@ -35,6 +43,30 @@ function readFiniteNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function hasOnlyAllowedKeys(parameters: Record<string, unknown>, allowedKeys: string[]): boolean {
+  return Object.keys(parameters).every((key) => allowedKeys.includes(key));
+}
+
+function readSpeed(parameters: Record<string, unknown>): SpeedValidationResult {
+  if (parameters.speed === undefined) {
+    return { ok: true };
+  }
+
+  const speed = readFiniteNumber(parameters.speed);
+  if (speed === undefined || speed <= 0 || speed > MAX_SPEED) {
+    return {
+      ok: false,
+      code: "INVALID_PARAMETERS",
+      message: `speed must be greater than 0 and no more than ${MAX_SPEED}`
+    };
+  }
+
+  return {
+    ok: true,
+    speed
+  };
+}
+
 export function normalizeControlParameters(
   command: RobotCommand,
   rawParameters: unknown
@@ -50,8 +82,20 @@ export function normalizeControlParameters(
   }
 
   if (command === "1002") {
+    if (!hasOnlyAllowedKeys(parameters, ["distanceCm", "speed"])) {
+      return {
+        ok: false,
+        code: "INVALID_PARAMETERS",
+        message: "1002 only accepts distanceCm and speed"
+      };
+    }
+
     const distanceCm = readFiniteNumber(parameters.distanceCm);
     const normalizedDistance = distanceCm ?? 20;
+    const speedResult = readSpeed(parameters);
+    if (!speedResult.ok) {
+      return speedResult;
+    }
 
     if (Math.abs(normalizedDistance) > MAX_DISTANCE_CM) {
       return {
@@ -64,13 +108,25 @@ export function normalizeControlParameters(
     return {
       ok: true,
       command,
-      parameters: { distanceCm: normalizedDistance }
+      parameters: { distanceCm: normalizedDistance, ...(speedResult.speed !== undefined ? { speed: speedResult.speed } : {}) }
     };
   }
 
   if (command === "1003") {
+    if (!hasOnlyAllowedKeys(parameters, ["angleDeg", "speed"])) {
+      return {
+        ok: false,
+        code: "INVALID_PARAMETERS",
+        message: "1003 only accepts angleDeg and speed"
+      };
+    }
+
     const angleDeg = readFiniteNumber(parameters.angleDeg);
     const normalizedAngle = angleDeg ?? 15;
+    const speedResult = readSpeed(parameters);
+    if (!speedResult.ok) {
+      return speedResult;
+    }
 
     if (Math.abs(normalizedAngle) > MAX_ROTATION_DEG) {
       return {
@@ -83,7 +139,7 @@ export function normalizeControlParameters(
     return {
       ok: true,
       command,
-      parameters: { angleDeg: normalizedAngle }
+      parameters: { angleDeg: normalizedAngle, ...(speedResult.speed !== undefined ? { speed: speedResult.speed } : {}) }
     };
   }
 

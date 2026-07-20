@@ -1,6 +1,7 @@
 import type { Server } from "node:http";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 import { validateRobotControlMessage } from "../control/commandValidation.js";
+import type { RobotControlAdapter } from "../robotControl/adapter.js";
 import type { ApiErrorCode } from "../types.js";
 import type { RoomStore } from "../state/roomStore.js";
 
@@ -44,7 +45,11 @@ function parseMessage(raw: RawData): WebSocketMessage | undefined {
   }
 }
 
-function sendError(socket: WebSocket, code: ApiErrorCode | "SOCKET_NOT_IDENTIFIED" | "SENDER_MISMATCH", message: string): void {
+function sendError(
+  socket: WebSocket,
+  code: ApiErrorCode | "SOCKET_NOT_IDENTIFIED" | "SENDER_MISMATCH",
+  message: string
+): void {
   sendJson(socket, {
     type: "error",
     code,
@@ -60,7 +65,11 @@ function contextMatches(context: SocketContext | undefined, roomName: string, pa
   return context?.roomName === roomName && context.participantId === participantId;
 }
 
-export function attachWebSocketServer(server: Server, roomStore: RoomStore): WebSocketHub {
+export function attachWebSocketServer(
+  server: Server,
+  roomStore: RoomStore,
+  robotControlAdapter: RobotControlAdapter
+): WebSocketHub {
   const webSocketServer = new WebSocketServer({ server, path: "/ws" });
   const clientsByRoom = new Map<string, Set<WebSocket>>();
 
@@ -237,21 +246,63 @@ export function attachWebSocketServer(server: Server, roomStore: RoomStore): Web
         }
 
         const timestamp = Date.now();
-        roomStore.recordRobotControl(roomName, validation.command, validation.parameters, senderId, timestamp);
-        console.log(
-          `[mock-robot] room=${roomName} from=${senderId} command=${validation.command} parameters=${JSON.stringify(
-            validation.parameters
-          )}`
-        );
+        void robotControlAdapter
+          .sendCommand({
+            roomName,
+            senderId,
+            robotId: roomStore.getRoom(roomName)?.robotId,
+            command: validation.command,
+            parameters: validation.parameters,
+            timestamp
+          })
+          .then((controlResult) => {
+            if (!controlResult.ok) {
+              sendJson(socket, {
+                type: "robot_control_result",
+                roomName,
+                ok: false,
+                command: validation.command,
+                mode: controlResult.mode,
+                code: controlResult.code,
+                message: controlResult.message,
+                timestamp: Date.now()
+              });
+              sendError(socket, controlResult.code, controlResult.message);
+              return;
+            }
 
-        broadcast(roomName, {
-          type: "robot_control",
-          roomName,
-          command: validation.command,
-          parameters: validation.parameters,
-          from: senderId,
-          timestamp
-        });
+            roomStore.recordRobotControl(roomName, validation.command, validation.parameters, senderId, timestamp);
+            sendJson(socket, {
+              type: "robot_control_result",
+              roomName,
+              ok: true,
+              command: validation.command,
+              mode: controlResult.mode,
+              message: controlResult.message,
+              timestamp
+            });
+            broadcast(roomName, {
+              type: "robot_control",
+              roomName,
+              command: validation.command,
+              parameters: validation.parameters,
+              from: senderId,
+              timestamp
+            });
+          })
+          .catch(() => {
+            sendJson(socket, {
+              type: "robot_control_result",
+              roomName,
+              ok: false,
+              command: validation.command,
+              mode: robotControlAdapter.mode,
+              code: "ROBOT_CONTROL_FAILED",
+              message: "Robot control adapter failed",
+              timestamp: Date.now()
+            });
+            sendError(socket, "ROBOT_CONTROL_FAILED", "Robot control adapter failed");
+          });
         return;
       }
 

@@ -5,6 +5,7 @@ import express from "express";
 import { loadConfig } from "./config.js";
 import { createAdminRouter } from "./http/adminRoutes.js";
 import { createApiRouter } from "./http/routes.js";
+import { createRobotControlAdapter } from "./robotControl/adapter.js";
 import { LiveKitTokenService } from "./services/liveKitTokenService.js";
 import { RoomStore } from "./state/roomStore.js";
 import { attachWebSocketServer } from "./ws/webSocketServer.js";
@@ -13,13 +14,14 @@ const config = loadConfig();
 const app = express();
 const server = createServer(app);
 const roomStore = new RoomStore({ mockRobotOnline: config.mockRobotOnline });
+const robotControlAdapter = createRobotControlAdapter(config.robotControl);
 const liveKitTokenService = new LiveKitTokenService({
   liveKitUrl: config.liveKitUrl,
   apiKey: config.liveKitApiKey,
   apiSecret: config.liveKitApiSecret,
   tokenTtl: config.liveKitTokenTtl
 });
-const webSocketHub = attachWebSocketServer(server, roomStore);
+const webSocketHub = attachWebSocketServer(server, roomStore, robotControlAdapter);
 
 app.use((req, res, next) => {
   const startedAt = Date.now();
@@ -87,5 +89,7 @@ server.listen(config.port, () => {
   console.log(`Node environment: ${config.nodeEnv}`);
   console.log(`LiveKit token mode: ${liveKitTokenService.tokenMode}`);
   console.log("Viewer media publishing: enabled");
+  console.log(`Robot control mode: ${robotControlAdapter.mode}`);
+  console.log(`Robot real control: ${config.robotControl.enabled ? "enabled" : "disabled"}`);
   console.log(`Admin API: ${config.adminEnabled ? "enabled" : "disabled"}`);
 });

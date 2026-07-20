@@ -12,6 +12,7 @@ export type MediaPermissions = {
 export type ControlParameters = {
   distanceCm?: number;
   angleDeg?: number;
+  speed?: number;
 };
 
 export type Participant = {
@@ -94,7 +95,12 @@ export type ApiErrorCode =
   | "COMMAND_NOT_ALLOWED"
   | "INVALID_PARAMETERS"
   | "ROBOT_OFFLINE"
+  | "ROBOT_CONTROL_DISABLED"
+  | "ROBOT_CONTROL_CONFIG_INCOMPLETE"
+  | "ROBOT_CONTROL_FAILED"
   | "CONTROLLER_BUSY"
+  | "TARGET_NOT_VIEWER"
+  | "TARGET_OFFLINE"
   | "ADMIN_DISABLED"
   | "UNAUTHORIZED"
   | "FORBIDDEN"

@@ -36,7 +36,18 @@ Do not mark tests as passed unless they were run against a real LiveKit Cloud pr
 28. [ ] Admin can close an empty room.
 29. [ ] Admin page and admin API do not display LiveKit token, API secret, or admin token.
 30. [ ] Admin page does not provide robot movement command buttons.
-31. [ ] Issues are recorded with timestamp, room name, participant type, browser/device, and logs without secrets.
+31. [ ] `ROBOT_CONTROL_MODE=mock` 下 controller 发送 `1002` 成功记录。
+32. [ ] `ROBOT_CONTROL_MODE=mock` 下 controller 发送 `1003` 成功记录。
+33. [ ] `ROBOT_CONTROL_MODE=mock` 下 controller 发送 `1000 stop` 成功记录。
+34. [ ] Viewer 发送 robot_control 被 backend 拒绝。
+35. [ ] 非当前 controller 发送 robot_control 被 backend 拒绝。
+36. [ ] Robot offline 时控制被 backend 拒绝。
+37. [ ] `1001` 被 backend 拒绝。
+38. [ ] `ROBOT_CONTROL_MODE=real` 且配置缺失时返回清楚错误。
+39. [ ] real 模式错误响应不泄露 key、token、secret 或 MQTT password。
+40. [ ] 用户填入真实凭证后，需要人工现场验证真实机器人动作。
+41. [ ] 真实机器人现场先测 `1000 stop`，再低速测 `1002` 和 `1003`。
+42. [ ] Issues are recorded with timestamp, room name, participant type, browser/device, and logs without secrets.
 
 ## Evidence To Capture
 
@@ -49,6 +60,8 @@ Do not mark tests as passed unless they were run against a real LiveKit Cloud pr
 - Chat message in both windows.
 - Controller status and viewer rejection.
 - `1000 stop` mock receipt.
+- Robot control mode and backend adapter result without secret values.
+- real mode config error screenshot or log, if real credentials are not ready.
 - Android camera publishing screenshot or log.
 - LiveKit Cloud usage page screenshot without secrets.
 - Admin console screenshot with token/secret fields hidden.

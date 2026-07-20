@@ -39,13 +39,41 @@ const moveResult = validateRobotControlMessage({
   room: createRoom(),
   senderId: "user-controller",
   command: "1002",
-  parameters: { distanceCm: -20 }
+  parameters: { distanceCm: -20, speed: 10 }
 });
 
 assert.equal(moveResult.ok, true);
 if (moveResult.ok) {
-  assert.deepEqual(moveResult.parameters, { distanceCm: -20 });
+  assert.deepEqual(moveResult.parameters, { distanceCm: -20, speed: 10 });
 }
+
+assert.deepEqual(
+  validateRobotControlMessage({
+    room: createRoom(),
+    senderId: "user-controller",
+    command: "1002",
+    parameters: { distanceCm: 20, unsafePayload: "do-not-forward" }
+  }),
+  {
+    ok: false,
+    code: "INVALID_PARAMETERS",
+    message: "1002 only accepts distanceCm and speed"
+  }
+);
+
+assert.deepEqual(
+  validateRobotControlMessage({
+    room: createRoom(),
+    senderId: "user-controller",
+    command: "1003",
+    parameters: { angleDeg: 10, speed: 101 }
+  }),
+  {
+    ok: false,
+    code: "INVALID_PARAMETERS",
+    message: "speed must be greater than 0 and no more than 100"
+  }
+);
 
 assert.deepEqual(
   validateRobotControlMessage({

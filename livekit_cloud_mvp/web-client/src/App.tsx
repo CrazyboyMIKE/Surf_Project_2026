@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { joinRoom, releaseControl, requestControl } from "./api";
+import { joinRoom, releaseControl, requestControl, transferControl } from "./api";
 import { AdminConsole } from "./components/AdminConsole";
 import { ChatPanel } from "./components/ChatPanel";
 import { ControlPanel } from "./components/ControlPanel";
@@ -83,6 +83,23 @@ function RoomApp() {
     }
   }
 
+  async function handleTransferControl(targetParticipantId: string) {
+    if (!session) {
+      return;
+    }
+
+    setNotice("");
+    setActionPending(true);
+    try {
+      const response = await transferControl(session.roomName, session.participantId, targetParticipantId);
+      setNotice(response.message);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Control transfer failed");
+    } finally {
+      setActionPending(false);
+    }
+  }
+
   if (!session) {
     return <JoinRoomForm onJoin={handleJoin} />;
   }
@@ -119,9 +136,13 @@ function RoomApp() {
           />
           <ControlPanel
             role={effectiveRole}
+            participantId={session.participantId}
+            participants={roomSocket.participants}
             robotOnline={roomSocket.robotOnline}
             connectionState={roomSocket.connectionState}
+            actionPending={actionPending}
             onControl={roomSocket.sendControl}
+            onTransferControl={handleTransferControl}
           />
           <MediaControls
             mediaPermissions={session.mediaPermissions}
