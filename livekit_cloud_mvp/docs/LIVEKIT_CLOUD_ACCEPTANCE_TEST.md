@@ -44,10 +44,13 @@ Do not mark tests as passed unless they were run against a real LiveKit Cloud pr
 36. [ ] Robot offline 时控制被 backend 拒绝。
 37. [ ] `1001` 被 backend 拒绝。
 38. [ ] `ROBOT_CONTROL_MODE=real` 且配置缺失时返回清楚错误。
-39. [ ] real 模式错误响应不泄露 key、token、secret 或 MQTT password。
-40. [ ] 用户填入真实凭证后，需要人工现场验证真实机器人动作。
-41. [ ] 真实机器人现场先测 `1000 stop`，再低速测 `1002` 和 `1003`。
-42. [ ] Issues are recorded with timestamp, room name, participant type, browser/device, and logs without secrets.
+39. [ ] PadBot real 模式使用 `ROBOT_VENDOR_API_BASE_URL + /cloud/openapirobot/applyRobotMqttInfo.action` 申请 MQTT 信息。
+40. [ ] `ROBOT_VENDOR_TOKEN` 使用 PadBot JSON 中的 `apptoken`，`ROBOT_VENDOR_APP_SECRET` 可留空。
+41. [ ] 厂商未返回 post topic 时，backend 返回清楚错误，不伪造 topic。
+42. [ ] real 模式错误响应不泄露 key、token、secret 或 MQTT password。
+43. [ ] 用户填入真实凭证后，需要人工现场验证真实机器人动作。
+44. [ ] 真实机器人现场先测 `1000 stop`，再低速测 `1002` 和 `1003`。
+45. [ ] Issues are recorded with timestamp, room name, participant type, browser/device, and logs without secrets.
 
 ## Evidence To Capture
 
@@ -62,6 +65,7 @@ Do not mark tests as passed unless they were run against a real LiveKit Cloud pr
 - `1000 stop` mock receipt.
 - Robot control mode and backend adapter result without secret values.
 - real mode config error screenshot or log, if real credentials are not ready.
+- PadBot MQTT info request result without key/token/secret values.
 - Android camera publishing screenshot or log.
 - LiveKit Cloud usage page screenshot without secrets.
 - Admin console screenshot with token/secret fields hidden.

@@ -1,5 +1,6 @@
 import type { ControlParameters, RobotCommand } from "../types.js";
 import { getMissingRobotVendorFields, type RobotControlConfig, type RobotControlMode } from "./config.js";
+import { PadBotRobotControlError, sendPadBotMqttCommand } from "./padBotMqtt.js";
 
 export type RobotControlRequest = {
   roomName: string;
@@ -34,10 +35,6 @@ function sanitizeParameters(parameters: ControlParameters): ControlParameters {
     ...(parameters.angleDeg !== undefined ? { angleDeg: parameters.angleDeg } : {}),
     ...(parameters.speed !== undefined ? { speed: parameters.speed } : {})
   };
-}
-
-function stripTrailingSlash(value: string): string {
-  return value.replace(/\/+$/, "");
 }
 
 export class MockRobotControlAdapter implements RobotControlAdapter {
@@ -83,58 +80,34 @@ export class VendorRobotControlAdapter implements RobotControlAdapter {
       };
     }
 
-    const apiBaseUrl = this.config.vendor.apiBaseUrl;
-    const token = this.config.vendor.token;
-    const serialNumber = this.config.vendor.serialNumber;
-    if (!apiBaseUrl || !token || !serialNumber) {
-      return {
-        ok: false,
-        mode: this.mode,
-        code: "ROBOT_CONTROL_CONFIG_INCOMPLETE",
-        message: "Robot real control is enabled but vendor config is incomplete"
-      };
-    }
-
-    const endpoint = `${stripTrailingSlash(apiBaseUrl)}/robots/${encodeURIComponent(serialNumber)}/commands`;
-    const body = {
-      command: request.command,
-      parameters: sanitizeParameters(request.parameters),
-      roomName: request.roomName,
-      requestId: `${request.timestamp}-${request.senderId}`,
-      priority: request.command === "1000" ? "high" : "normal"
-    };
-
     try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-          ...(this.config.vendor.appKey ? { "X-Robot-App-Key": this.config.vendor.appKey } : {})
-        },
-        body: JSON.stringify(body)
-      });
-
-      if (!response.ok) {
-        return {
-          ok: false,
-          mode: this.mode,
-          code: "ROBOT_CONTROL_FAILED",
-          message: `Robot vendor control request failed with HTTP ${response.status}`
-        };
-      }
+      await sendPadBotMqttCommand(this.config, request.command, request.parameters);
+      console.log(
+        `[robot-control:real] room=${request.roomName} from=${request.senderId} command=${request.command} parameters=${JSON.stringify(
+          sanitizeParameters(request.parameters)
+        )}`
+      );
 
       return {
         ok: true,
         mode: this.mode,
         message: request.command === "1000" ? "Robot stop command sent" : "Robot control command sent"
       };
-    } catch {
+    } catch (error) {
+      if (error instanceof PadBotRobotControlError) {
+        return {
+          ok: false,
+          mode: this.mode,
+          code: error.code,
+          message: error.message
+        };
+      }
+
       return {
         ok: false,
         mode: this.mode,
         code: "ROBOT_CONTROL_FAILED",
-        message: "Robot vendor control request failed"
+        message: "Robot MQTT control request failed"
       };
     }
   }

@@ -66,12 +66,12 @@ assert.deepEqual(
     room: createRoom(),
     senderId: "user-controller",
     command: "1003",
-    parameters: { angleDeg: 10, speed: 101 }
+    parameters: { angleDeg: 10, speed: 601 }
   }),
   {
     ok: false,
     code: "INVALID_PARAMETERS",
-    message: "speed must be greater than 0 and no more than 100"
+    message: "speed must be greater than 0 and no more than 600"
   }
 );
 

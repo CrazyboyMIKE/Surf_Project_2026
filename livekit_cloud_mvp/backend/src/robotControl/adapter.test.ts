@@ -1,5 +1,27 @@
 import assert from "node:assert/strict";
 import { MockRobotControlAdapter, VendorRobotControlAdapter } from "./adapter.js";
+import { getMissingRobotVendorFields } from "./config.js";
+import { buildPadBotControlPayload, buildPadBotSignedPayload, pickPadBotPostTopic } from "./padBotMqtt.js";
+import type { RobotControlConfig } from "./config.js";
+
+function createRealConfig(): RobotControlConfig {
+  return {
+    mode: "real",
+    enabled: true,
+    vendor: {
+      apiBaseUrl: "http://s.padbot.cn:9080",
+      appKey: "test-app-key",
+      token: "test-app-token",
+      language: "zh-CN",
+      serialNumber: "test-serial",
+      linearSpeed: 200,
+      angularSpeed: 25,
+      sendIntervalMs: 300,
+      mqttPort: 1883,
+      mqttKeepaliveSeconds: 60
+    }
+  };
+}
 
 {
   const adapter = new MockRobotControlAdapter();
@@ -37,7 +59,13 @@ import { MockRobotControlAdapter, VendorRobotControlAdapter } from "./adapter.js
   const adapter = new VendorRobotControlAdapter({
     mode: "real",
     enabled: false,
-    vendor: {}
+    vendor: {
+      language: "zh-CN",
+      linearSpeed: 200,
+      angularSpeed: 25,
+      sendIntervalMs: 300,
+      mqttKeepaliveSeconds: 60
+    }
   });
 
   const result = await adapter.sendCommand({
@@ -60,7 +88,13 @@ import { MockRobotControlAdapter, VendorRobotControlAdapter } from "./adapter.js
   const adapter = new VendorRobotControlAdapter({
     mode: "real",
     enabled: true,
-    vendor: {}
+    vendor: {
+      language: "zh-CN",
+      linearSpeed: 200,
+      angularSpeed: 25,
+      sendIntervalMs: 300,
+      mqttKeepaliveSeconds: 60
+    }
   });
 
   const result = await adapter.sendCommand({
@@ -77,6 +111,67 @@ import { MockRobotControlAdapter, VendorRobotControlAdapter } from "./adapter.js
     code: "ROBOT_CONTROL_CONFIG_INCOMPLETE",
     message: "Robot real control is enabled but vendor config is incomplete"
   });
+}
+
+{
+  assert.deepEqual(
+    getMissingRobotVendorFields({
+      mode: "real",
+      enabled: true,
+      vendor: {
+        language: "zh-CN",
+        linearSpeed: 200,
+        angularSpeed: 25,
+        sendIntervalMs: 300,
+        mqttHost: "mqtt.example.com",
+        mqttPort: 1883,
+        mqttUsername: "test-user",
+        mqttPassword: "test-password",
+        mqttClientId: "test-client",
+        mqttPostTopic: "robot/control/topic",
+        mqttKeepaliveSeconds: 60
+      }
+    }),
+    []
+  );
+}
+
+{
+  const config = createRealConfig();
+  assert.equal(buildPadBotControlPayload("1000", {}, config), '{"t":"83","m":"{\\"a\\":\\"1000\\"}"}');
+  assert.equal(
+    buildPadBotControlPayload("1002", { distanceCm: -20 }, config),
+    '{"t":"83","m":"{\\"a\\":\\"1002\\",\\"m\\":{\\"d\\":-20,\\"lv\\":200}}"}'
+  );
+  assert.equal(
+    buildPadBotControlPayload("1003", { angleDeg: 15, speed: 30 }, config),
+    '{"t":"83","m":"{\\"a\\":\\"1003\\",\\"m\\":{\\"a\\":15,\\"av\\":30}}"}'
+  );
+}
+
+{
+  const config = createRealConfig();
+  const payload = buildPadBotSignedPayload(config, {}, 1234567890);
+  assert.deepEqual(Object.keys(payload).sort(), ["system"]);
+  assert.equal((payload.system as Record<string, unknown>).appkey, "test-app-key");
+  assert.equal(Object.prototype.hasOwnProperty.call(payload, "apptoken"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(payload, "token"), false);
+  assert.equal(typeof (payload.system as Record<string, unknown>).sign, "string");
+}
+
+{
+  assert.equal(
+    pickPadBotPostTopic(
+      {
+        robotMqttInfoList: [
+          { serialNumber: "other", postTopic: "ignore-this-topic" },
+          { serialNumber: "test-serial", sendTopic: "robot/control/topic" }
+        ]
+      },
+      "test-serial"
+    ),
+    "robot/control/topic"
+  );
 }
 
 console.log("robotControl adapter tests passed");

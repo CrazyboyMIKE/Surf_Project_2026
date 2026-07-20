@@ -6,11 +6,12 @@
 
 - 新增 backend 侧 `RobotControlAdapter` 接口。
 - 新增 `MockRobotControlAdapter`，默认记录已通过校验的控制命令。
-- 新增 `VendorRobotControlAdapter`，为真实厂商 HTTP 控制接口预留服务端适配层。
-- 新增 `robotControlConfig`，从 backend 环境变量读取机器人厂商 API / token / MQTT 占位配置。
+- 新增 `VendorRobotControlAdapter`，按 PadBot Python 控制脚本的流程实现真实 MQTT 控制适配。
+- 新增 PadBot MQTT helper，负责签名、申请 MQTT 信息、选择 post topic、构造控制 payload 和 publish。
+- 新增 `robotControlConfig`，从 backend 环境变量读取机器人厂商 API / token / MQTT 配置。
 - WebSocket `robot_control` 消息现在会先通过后端权限和参数校验，再进入 `RobotControlAdapter`。
 - Web 端继续只发送抽象命令，不输入、不显示、不保存任何机器人 key/token。
-- `1000 stop` 在真实适配请求中标记为 `high` priority。
+- `1000 stop` 在真实适配里直接发布停止 payload，不携带运动参数。
 
 ## 修改文件列表
 
@@ -24,6 +25,7 @@
 - `backend/src/robotControl/config.ts`
 - `backend/src/robotControl/adapter.ts`
 - `backend/src/robotControl/adapter.test.ts`
+- `backend/src/robotControl/padBotMqtt.ts`
 - `backend/src/types.ts`
 - `backend/src/ws/webSocketServer.ts`
 - `web-client/src/types.ts`
@@ -37,18 +39,23 @@
 ```env
 ROBOT_CONTROL_MODE=mock
 ROBOT_CONTROL_ENABLED=false
-ROBOT_VENDOR_API_BASE_URL=https://example.robot-vendor-api.com
+ROBOT_VENDOR_API_BASE_URL=http://s.padbot.cn:9080
 ROBOT_VENDOR_APP_KEY=YOUR_ROBOT_VENDOR_APP_KEY
-ROBOT_VENDOR_APP_SECRET=YOUR_ROBOT_VENDOR_APP_SECRET
-ROBOT_VENDOR_TOKEN=YOUR_ROBOT_VENDOR_TOKEN
+ROBOT_VENDOR_APP_SECRET=
+ROBOT_VENDOR_TOKEN=YOUR_ROBOT_VENDOR_APP_TOKEN
+ROBOT_VENDOR_LANGUAGE=zh-CN
 ROBOT_SERIAL_NUMBER=YOUR_ROBOT_SERIAL_NUMBER
-ROBOT_MQTT_HOST=YOUR_ROBOT_MQTT_HOST
+ROBOT_LINEAR_SPEED=200
+ROBOT_ANGULAR_SPEED=25
+ROBOT_SEND_INTERVAL_MS=300
+ROBOT_MQTT_HOST=
 ROBOT_MQTT_PORT=1883
-ROBOT_MQTT_USERNAME=YOUR_ROBOT_MQTT_USERNAME
-ROBOT_MQTT_PASSWORD=YOUR_ROBOT_MQTT_PASSWORD
-ROBOT_MQTT_CLIENT_ID=YOUR_ROBOT_MQTT_CLIENT_ID
-ROBOT_MQTT_POST_TOPIC=YOUR_ROBOT_POST_TOPIC
-ROBOT_MQTT_RECEIVE_TOPIC=YOUR_ROBOT_RECEIVE_TOPIC
+ROBOT_MQTT_USERNAME=
+ROBOT_MQTT_PASSWORD=
+ROBOT_MQTT_CLIENT_ID=
+ROBOT_MQTT_POST_TOPIC=
+ROBOT_MQTT_RECEIVE_TOPIC=
+ROBOT_MQTT_KEEPALIVE_SECONDS=60
 ```
 
 这些值在示例文件中全部是占位符。本轮没有修改真实 `.env`，没有提交真实凭证。
@@ -101,15 +108,22 @@ ROBOT_CONTROL_MODE=real
 ROBOT_CONTROL_ENABLED=true
 ```
 
-当前 `VendorRobotControlAdapter` 预留 HTTP 控制方式，默认调用：
+当前 `VendorRobotControlAdapter` 已实现 PadBot MQTT 控制方式，流程是：
+
+1. 调用：
 
 ```text
-POST {ROBOT_VENDOR_API_BASE_URL}/robots/{ROBOT_SERIAL_NUMBER}/commands
+POST {ROBOT_VENDOR_API_BASE_URL}/cloud/openapirobot/applyRobotMqttInfo.action
 ```
+
+2. 使用 `ROBOT_VENDOR_APP_KEY` 和 `ROBOT_VENDOR_TOKEN` 生成 MD5 签名。
+3. 从厂商响应中读取 `clientId`、`username`、`token`、`host`、`port` 和 post topic。
+4. 连接 MQTT 后发布控制 payload。
 
 必填字段：
 
 - `ROBOT_VENDOR_API_BASE_URL`
+- `ROBOT_VENDOR_APP_KEY`
 - `ROBOT_VENDOR_TOKEN`
 - `ROBOT_SERIAL_NUMBER`
 
@@ -119,9 +133,9 @@ POST {ROBOT_VENDOR_API_BASE_URL}/robots/{ROBOT_SERIAL_NUMBER}/commands
 Robot real control is enabled but vendor config is incomplete
 ```
 
-不同机器人厂商的真实 endpoint、认证 header、body 格式可能不同，接真实机器人前必须按厂商文档调整适配层。
+`ROBOT_VENDOR_TOKEN` 对应 PadBot JSON 里的 `apptoken`。`ROBOT_VENDOR_APP_SECRET` 对当前 PadBot 流程不是必填，可以留空。
 
-MQTT 字段已预留，但当前没有实现 MQTT 发布；如果 receive topic 拿不到，不会伪造机器人状态。
+如果厂商返回的 MQTT 信息没有 post topic，会返回清晰错误；如果 receive topic 拿不到，不会伪造机器人状态。
 
 ## 控制命令白名单
 
@@ -135,8 +149,8 @@ MQTT 字段已预留，但当前没有实现 MQTT 发布；如果 receive topic 
 
 参数规则：
 
-- `1002` 只接受 `distanceCm` 和可选 `speed`。
-- `1003` 只接受 `angleDeg` 和可选 `speed`。
+- `1002` 只接受 `distanceCm` 和可选 `speed`，发布为 `{"a":"1002","m":{"d":distanceCm,"lv":speed}}`。
+- `1003` 只接受 `angleDeg` 和可选 `speed`，发布为 `{"a":"1003","m":{"a":angleDeg,"av":speed}}`。
 - `1000` 不接受运动参数。
 - 不允许任意 JSON 透传到机器人。
 
@@ -144,15 +158,15 @@ MQTT 字段已预留，但当前没有实现 MQTT 发布；如果 receive topic 
 
 - `1000` 仍在白名单内。
 - `1000` 不需要复杂参数。
-- `1000` 在 real adapter 请求体里标记 `priority: "high"`。
+- `1000` 在 real adapter 中发布 `{"t":"83","m":"{\"a\":\"1000\"}"}`。
 - 真实机器人联调必须先测 `1000 stop`。
 
 ## 用户需要自己完成什么
 
 - 向机器人厂商确认真实控制方式：HTTP API、MQTT、Android SDK 或局域网协议。
-- 准备真实 app key / app secret / token。
+- 准备真实 appkey / apptoken。
 - 准备机器人 serial number。
-- 如果走 MQTT，确认 post topic / receive topic。
+- 如果厂商不返回 post topic，手动确认 `robotPostTopic` 或 `ROBOT_MQTT_POST_TOPIC`。
 - 确认 `1002`、`1003`、`1000` 的真实参数格式。
 - 在 backend `.env` 中填入真实凭证。
 - 不要提交 `.env`。
@@ -167,21 +181,21 @@ MQTT 字段已预留，但当前没有实现 MQTT 发布；如果 receive topic 
 backend npm run lint: passed
 backend npm run test: passed
 backend npm run build: passed
-web-client npm run lint: passed
-web-client npm run test: passed
-web-client npm run build: passed
+web-client npm run lint: not run，本轮未修改 web-client
+web-client npm run test: not run，本轮未修改 web-client
+web-client npm run build: not run，本轮未修改 web-client
 ```
 
 说明：
 
 - backend `npm run test` 首次在沙箱内因既有 `adminRoutes.test` 监听 `127.0.0.1` 报 `EPERM`。
 - 已用同一命令在允许本地监听的环境中重跑，通过。
-- web-client build 仍有 LiveKit SDK bundle 的 Vite chunk size warning，不影响构建通过。
+- backend adapter 测试覆盖了 PadBot payload 构造、签名 payload 不泄露 `apptoken`、post topic 选择、mock 日志清洗、real 模式禁用和缺配置错误。
 
 ## 未验证项及原因
 
-- 未调用真实机器人厂商 API：当前没有真实厂商 endpoint、token、serial number 和安全测试现场。
-- 未验证 MQTT 控制：当前没有确认 MQTT post topic / receive topic，也没有接入 MQTT 客户端依赖。
+- 未调用真实机器人厂商 API：本地没有真实 appkey、apptoken、serial number 和安全测试现场。
+- 未验证 MQTT 控制：本地没有真实机器人和现场急停条件。
 - 未验证真实机器人动作：需要物理机器人、安全场地和现场急停。
 
 ## 安全检查结果

@@ -4,7 +4,7 @@ export const ALLOWED_COMMANDS = ["1002", "1003", "1000"] as const;
 
 const MAX_DISTANCE_CM = 100;
 const MAX_ROTATION_DEG = 180;
-const MAX_SPEED = 100;
+const MAX_SPEED = 600;
 
 type ValidationSuccess = {
   ok: true;
