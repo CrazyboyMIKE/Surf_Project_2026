@@ -87,6 +87,12 @@ h3 {
   margin-top: 28px;
 }
 
+.join-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 label {
   display: grid;
   gap: 8px;
@@ -343,6 +349,80 @@ button:focus-visible {
 
 .control-pad button:disabled {
   border-color: #d5dfdd;
+  color: #8a9897;
+  background: #edf2f1;
+}
+
+.keyboard-control-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  border-top: 1px solid #d5dfdd;
+  padding-top: 14px;
+}
+
+.toggle-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: #172026;
+  font-weight: 850;
+}
+
+.toggle-row input {
+  width: auto;
+}
+
+.risk-note,
+.keyboard-result {
+  margin: 0;
+  border: 1px solid #e2baa9;
+  border-radius: 6px;
+  color: #7b3421;
+  background: #fff3ee;
+  padding: 9px 10px;
+  font-weight: 750;
+}
+
+.keyboard-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.keyboard-settings input {
+  padding: 0;
+}
+
+.keyboard-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
+  gap: 8px;
+  color: #4b5f62;
+  font-size: 0.86rem;
+}
+
+.keyboard-status-grid span {
+  border: 1px solid #d5dfdd;
+  border-radius: 6px;
+  background: #f8fbfa;
+  padding: 8px 10px;
+}
+
+.keyboard-status-grid strong {
+  display: block;
+  color: #172026;
+}
+
+.keyboard-stop-button {
+  min-height: 44px;
+  border-radius: 6px;
+  color: #ffffff;
+  background: #b5432f;
+  font-weight: 900;
+}
+
+.keyboard-stop-button:disabled {
   color: #8a9897;
   background: #edf2f1;
 }

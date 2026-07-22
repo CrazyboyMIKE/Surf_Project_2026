@@ -1,11 +1,51 @@
 export type Role = "robot" | "controller" | "viewer";
 export type WebRole = "controller" | "viewer";
 export type RobotCommand = "1002" | "1003" | "1000";
+export type RobotControlEventCommand = RobotCommand | "1001";
+export type KeyboardDirection =
+  | "forward"
+  | "backward"
+  | "left"
+  | "right"
+  | "forward_left"
+  | "forward_right"
+  | "backward_left"
+  | "backward_right";
 
 export type ControlParameters = {
   distanceCm?: number;
   angleDeg?: number;
   speed?: number;
+  lv?: number;
+  av?: number;
+  direction?: KeyboardDirection;
+  stopReason?: string;
+};
+
+export type KeyboardControlConfig = {
+  enabled: boolean;
+  continuous1001Enabled: boolean;
+  mode: "1001";
+  sendIntervalMs: number;
+  deadmanTimeoutMs: number;
+  maxSessionMs: number;
+  maxLinearSpeed: number;
+  maxAngularSpeed: number;
+  defaultLinearSpeed: number;
+  defaultAngularSpeed: number;
+  requireFocus: boolean;
+};
+
+export type KeyboardControlStatus = {
+  roomName: string;
+  active: boolean;
+  controllerId?: string;
+  controllerName?: string;
+  direction?: KeyboardDirection;
+  linearSpeed?: number;
+  angularSpeed?: number;
+  stopReason?: string;
+  updatedAt: number;
 };
 
 export type MediaPermissions = {
@@ -31,6 +71,7 @@ export type JoinRoomResponse = {
   token: string;
   tokenMode: "mock" | "livekit";
   mediaPermissions: MediaPermissions;
+  keyboardControl: KeyboardControlConfig;
   robotOnline: boolean;
   currentControllerId?: string;
   currentControllerName?: string;
@@ -129,7 +170,7 @@ export type ChatMessage = {
 export type RobotControlEvent = {
   type: "robot_control";
   roomName: string;
-  command: RobotCommand;
+  command: RobotControlEventCommand;
   parameters: ControlParameters;
   from: string;
   timestamp: number;
@@ -143,6 +184,20 @@ export type RobotControlResultEvent = {
   mode: "mock" | "real";
   message: string;
   code?: string;
+  timestamp: number;
+};
+
+export type KeyboardControlResultEvent = {
+  type: "keyboard_control_result";
+  ok: boolean;
+  message: string;
+  code?: string;
+  status?: KeyboardControlStatus;
+  timestamp: number;
+};
+
+export type KeyboardControlStatusMessage = KeyboardControlStatus & {
+  type: "keyboard_control_status";
   timestamp: number;
 };
 
@@ -173,6 +228,8 @@ export type RoomSocketMessage =
   | ChatMessage
   | RobotControlEvent
   | RobotControlResultEvent
+  | KeyboardControlResultEvent
+  | KeyboardControlStatusMessage
   | RoleUpdateMessage
   | RobotStatusMessage
   | ServerErrorMessage

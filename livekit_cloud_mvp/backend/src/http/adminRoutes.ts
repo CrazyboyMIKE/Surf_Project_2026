@@ -7,6 +7,7 @@ type AdminRouterDependencies = {
   roomStore: RoomStore;
   adminEnabled: boolean;
   adminToken?: string;
+  stopKeyboardControl: (roomName: string, reason: string) => Promise<void>;
   broadcastRoleUpdate: (roomName: string) => void;
   broadcastRobotStatus: (roomName: string) => void;
   broadcastRoomUpdate: (roomName: string) => void;
@@ -145,6 +146,7 @@ export function createAdminRouter(dependencies: AdminRouterDependencies): Router
       return;
     }
 
+    void dependencies.stopKeyboardControl(roomName, "admin_released_controller");
     broadcastRoomState(dependencies, roomName);
     res.json({
       ok: true,

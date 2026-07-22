@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import {
   createLocalVideoTrack,
   LocalVideoTrack,
+  RemoteAudioTrack,
   RemoteVideoTrack,
   Room,
   RoomEvent,
@@ -12,6 +13,16 @@ import {
 import "./styles.css";
 
 type Role = "robot" | "controller" | "viewer";
+type RobotCommand = "1002" | "1003" | "1000" | "1001";
+type KeyboardDirection =
+  | "forward"
+  | "backward"
+  | "left"
+  | "right"
+  | "forward_left"
+  | "forward_right"
+  | "backward_left"
+  | "backward_right";
 
 type JoinRobotResponse = {
   robotId: string;
@@ -33,7 +44,35 @@ type ParticipantPresence = {
 
 type RoleUpdateMessage = {
   type: "role_update";
+  currentControllerId?: string;
+  currentControllerName?: string;
   participants: ParticipantPresence[];
+};
+
+type KeyboardControlStatusMessage = {
+  type: "keyboard_control_status";
+  roomName: string;
+  active: boolean;
+  controllerId?: string;
+  controllerName?: string;
+  direction?: KeyboardDirection;
+  linearSpeed?: number;
+  angularSpeed?: number;
+  stopReason?: string;
+  updatedAt: number;
+};
+
+type RobotControlMessage = {
+  type: "robot_control";
+  command: RobotCommand;
+  parameters?: {
+    direction?: KeyboardDirection;
+    stopReason?: string;
+    lv?: number;
+    av?: number;
+  };
+  from: string;
+  timestamp: number;
 };
 
 type RoomSession = JoinRobotResponse & {
@@ -45,6 +84,7 @@ type RemoteVideoInfo = {
   name: string;
   role: "controller" | "viewer";
   videoTrack: RemoteVideoTrack | null;
+  audioTrack: RemoteAudioTrack | null;
 };
 
 function stripTrailingSlash(value: string): string {
@@ -57,7 +97,17 @@ function resolveWebSocketUrl(apiBaseUrl: string): string {
   return baseUrl.endsWith("/ws") ? baseUrl : `${baseUrl}/ws`;
 }
 
-const API_BASE_URL = stripTrailingSlash(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001");
+function resolveApiBaseUrl(): string {
+  const configuredApiUrl = import.meta.env.VITE_API_BASE_URL;
+  if (configuredApiUrl?.trim()) {
+    return stripTrailingSlash(configuredApiUrl.trim());
+  }
+
+  const protocol = window.location.protocol === "https:" ? "https" : "http";
+  return `${protocol}://${window.location.hostname || "localhost"}:3001`;
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 const WS_URL = resolveWebSocketUrl(API_BASE_URL);
 
 function validateRuntimeConfig() {
@@ -107,6 +157,14 @@ function isRoleUpdateMessage(message: unknown): message is RoleUpdateMessage {
     "participants" in message &&
     Array.isArray(message.participants)
   );
+}
+
+function isKeyboardControlStatusMessage(message: unknown): message is KeyboardControlStatusMessage {
+  return typeof message === "object" && message !== null && "type" in message && message.type === "keyboard_control_status";
+}
+
+function isRobotControlMessage(message: unknown): message is RobotControlMessage {
+  return typeof message === "object" && message !== null && "type" in message && message.type === "robot_control";
 }
 
 async function joinRobot(roomName: string, robotId: string): Promise<JoinRobotResponse> {
@@ -163,6 +221,11 @@ function firstRemoteVideoTrack(participant: RemoteParticipant): RemoteVideoTrack
   return publication?.track instanceof RemoteVideoTrack ? publication.track : null;
 }
 
+function firstRemoteAudioTrack(participant: RemoteParticipant): RemoteAudioTrack | null {
+  const publication = Array.from(participant.audioTrackPublications.values()).find((item) => item.track);
+  return publication?.track instanceof RemoteAudioTrack ? publication.track : null;
+}
+
 function collectRemoteVideos(
   room: Room,
   participantsById: Map<string, ParticipantPresence>,
@@ -184,13 +247,36 @@ function collectRemoteVideos(
         identity: participant.identity,
         name: presence?.name ?? participant.name ?? participant.identity,
         role,
-        videoTrack: firstRemoteVideoTrack(participant)
+        videoTrack: firstRemoteVideoTrack(participant),
+        audioTrack: firstRemoteAudioTrack(participant)
       }
     ];
   });
 }
 
-function RemoteVideoTile({ participant }: { participant: RemoteVideoInfo }) {
+function requestElementFullscreen(element: HTMLElement | null): string | null {
+  if (!element) {
+    return "Video tile is not ready for fullscreen.";
+  }
+
+  if (!document.fullscreenEnabled || !element.requestFullscreen) {
+    return "Fullscreen is not supported by this browser.";
+  }
+
+  void element.requestFullscreen().catch(() => undefined);
+  return null;
+}
+
+function RemoteVideoTile({
+  participant,
+  compact = false,
+  onFullscreenError
+}: {
+  participant: RemoteVideoInfo;
+  compact?: boolean;
+  onFullscreenError: (message: string) => void;
+}) {
+  const tileRef = useRef<HTMLElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
@@ -206,15 +292,39 @@ function RemoteVideoTile({ participant }: { participant: RemoteVideoInfo }) {
   }, [participant.videoTrack]);
 
   return (
-    <article className="remote-video-tile">
+    <article className={compact ? "remote-video-tile compact-video-tile" : "remote-video-tile"} ref={tileRef}>
       {participant.videoTrack ? <video ref={videoRef} autoPlay playsInline /> : <div className="video-empty">Waiting for video</div>}
       <span className="role-badge">{participant.role}</span>
       <span className="name-badge">{participant.name}</span>
+      <button
+        type="button"
+        className="fullscreen-button"
+        aria-label={`Fullscreen ${participant.name}`}
+        onClick={() => {
+          const message = requestElementFullscreen(tileRef.current);
+          if (message) {
+            onFullscreenError(message);
+          }
+        }}
+      >
+        Fullscreen
+      </button>
     </article>
   );
 }
 
-function LocalPreview({ track }: { track: LocalVideoTrack | null }) {
+function LocalPreview({
+  track,
+  robotName,
+  compact = false,
+  onFullscreenError
+}: {
+  track: LocalVideoTrack | null;
+  robotName: string;
+  compact?: boolean;
+  onFullscreenError: (message: string) => void;
+}) {
+  const tileRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
@@ -231,9 +341,142 @@ function LocalPreview({ track }: { track: LocalVideoTrack | null }) {
   }, [track]);
 
   return (
-    <div className="local-preview">
+    <div className={compact ? "local-preview compact-video-tile" : "local-preview"} ref={tileRef}>
       {track ? <video ref={videoRef} autoPlay muted playsInline /> : <div className="preview-placeholder">Robot camera preview</div>}
+      <span className="role-badge">robot</span>
+      <span className="name-badge">{robotName}</span>
+      <button
+        type="button"
+        className="fullscreen-button"
+        aria-label="Fullscreen robot preview"
+        onClick={() => {
+          const message = requestElementFullscreen(tileRef.current);
+          if (message) {
+            onFullscreenError(message);
+          }
+        }}
+      >
+        Fullscreen
+      </button>
     </div>
+  );
+}
+
+function ControllerAudioPlayer({ controller }: { controller: RemoteVideoInfo | null }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [audioState, setAudioState] = useState("waiting for controller audio");
+
+  useEffect(() => {
+    const audioElement = audioRef.current;
+    if (!audioElement || !controller?.audioTrack) {
+      setAudioState(controller ? "controller microphone off" : "waiting for controller audio");
+      return;
+    }
+
+    controller.audioTrack.attach(audioElement);
+    audioElement.muted = false;
+    audioElement.volume = 1;
+    setAudioState("controller audio ready");
+
+    void audioElement.play().then(
+      () => setAudioState("controller audio playing"),
+      () => setAudioState("click enable controller audio")
+    );
+
+    return () => {
+      controller.audioTrack?.detach(audioElement);
+    };
+  }, [controller]);
+
+  async function enableAudio() {
+    const audioElement = audioRef.current;
+    if (!audioElement || !controller?.audioTrack) {
+      setAudioState("controller microphone off");
+      return;
+    }
+
+    try {
+      await audioElement.play();
+      setAudioState("controller audio playing");
+    } catch {
+      setAudioState("browser blocked audio playback");
+    }
+  }
+
+  return (
+    <div className="controller-audio-panel">
+      <audio ref={audioRef} autoPlay playsInline />
+      <span>
+        Controller audio <strong>{audioState}</strong>
+      </span>
+      {controller?.audioTrack && audioState !== "controller audio playing" ? (
+        <button type="button" className="audio-button" onClick={enableAudio}>
+          Enable controller audio
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function PrimaryControllerStage({
+  controller,
+  onFullscreenError
+}: {
+  controller: RemoteVideoInfo | null;
+  onFullscreenError: (message: string) => void;
+}) {
+  const stageRef = useRef<HTMLElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    if (!controller?.videoTrack || !videoElement) {
+      return;
+    }
+
+    controller.videoTrack.attach(videoElement);
+    return () => {
+      controller.videoTrack?.detach(videoElement);
+    };
+  }, [controller]);
+
+  return (
+    <section className="controller-stage" aria-labelledby="controller-stage-title" ref={stageRef}>
+      <div className="panel-heading">
+        <div>
+          <h2 id="controller-stage-title">Controller primary video</h2>
+          <p className="subtle">{controller ? `Current controller: ${controller.name}` : "No controller video track is active"}</p>
+        </div>
+        <button
+          type="button"
+          className="stage-fullscreen-button"
+          onClick={() => {
+            const message = requestElementFullscreen(stageRef.current);
+            if (message) {
+              onFullscreenError(message);
+            }
+          }}
+        >
+          Fullscreen
+        </button>
+      </div>
+
+      <div className="controller-video-frame">
+        {controller?.videoTrack ? (
+          <video ref={videoRef} autoPlay playsInline />
+        ) : (
+          <div className="empty-video-state">Waiting for controller video</div>
+        )}
+        {controller ? (
+          <>
+            <span className="role-badge">controller</span>
+            <span className="name-badge">{controller.name}</span>
+          </>
+        ) : null}
+      </div>
+
+      <ControllerAudioPlayer controller={controller} />
+    </section>
   );
 }
 
@@ -293,11 +536,6 @@ function EntryView({
           </div>
         </form>
 
-        <div className="config-note">
-          <span>API</span>
-          <strong>{API_BASE_URL}</strong>
-        </div>
-
         {error ? <p className="error">{error}</p> : null}
       </section>
     </main>
@@ -314,6 +552,8 @@ function RobotRoomView({
   localTrack,
   remoteVideos,
   error,
+  keyboardStatus,
+  lastRobotControl,
   onLeave
 }: {
   session: RoomSession;
@@ -325,10 +565,16 @@ function RobotRoomView({
   localTrack: LocalVideoTrack | null;
   remoteVideos: RemoteVideoInfo[];
   error: string;
+  keyboardStatus: KeyboardControlStatusMessage | null;
+  lastRobotControl: RobotControlMessage | null;
   onLeave: () => void;
 }) {
   const controllerVideos = remoteVideos.filter((participant) => participant.role === "controller");
   const viewerVideos = remoteVideos.filter((participant) => participant.role === "viewer");
+  const currentController = controllerVideos[0] ?? null;
+  const visibleViewerVideos = viewerVideos.length <= 4 ? viewerVideos : viewerVideos.slice(0, 4);
+  const hiddenViewerCount = Math.max(0, viewerVideos.length - visibleViewerVideos.length);
+  const [fullscreenError, setFullscreenError] = useState("");
 
   return (
     <main className="room-shell">
@@ -344,6 +590,7 @@ function RobotRoomView({
       </header>
 
       {error ? <p className="error">{error}</p> : null}
+      {fullscreenError ? <p className="error">{fullscreenError}</p> : null}
 
       <section className="status-panel">
         <div className="status-grid">
@@ -362,50 +609,51 @@ function RobotRoomView({
           <span>
             Token <strong>{tokenMode}</strong>
           </span>
+          <span>
+            Keyboard <strong>{keyboardStatus?.active ? "active" : "idle"}</strong>
+          </span>
+          <span>
+            Controller <strong>{keyboardStatus?.controllerName ?? "-"}</strong>
+          </span>
+          <span>
+            Direction <strong>{keyboardStatus?.direction?.replace("_", " ") ?? "-"}</strong>
+          </span>
+          <span>
+            Last command <strong>{lastRobotControl?.command ?? "-"}</strong>
+          </span>
+          <span>
+            Stop reason <strong>{keyboardStatus?.stopReason ?? lastRobotControl?.parameters?.stopReason ?? "-"}</strong>
+          </span>
         </div>
       </section>
 
-      <div className="publisher-layout">
-        <section className="local-camera-card">
+      <section className="meeting-layout" aria-label="Robot meeting layout">
+        <section className="thumbnail-strip" aria-labelledby="thumbnail-title">
           <div className="panel-heading">
-            <h2>Robot camera</h2>
-            <span>{publishState}</span>
+            <h2 id="thumbnail-title">Robot and viewer videos</h2>
+            <span>{viewerVideos.length} viewers</span>
           </div>
-          <LocalPreview track={localTrack} />
+          <div className="thumbnail-grid">
+            <LocalPreview track={localTrack} robotName={session.robotName} compact onFullscreenError={setFullscreenError} />
+            {visibleViewerVideos.map((participant) => (
+              <RemoteVideoTile participant={participant} key={participant.identity} compact onFullscreenError={setFullscreenError} />
+            ))}
+            {hiddenViewerCount > 0 ? (
+              <div className="viewer-overflow-tile">
+                <strong>+{hiddenViewerCount}</strong>
+                <span>more viewers</span>
+              </div>
+            ) : null}
+            {viewerVideos.length === 0 ? (
+              <div className="viewer-overflow-tile muted-overflow">
+                <span>No viewer video yet</span>
+              </div>
+            ) : null}
+          </div>
         </section>
 
-        <section className="remote-section" aria-labelledby="controller-title">
-          <div className="panel-heading">
-            <h2 id="controller-title">Controller video</h2>
-            <span>{controllerVideos.length}</span>
-          </div>
-          {controllerVideos.length === 0 ? (
-            <div className="empty-video-state">No controller video yet</div>
-          ) : (
-            <div className="video-grid">
-              {controllerVideos.map((participant) => (
-                <RemoteVideoTile participant={participant} key={participant.identity} />
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="remote-section" aria-labelledby="viewer-title">
-          <div className="panel-heading">
-            <h2 id="viewer-title">Viewer videos</h2>
-            <span>{viewerVideos.length}</span>
-          </div>
-          {viewerVideos.length === 0 ? (
-            <div className="empty-video-state">No viewer video yet</div>
-          ) : (
-            <div className="video-grid">
-              {viewerVideos.map((participant) => (
-                <RemoteVideoTile participant={participant} key={participant.identity} />
-              ))}
-            </div>
-          )}
-        </section>
-      </div>
+        <PrimaryControllerStage controller={currentController} onFullscreenError={setFullscreenError} />
+      </section>
     </main>
   );
 }
@@ -422,6 +670,8 @@ function App() {
   const [tokenMode, setTokenMode] = useState<"mock" | "livekit" | "none">("none");
   const [localTrack, setLocalTrack] = useState<LocalVideoTrack | null>(null);
   const [remoteVideos, setRemoteVideos] = useState<RemoteVideoInfo[]>([]);
+  const [keyboardStatus, setKeyboardStatus] = useState<KeyboardControlStatusMessage | null>(null);
+  const [lastRobotControl, setLastRobotControl] = useState<RobotControlMessage | null>(null);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
 
@@ -455,6 +705,8 @@ function App() {
     sessionRef.current = null;
     setLocalTrack(null);
     setRemoteVideos([]);
+    setKeyboardStatus(null);
+    setLastRobotControl(null);
     setWebSocketState("closed");
     setLiveKitState("disconnected");
     setPublishState("stopped");
@@ -527,6 +779,16 @@ function App() {
         if (isRoleUpdateMessage(message)) {
           participantsByIdRef.current = new Map(message.participants.map((participant) => [participant.id, participant]));
           updateRemoteVideos();
+          return;
+        }
+
+        if (isKeyboardControlStatusMessage(message)) {
+          setKeyboardStatus(message);
+          return;
+        }
+
+        if (isRobotControlMessage(message)) {
+          setLastRobotControl(message);
         }
       });
       socket.addEventListener("close", () => setWebSocketState("closed"));
@@ -634,6 +896,8 @@ function App() {
       localTrack={localTrack}
       remoteVideos={remoteVideos}
       error={error}
+      keyboardStatus={keyboardStatus}
+      lastRobotControl={lastRobotControl}
       onLeave={leaveRoom}
     />
   );

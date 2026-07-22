@@ -1,6 +1,17 @@
 export type Role = "robot" | "controller" | "viewer";
 export type WebRole = "controller" | "viewer";
 export type RobotCommand = "1002" | "1003" | "1000";
+export type RobotContinuousCommand = "1001";
+export type RobotControlEventCommand = RobotCommand | RobotContinuousCommand;
+export type KeyboardDirection =
+  | "forward"
+  | "backward"
+  | "left"
+  | "right"
+  | "forward_left"
+  | "forward_right"
+  | "backward_left"
+  | "backward_right";
 
 export type MediaPermissions = {
   canSubscribe: boolean;
@@ -13,6 +24,42 @@ export type ControlParameters = {
   distanceCm?: number;
   angleDeg?: number;
   speed?: number;
+};
+
+export type ContinuousControlParameters = {
+  lv: number;
+  av: number;
+  direction?: KeyboardDirection;
+};
+
+export type RobotControlLogParameters = ControlParameters & Partial<ContinuousControlParameters> & {
+  stopReason?: string;
+};
+
+export type KeyboardControlPublicConfig = {
+  enabled: boolean;
+  continuous1001Enabled: boolean;
+  mode: "1001";
+  sendIntervalMs: number;
+  deadmanTimeoutMs: number;
+  maxSessionMs: number;
+  maxLinearSpeed: number;
+  maxAngularSpeed: number;
+  defaultLinearSpeed: number;
+  defaultAngularSpeed: number;
+  requireFocus: boolean;
+};
+
+export type KeyboardControlStatus = {
+  roomName: string;
+  active: boolean;
+  controllerId?: string;
+  controllerName?: string;
+  direction?: KeyboardDirection;
+  linearSpeed?: number;
+  angularSpeed?: number;
+  stopReason?: string;
+  updatedAt: number;
 };
 
 export type Participant = {
@@ -33,11 +80,12 @@ export type RoomState = {
   currentControllerId?: string;
   updatedAt: number;
   lastRobotControl?: {
-    command: RobotCommand;
-    parameters: ControlParameters;
+    command: RobotControlEventCommand;
+    parameters: RobotControlLogParameters;
     from: string;
     timestamp: number;
   };
+  keyboardControl?: KeyboardControlStatus;
 };
 
 export type RoomSnapshot = {
@@ -46,6 +94,13 @@ export type RoomSnapshot = {
   robotOnline: boolean;
   currentControllerId?: string;
   currentControllerName?: string;
+  lastRobotControl?: {
+    command: RobotControlEventCommand;
+    parameters: RobotControlLogParameters;
+    from: string;
+    timestamp: number;
+  };
+  keyboardControl?: KeyboardControlStatus;
   participants: Array<{
     id: string;
     name: string;
@@ -98,6 +153,9 @@ export type ApiErrorCode =
   | "ROBOT_CONTROL_DISABLED"
   | "ROBOT_CONTROL_CONFIG_INCOMPLETE"
   | "ROBOT_CONTROL_FAILED"
+  | "KEYBOARD_CONTROL_DISABLED"
+  | "KEYBOARD_CONTROL_INACTIVE"
+  | "KEYBOARD_CONTROL_ACTIVE"
   | "CONTROLLER_BUSY"
   | "TARGET_NOT_VIEWER"
   | "TARGET_OFFLINE"

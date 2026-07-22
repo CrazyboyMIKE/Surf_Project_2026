@@ -1,4 +1,4 @@
-import type { ControlParameters, RobotCommand } from "../types.js";
+import type { RobotControlEventCommand, RobotControlLogParameters } from "../types.js";
 import { getMissingRobotVendorFields, type RobotControlConfig, type RobotControlMode } from "./config.js";
 import { PadBotRobotControlError, sendPadBotMqttCommand } from "./padBotMqtt.js";
 
@@ -6,8 +6,8 @@ export type RobotControlRequest = {
   roomName: string;
   senderId: string;
   robotId?: string;
-  command: RobotCommand;
-  parameters: ControlParameters;
+  command: RobotControlEventCommand;
+  parameters: RobotControlLogParameters;
   timestamp: number;
 };
 
@@ -29,11 +29,15 @@ export interface RobotControlAdapter {
   sendCommand(request: RobotControlRequest): Promise<RobotControlResult>;
 }
 
-function sanitizeParameters(parameters: ControlParameters): ControlParameters {
+function sanitizeParameters(parameters: RobotControlLogParameters): RobotControlLogParameters {
   return {
     ...(parameters.distanceCm !== undefined ? { distanceCm: parameters.distanceCm } : {}),
     ...(parameters.angleDeg !== undefined ? { angleDeg: parameters.angleDeg } : {}),
-    ...(parameters.speed !== undefined ? { speed: parameters.speed } : {})
+    ...(parameters.speed !== undefined ? { speed: parameters.speed } : {}),
+    ...(parameters.lv !== undefined ? { lv: parameters.lv } : {}),
+    ...(parameters.av !== undefined ? { av: parameters.av } : {}),
+    ...(parameters.direction !== undefined ? { direction: parameters.direction } : {}),
+    ...(parameters.stopReason !== undefined ? { stopReason: parameters.stopReason } : {})
   };
 }
 

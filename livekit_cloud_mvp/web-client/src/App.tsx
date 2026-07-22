@@ -10,7 +10,21 @@ import { RobotVideo } from "./components/RobotVideo";
 import { StatusBar } from "./components/StatusBar";
 import { useLiveKitRoom } from "./useLiveKitRoom";
 import { useRoomSocket } from "./useRoomSocket";
-import type { JoinRoomRequest, JoinRoomResponse, WebRole } from "./types";
+import type { JoinRoomRequest, JoinRoomResponse, KeyboardControlConfig, WebRole } from "./types";
+
+const FALLBACK_KEYBOARD_CONTROL_CONFIG: KeyboardControlConfig = {
+  enabled: false,
+  continuous1001Enabled: false,
+  mode: "1001",
+  sendIntervalMs: 300,
+  deadmanTimeoutMs: 900,
+  maxSessionMs: 10000,
+  maxLinearSpeed: 120,
+  maxAngularSpeed: 20,
+  defaultLinearSpeed: 80,
+  defaultAngularSpeed: 15,
+  requireFocus: true
+};
 
 export function App() {
   if (window.location.pathname === "/admin") {
@@ -141,8 +155,14 @@ function RoomApp() {
             robotOnline={roomSocket.robotOnline}
             connectionState={roomSocket.connectionState}
             actionPending={actionPending}
+            keyboardControlConfig={session.keyboardControl ?? FALLBACK_KEYBOARD_CONTROL_CONFIG}
+            keyboardStatus={roomSocket.keyboardStatus}
+            lastKeyboardResult={roomSocket.lastKeyboardResult}
             onControl={roomSocket.sendControl}
             onTransferControl={handleTransferControl}
+            onKeyboardStart={roomSocket.sendKeyboardControlStart}
+            onKeyboardKeepalive={roomSocket.sendKeyboardControlKeepalive}
+            onKeyboardStop={roomSocket.sendKeyboardControlStop}
           />
           <MediaControls
             mediaPermissions={session.mediaPermissions}

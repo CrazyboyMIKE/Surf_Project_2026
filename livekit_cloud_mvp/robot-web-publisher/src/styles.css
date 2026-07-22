@@ -174,7 +174,9 @@ button:focus-visible {
 
 .status-panel,
 .local-camera-card,
-.remote-section {
+.remote-section,
+.thumbnail-strip,
+.controller-stage {
   border: 1px solid #c6d3d0;
   border-radius: 8px;
   background: #ffffff;
@@ -182,13 +184,15 @@ button:focus-visible {
 
 .status-panel,
 .local-camera-card,
-.remote-section {
+.remote-section,
+.thumbnail-strip,
+.controller-stage {
   padding: 14px;
 }
 
 .status-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 10px;
   color: #4b5f62;
   font-size: 0.9rem;
@@ -212,6 +216,22 @@ button:focus-visible {
   gap: 18px;
 }
 
+.meeting-layout {
+  display: grid;
+  gap: 14px;
+}
+
+.thumbnail-strip {
+  display: grid;
+  gap: 12px;
+}
+
+.thumbnail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
 .local-camera-card {
   display: grid;
   gap: 12px;
@@ -231,7 +251,9 @@ button:focus-visible {
 
 .local-preview,
 .remote-video-tile,
-.empty-video-state {
+.empty-video-state,
+.controller-video-frame,
+.viewer-overflow-tile {
   display: grid;
   overflow: hidden;
   place-items: center;
@@ -241,6 +263,7 @@ button:focus-visible {
 }
 
 .local-preview {
+  position: relative;
   min-height: clamp(280px, 54vh, 620px);
 }
 
@@ -278,10 +301,38 @@ button:focus-visible {
   background: #0f1d20;
 }
 
+.compact-video-tile {
+  min-height: 118px;
+  aspect-ratio: 16 / 9;
+}
+
 .remote-video-tile video {
   display: block;
   width: 100%;
   height: 220px;
+  object-fit: contain;
+}
+
+.compact-video-tile video,
+.remote-video-tile.compact-video-tile video {
+  height: 100%;
+}
+
+.controller-stage {
+  display: grid;
+  gap: 12px;
+}
+
+.controller-video-frame {
+  position: relative;
+  min-height: clamp(360px, 58vh, 720px);
+}
+
+.controller-video-frame video {
+  display: block;
+  width: 100%;
+  height: clamp(360px, 58vh, 720px);
+  background: #10191c;
   object-fit: contain;
 }
 
@@ -312,6 +363,75 @@ button:focus-visible {
   background: rgba(23, 32, 38, 0.82);
   font-size: 0.86rem;
   font-weight: 850;
+}
+
+.fullscreen-button,
+.stage-fullscreen-button,
+.audio-button {
+  min-height: 34px;
+  border: 1px solid rgba(220, 232, 229, 0.45);
+  border-radius: 6px;
+  color: #ffffff;
+  background: rgba(29, 84, 93, 0.9);
+  padding: 0 10px;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.fullscreen-button {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  max-width: calc(100% - 20px);
+}
+
+.stage-fullscreen-button {
+  color: #1d545d;
+  background: #dce8e5;
+}
+
+.controller-audio-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid #c6d3d0;
+  border-radius: 6px;
+  background: #f8fbfa;
+  padding: 10px 12px;
+  color: #4b5f62;
+  font-size: 0.92rem;
+}
+
+.controller-audio-panel strong {
+  color: #172026;
+}
+
+.audio-button {
+  color: #ffffff;
+  background: #1d545d;
+}
+
+.viewer-overflow-tile {
+  min-height: 118px;
+  aspect-ratio: 16 / 9;
+  padding: 14px;
+  text-align: center;
+}
+
+.viewer-overflow-tile strong {
+  color: #ffffff;
+  font-size: 1.6rem;
+}
+
+.viewer-overflow-tile span {
+  color: #dce8e5;
+  font-weight: 800;
+}
+
+.muted-overflow {
+  background: #243236;
 }
 
 @media (max-width: 880px) {

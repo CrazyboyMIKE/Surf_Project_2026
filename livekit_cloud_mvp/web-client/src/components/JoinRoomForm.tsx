@@ -1,6 +1,8 @@
 import { FormEvent, useState } from "react";
 import type { JoinRoomRequest, WebRole } from "../types";
 
+type RoomEntryIntent = "create" | "join";
+
 type JoinRoomFormProps = {
   onJoin: (payload: JoinRoomRequest) => Promise<void>;
 };
@@ -10,14 +12,15 @@ export function JoinRoomForm({ onJoin }: JoinRoomFormProps) {
   const [participantName, setParticipantName] = useState("");
   const [requestedRole, setRequestedRole] = useState<WebRole>("viewer");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submittingIntent, setSubmittingIntent] = useState<RoomEntryIntent | null>(null);
   const [error, setError] = useState("");
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitRoom(intent: RoomEntryIntent) {
     setError("");
 
     try {
       setIsSubmitting(true);
+      setSubmittingIntent(intent);
       await onJoin({
         roomName,
         participantName,
@@ -27,7 +30,13 @@ export function JoinRoomForm({ onJoin }: JoinRoomFormProps) {
       setError(error instanceof Error ? error.message : "Join failed");
     } finally {
       setIsSubmitting(false);
+      setSubmittingIntent(null);
     }
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void submitRoom("join");
   }
 
   return (
@@ -56,7 +65,7 @@ export function JoinRoomForm({ onJoin }: JoinRoomFormProps) {
               value={participantName}
               maxLength={80}
               onChange={(event) => setParticipantName(event.target.value)}
-              placeholder="Alice"
+              placeholder="请输入用户名"
               required
             />
           </label>
@@ -71,9 +80,14 @@ export function JoinRoomForm({ onJoin }: JoinRoomFormProps) {
 
           {error ? <p className="inline-error">{error}</p> : null}
 
-          <button type="submit" className="primary-button" disabled={isSubmitting}>
-            {isSubmitting ? "Joining..." : "Join room"}
-          </button>
+          <div className="join-actions">
+            <button type="button" className="secondary-button" disabled={isSubmitting} onClick={() => void submitRoom("create")}>
+              {submittingIntent === "create" ? "Creating..." : "创建房间"}
+            </button>
+            <button type="submit" className="primary-button" disabled={isSubmitting}>
+              {submittingIntent === "join" ? "Joining..." : "加入房间"}
+            </button>
+          </div>
         </form>
       </section>
     </main>

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import mqtt, { type IClientOptions, type MqttClient } from "mqtt";
-import type { ControlParameters, RobotCommand } from "../types.js";
+import type { RobotControlEventCommand, RobotControlLogParameters } from "../types.js";
 import type { RobotControlConfig } from "./config.js";
 
 const MQTT_INFO_PATH = "/cloud/openapirobot/applyRobotMqttInfo.action";
@@ -186,8 +186,8 @@ export function buildPadBotSignedPayload(
 }
 
 export function buildPadBotControlPayload(
-  command: RobotCommand,
-  parameters: ControlParameters,
+  command: RobotControlEventCommand,
+  parameters: RobotControlLogParameters,
   config: RobotControlConfig
 ): string {
   const inner: Record<string, unknown> = { a: command };
@@ -203,6 +203,13 @@ export function buildPadBotControlPayload(
     inner.m = {
       a: parameters.angleDeg ?? 15,
       av: Math.round(parameters.speed ?? config.vendor.angularSpeed)
+    };
+  }
+
+  if (command === "1001") {
+    inner.m = {
+      lv: Math.round(parameters.lv ?? 0),
+      av: Math.round(parameters.av ?? 0)
     };
   }
 
@@ -361,8 +368,8 @@ async function publishMqttCommand(info: ResolvedMqttInfo, payload: string, keepa
 
 export async function sendPadBotMqttCommand(
   config: RobotControlConfig,
-  command: RobotCommand,
-  parameters: ControlParameters
+  command: RobotControlEventCommand,
+  parameters: RobotControlLogParameters
 ): Promise<void> {
   const mqttInfo = await resolvePadBotMqttInfo(config);
   const payload = buildPadBotControlPayload(command, parameters, config);

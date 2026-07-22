@@ -1,4 +1,6 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
+import type { KeyboardControlConfig } from "../keyboardControl/config.js";
+import { getPublicKeyboardControlConfig } from "../keyboardControl/config.js";
 import type { LiveKitTokenService } from "../services/liveKitTokenService.js";
 import type { RoomStore } from "../state/roomStore.js";
 import type { ApiErrorCode, RoomSnapshot, WebRole } from "../types.js";
@@ -6,6 +8,8 @@ import type { ApiErrorCode, RoomSnapshot, WebRole } from "../types.js";
 type RouterDependencies = {
   roomStore: RoomStore;
   liveKitTokenService: LiveKitTokenService;
+  keyboardControlConfig: KeyboardControlConfig;
+  stopKeyboardControl: (roomName: string, reason: string) => Promise<void>;
   broadcastRoleUpdate: (roomName: string) => void;
   broadcastRobotStatus: (roomName: string) => void;
 };
@@ -77,7 +81,9 @@ function appendRoomSnapshot(response: Record<string, unknown>, snapshot: RoomSna
 
 export function createApiRouter(dependencies: RouterDependencies): Router {
   const router = Router();
-  const { roomStore, liveKitTokenService, broadcastRoleUpdate, broadcastRobotStatus } = dependencies;
+  const { roomStore, liveKitTokenService, keyboardControlConfig, stopKeyboardControl, broadcastRoleUpdate, broadcastRobotStatus } =
+    dependencies;
+  const keyboardControl = getPublicKeyboardControlConfig(keyboardControlConfig);
 
   router.get("/health", (_req, res) => {
     res.json({ ok: true });
@@ -121,7 +127,8 @@ export function createApiRouter(dependencies: RouterDependencies): Router {
           liveKitUrl: token.liveKitUrl,
           token: token.token,
           tokenMode: token.isMock ? "mock" : "livekit",
-          mediaPermissions: token.mediaPermissions
+          mediaPermissions: token.mediaPermissions,
+          keyboardControl
         },
         roomStore.getRoomSnapshot(roomName)
       )
@@ -161,7 +168,8 @@ export function createApiRouter(dependencies: RouterDependencies): Router {
       liveKitUrl: token.liveKitUrl,
       token: token.token,
       tokenMode: token.isMock ? "mock" : "livekit",
-      mediaPermissions: token.mediaPermissions
+      mediaPermissions: token.mediaPermissions,
+      keyboardControl
     });
   }));
 
@@ -229,6 +237,9 @@ export function createApiRouter(dependencies: RouterDependencies): Router {
       return;
     }
 
+    if (result.released) {
+      await stopKeyboardControl(roomName, "controller_released");
+    }
     broadcastRoleUpdate(roomName);
     const participant = result.room.participants.get(participantId);
     const token = participant
@@ -276,6 +287,7 @@ export function createApiRouter(dependencies: RouterDependencies): Router {
       return;
     }
 
+    await stopKeyboardControl(roomName, "controller_transferred");
     broadcastRoleUpdate(roomName);
 
     res.json({

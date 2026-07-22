@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import type {
   AdminRoomDetail,
   AdminRoomSummary,
-  ControlParameters,
+  KeyboardControlStatus,
   Participant,
-  RobotCommand,
+  RobotControlEventCommand,
+  RobotControlLogParameters,
   RoomSnapshot,
   RoomState,
   WebRole
@@ -407,7 +408,13 @@ export class RoomStore {
     return { room, controllerReleased: false, robotStatusChanged };
   }
 
-  recordRobotControl(roomName: string, command: RobotCommand, parameters: ControlParameters, from: string, timestamp: number): void {
+  recordRobotControl(
+    roomName: string,
+    command: RobotControlEventCommand,
+    parameters: RobotControlLogParameters,
+    from: string,
+    timestamp: number
+  ): void {
     const room = this.rooms.get(roomName);
     if (!room) {
       return;
@@ -420,6 +427,16 @@ export class RoomStore {
       timestamp
     };
     this.touchRoom(room, timestamp);
+  }
+
+  setKeyboardControlStatus(roomName: string, status: KeyboardControlStatus): void {
+    const room = this.rooms.get(roomName);
+    if (!room) {
+      return;
+    }
+
+    room.keyboardControl = status;
+    this.touchRoom(room, status.updatedAt);
   }
 
   getRoomSnapshot(roomName: string): RoomSnapshot | undefined {
@@ -436,6 +453,8 @@ export class RoomStore {
       robotOnline: room.robotOnline,
       currentControllerId: room.currentControllerId,
       currentControllerName: currentController?.name,
+      lastRobotControl: room.lastRobotControl,
+      keyboardControl: room.keyboardControl,
       participants: Array.from(room.participants.values()).map((participant) => ({
         id: participant.id,
         name: participant.name,

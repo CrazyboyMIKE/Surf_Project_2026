@@ -1,4 +1,13 @@
-import type { ControlParameters, ParticipantSummary, RobotCommand, WebRole } from "../types";
+import type {
+  ControlParameters,
+  KeyboardControlConfig,
+  KeyboardControlStatus,
+  KeyboardDirection,
+  ParticipantSummary,
+  RobotCommand,
+  WebRole
+} from "../types";
+import { KeyboardControlPanel } from "./KeyboardControlPanel";
 
 type ControlPanelProps = {
   role: WebRole | null;
@@ -7,8 +16,14 @@ type ControlPanelProps = {
   robotOnline: boolean;
   connectionState: string;
   actionPending: boolean;
+  keyboardControlConfig: KeyboardControlConfig;
+  keyboardStatus: KeyboardControlStatus | null;
+  lastKeyboardResult: string;
   onControl: (command: RobotCommand, parameters?: ControlParameters) => void;
   onTransferControl: (targetParticipantId: string) => void;
+  onKeyboardStart: (direction: KeyboardDirection, linearSpeed: number, angularSpeed: number) => void;
+  onKeyboardKeepalive: (direction: KeyboardDirection, linearSpeed: number, angularSpeed: number) => void;
+  onKeyboardStop: () => void;
 };
 
 export function ControlPanel({
@@ -18,8 +33,14 @@ export function ControlPanel({
   robotOnline,
   connectionState,
   actionPending,
+  keyboardControlConfig,
+  keyboardStatus,
+  lastKeyboardResult,
   onControl,
-  onTransferControl
+  onTransferControl,
+  onKeyboardStart,
+  onKeyboardKeepalive,
+  onKeyboardStop
 }: ControlPanelProps) {
   const disabled = role !== "controller" || !robotOnline || connectionState !== "connected";
   const transferableViewers = participants.filter(
@@ -55,6 +76,18 @@ export function ControlPanel({
           <span>Back</span>
         </button>
       </div>
+
+      <KeyboardControlPanel
+        role={role}
+        robotOnline={robotOnline}
+        connectionState={connectionState}
+        config={keyboardControlConfig}
+        status={keyboardStatus}
+        lastResult={lastKeyboardResult}
+        onStart={onKeyboardStart}
+        onKeepalive={onKeyboardKeepalive}
+        onStop={onKeyboardStop}
+      />
 
       {role === "controller" ? (
         <div className="transfer-panel" aria-labelledby="transfer-title">

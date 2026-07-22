@@ -147,6 +147,10 @@ function createRealConfig(): RobotControlConfig {
     buildPadBotControlPayload("1003", { angleDeg: 15, speed: 30 }, config),
     '{"t":"83","m":"{\\"a\\":\\"1003\\",\\"m\\":{\\"a\\":15,\\"av\\":30}}"}'
   );
+  assert.equal(
+    buildPadBotControlPayload("1001", { lv: 80, av: -15, direction: "forward_right" }, config),
+    '{"t":"83","m":"{\\"a\\":\\"1001\\",\\"m\\":{\\"lv\\":80,\\"av\\":-15}}"}'
+  );
 }
 
 {

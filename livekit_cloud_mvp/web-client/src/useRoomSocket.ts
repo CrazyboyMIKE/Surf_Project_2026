@@ -4,6 +4,8 @@ import type {
   ChatMessage,
   ControlParameters,
   JoinRoomResponse,
+  KeyboardControlStatus,
+  KeyboardDirection,
   ParticipantSummary,
   RobotCommand,
   RobotControlEvent,
@@ -22,6 +24,8 @@ export function useRoomSocket(session: JoinRoomResponse | null) {
   const [participants, setParticipants] = useState<ParticipantSummary[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [robotEvents, setRobotEvents] = useState<RobotControlEvent[]>([]);
+  const [keyboardStatus, setKeyboardStatus] = useState<KeyboardControlStatus | null>(null);
+  const [lastKeyboardResult, setLastKeyboardResult] = useState("");
   const [lastError, setLastError] = useState<string>("");
 
   useEffect(() => {
@@ -34,6 +38,8 @@ export function useRoomSocket(session: JoinRoomResponse | null) {
     setParticipants([]);
     setChatMessages([]);
     setRobotEvents([]);
+    setKeyboardStatus(null);
+    setLastKeyboardResult("");
     setLastError("");
   }, [session?.participantId, session?.currentControllerName, session?.robotOnline]);
 
@@ -109,6 +115,22 @@ export function useRoomSocket(session: JoinRoomResponse | null) {
         return;
       }
 
+      if (message.type === "keyboard_control_status") {
+        setKeyboardStatus(message);
+        return;
+      }
+
+      if (message.type === "keyboard_control_result") {
+        setLastKeyboardResult(message.ok ? message.message : `${message.code ?? "KEYBOARD_CONTROL_FAILED"}: ${message.message}`);
+        if (!message.ok) {
+          setLastError(`${message.code ?? "KEYBOARD_CONTROL_FAILED"}: ${message.message}`);
+        }
+        if (message.status) {
+          setKeyboardStatus(message.status);
+        }
+        return;
+      }
+
       if (message.type === "error") {
         setLastError(`${message.code}: ${message.message}`);
       }
@@ -169,6 +191,57 @@ export function useRoomSocket(session: JoinRoomResponse | null) {
     [role, session]
   );
 
+  const sendKeyboardControlStart = useCallback(
+    (direction: KeyboardDirection, linearSpeed: number, angularSpeed: number) => {
+      if (!session || role !== "controller" || socketRef.current?.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
+      socketRef.current.send(
+        JSON.stringify({
+          type: "keyboard_control_start",
+          roomName: session.roomName,
+          direction,
+          linearSpeed,
+          angularSpeed
+        })
+      );
+    },
+    [role, session]
+  );
+
+  const sendKeyboardControlKeepalive = useCallback(
+    (direction: KeyboardDirection, linearSpeed: number, angularSpeed: number) => {
+      if (!session || role !== "controller" || socketRef.current?.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
+      socketRef.current.send(
+        JSON.stringify({
+          type: "keyboard_control_keepalive",
+          roomName: session.roomName,
+          direction,
+          linearSpeed,
+          angularSpeed
+        })
+      );
+    },
+    [role, session]
+  );
+
+  const sendKeyboardControlStop = useCallback(() => {
+    if (!session || socketRef.current?.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    socketRef.current.send(
+      JSON.stringify({
+        type: "keyboard_control_stop",
+        roomName: session.roomName
+      })
+    );
+  }, [session]);
+
   return useMemo(
     () => ({
       connectionState,
@@ -178,9 +251,14 @@ export function useRoomSocket(session: JoinRoomResponse | null) {
       participants,
       chatMessages,
       robotEvents,
+      keyboardStatus,
+      lastKeyboardResult,
       lastError,
       sendChat,
-      sendControl
+      sendControl,
+      sendKeyboardControlStart,
+      sendKeyboardControlKeepalive,
+      sendKeyboardControlStop
     }),
     [
       chatMessages,
@@ -189,10 +267,15 @@ export function useRoomSocket(session: JoinRoomResponse | null) {
       lastError,
       participants,
       robotEvents,
+      keyboardStatus,
+      lastKeyboardResult,
       robotOnline,
       role,
       sendChat,
-      sendControl
+      sendControl,
+      sendKeyboardControlKeepalive,
+      sendKeyboardControlStart,
+      sendKeyboardControlStop
     ]
   );
 }

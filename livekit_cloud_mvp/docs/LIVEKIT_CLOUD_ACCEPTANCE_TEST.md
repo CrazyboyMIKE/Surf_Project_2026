@@ -50,7 +50,28 @@ Do not mark tests as passed unless they were run against a real LiveKit Cloud pr
 42. [ ] real 模式错误响应不泄露 key、token、secret 或 MQTT password。
 43. [ ] 用户填入真实凭证后，需要人工现场验证真实机器人动作。
 44. [ ] 真实机器人现场先测 `1000 stop`，再低速测 `1002` 和 `1003`。
-45. [ ] Issues are recorded with timestamp, room name, participant type, browser/device, and logs without secrets.
+45. [ ] 键盘方向键控制默认关闭。
+46. [ ] 开启 `ROBOT_ENABLE_KEYBOARD_CONTROL=true` 和 `ROBOT_ENABLE_CONTINUOUS_1001=true` 后 controller 可用键盘控制。
+47. [ ] viewer 不可用键盘控制。
+48. [ ] 非当前 controller 不可用键盘控制。
+49. [ ] `ArrowUp` 映射为 `forward`。
+50. [ ] `ArrowDown` 映射为 `backward`。
+51. [ ] `ArrowLeft` 映射为 `left`。
+52. [ ] `ArrowRight` 映射为 `right`。
+53. [ ] 组合方向映射正确：`forward_left`、`forward_right`、`backward_left`、`backward_right`。
+54. [ ] Space 触发 `1000 stop`。
+55. [ ] 松手触发 `1000 stop`。
+56. [ ] 页面失焦触发 `1000 stop`。
+57. [ ] deadman timeout 触发 `1000 stop`。
+58. [ ] max session timeout 触发 `1000 stop`。
+59. [ ] WebSocket 断线触发 `1000 stop`。
+60. [ ] controller release 触发 `1000 stop`。
+61. [ ] controller transfer 触发 `1000 stop`。
+62. [ ] 超过最大线速度被拒绝。
+63. [ ] 超过最大角速度被拒绝。
+64. [ ] 普通 `robot_control` 发送 `1001` 被拒绝。
+65. [ ] `1002/1003/1000` 原有控制不受影响。
+66. [ ] Issues are recorded with timestamp, room name, participant type, browser/device, and logs without secrets.
 
 ## Evidence To Capture
 
@@ -66,6 +87,7 @@ Do not mark tests as passed unless they were run against a real LiveKit Cloud pr
 - Robot control mode and backend adapter result without secret values.
 - real mode config error screenshot or log, if real credentials are not ready.
 - PadBot MQTT info request result without key/token/secret values.
+- Keyboard control status showing active direction and stop reason.
 - Android camera publishing screenshot or log.
 - LiveKit Cloud usage page screenshot without secrets.
 - Admin console screenshot with token/secret fields hidden.

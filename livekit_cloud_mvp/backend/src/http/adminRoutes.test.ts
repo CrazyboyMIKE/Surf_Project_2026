@@ -33,6 +33,7 @@ async function createTestServer(adminEnabled: boolean): Promise<TestServer> {
       roomStore,
       adminEnabled,
       adminToken: ADMIN_TOKEN,
+      stopKeyboardControl: async () => undefined,
       broadcastRoleUpdate: () => undefined,
       broadcastRobotStatus: () => undefined,
       broadcastRoomUpdate: () => undefined

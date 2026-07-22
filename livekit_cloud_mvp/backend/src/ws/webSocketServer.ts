@@ -1,8 +1,10 @@
 import type { Server } from "node:http";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 import { validateRobotControlMessage } from "../control/commandValidation.js";
+import type { KeyboardControlConfig } from "../keyboardControl/config.js";
+import { KeyboardControlManager } from "../keyboardControl/keyboardControlManager.js";
 import type { RobotControlAdapter } from "../robotControl/adapter.js";
-import type { ApiErrorCode } from "../types.js";
+import type { ApiErrorCode, KeyboardControlStatus } from "../types.js";
 import type { RoomStore } from "../state/roomStore.js";
 
 type SocketContext = {
@@ -18,12 +20,16 @@ type WebSocketMessage = {
   message?: unknown;
   command?: unknown;
   parameters?: unknown;
+  direction?: unknown;
+  linearSpeed?: unknown;
+  angularSpeed?: unknown;
 };
 
 export type WebSocketHub = {
   broadcastRoleUpdate: (roomName: string) => void;
   broadcastRobotStatus: (roomName: string) => void;
   broadcastRoomUpdate: (roomName: string) => void;
+  stopKeyboardControl: (roomName: string, reason: string) => Promise<void>;
 };
 
 function isRecord(value: unknown): value is WebSocketMessage {
@@ -65,10 +71,15 @@ function contextMatches(context: SocketContext | undefined, roomName: string, pa
   return context?.roomName === roomName && context.participantId === participantId;
 }
 
+function hasOnlyKeys(message: WebSocketMessage, allowedKeys: string[]): boolean {
+  return Object.keys(message).every((key) => allowedKeys.includes(key));
+}
+
 export function attachWebSocketServer(
   server: Server,
   roomStore: RoomStore,
-  robotControlAdapter: RobotControlAdapter
+  robotControlAdapter: RobotControlAdapter,
+  keyboardControlConfig: KeyboardControlConfig
 ): WebSocketHub {
   const webSocketServer = new WebSocketServer({ server, path: "/ws" });
   const clientsByRoom = new Map<string, Set<WebSocket>>();
@@ -147,6 +158,50 @@ export function attachWebSocketServer(
     });
   }
 
+  function broadcastKeyboardStatus(status: KeyboardControlStatus): void {
+    broadcast(status.roomName, {
+      type: "keyboard_control_status",
+      ...status,
+      timestamp: status.updatedAt
+    });
+  }
+
+  const keyboardControlManager = new KeyboardControlManager(keyboardControlConfig, roomStore, robotControlAdapter, {
+    onStatus: broadcastKeyboardStatus,
+    onControlEvent(event) {
+      broadcast(event.roomName, {
+        type: "robot_control",
+        roomName: event.roomName,
+        command: event.command,
+        parameters: event.parameters,
+        from: event.from,
+        timestamp: event.timestamp
+      });
+    }
+  });
+
+  function sendKeyboardResult(socket: WebSocket, result: Awaited<ReturnType<KeyboardControlManager["start"]>>): void {
+    if (!result.ok) {
+      sendJson(socket, {
+        type: "keyboard_control_result",
+        ok: false,
+        code: result.code,
+        message: result.message,
+        timestamp: Date.now()
+      });
+      sendError(socket, result.code, result.message);
+      return;
+    }
+
+    sendJson(socket, {
+      type: "keyboard_control_result",
+      ok: true,
+      message: result.message,
+      status: result.status,
+      timestamp: Date.now()
+    });
+  }
+
   webSocketServer.on("connection", (socket) => {
     let context: SocketContext | undefined;
 
@@ -184,6 +239,11 @@ export function attachWebSocketServer(
           roomName,
           participantId,
           role: participant.role,
+          timestamp: Date.now()
+        });
+        sendJson(socket, {
+          type: "keyboard_control_status",
+          ...keyboardControlManager.getStatus(roomName),
           timestamp: Date.now()
         });
         broadcastRoleUpdate(roomName);
@@ -306,6 +366,73 @@ export function attachWebSocketServer(
         return;
       }
 
+      if (message.type === "keyboard_control_start" || message.type === "keyboard_control_keepalive") {
+        if (!hasOnlyKeys(message, ["type", "roomName", "direction", "linearSpeed", "angularSpeed"])) {
+          sendError(socket, "INVALID_REQUEST", "Keyboard control message contains unsupported fields");
+          return;
+        }
+
+        const roomName = readString(message.roomName);
+        if (!roomName || !context || context.roomName !== roomName) {
+          sendError(socket, context ? "SENDER_MISMATCH" : "SOCKET_NOT_IDENTIFIED", "WebSocket room does not match hello");
+          return;
+        }
+
+        const action = message.type === "keyboard_control_start" ? keyboardControlManager.start : keyboardControlManager.keepalive;
+        void action
+          .call(keyboardControlManager, {
+            roomName,
+            senderId: context.participantId,
+            direction: message.direction,
+            linearSpeed: message.linearSpeed,
+            angularSpeed: message.angularSpeed
+          })
+          .then((result) => sendKeyboardResult(socket, result))
+          .catch(() => {
+            sendJson(socket, {
+              type: "keyboard_control_result",
+              ok: false,
+              code: "ROBOT_CONTROL_FAILED",
+              message: "Keyboard control failed",
+              timestamp: Date.now()
+            });
+            sendError(socket, "ROBOT_CONTROL_FAILED", "Keyboard control failed");
+          });
+        return;
+      }
+
+      if (message.type === "keyboard_control_stop") {
+        if (!hasOnlyKeys(message, ["type", "roomName"])) {
+          sendError(socket, "INVALID_REQUEST", "Keyboard stop message contains unsupported fields");
+          return;
+        }
+
+        const roomName = readString(message.roomName);
+        if (!roomName || !context || context.roomName !== roomName) {
+          sendError(socket, context ? "SENDER_MISMATCH" : "SOCKET_NOT_IDENTIFIED", "WebSocket room does not match hello");
+          return;
+        }
+
+        void keyboardControlManager
+          .stopByController({
+            roomName,
+            senderId: context.participantId,
+            reason: "client_stop"
+          })
+          .then((result) => sendKeyboardResult(socket, result))
+          .catch(() => {
+            sendJson(socket, {
+              type: "keyboard_control_result",
+              ok: false,
+              code: "ROBOT_CONTROL_FAILED",
+              message: "Keyboard stop failed",
+              timestamp: Date.now()
+            });
+            sendError(socket, "ROBOT_CONTROL_FAILED", "Keyboard stop failed");
+          });
+        return;
+      }
+
       sendError(socket, "INVALID_REQUEST", `Unsupported message type: ${message.type}`);
     });
 
@@ -315,11 +442,20 @@ export function attachWebSocketServer(
       }
 
       removeClient(context.roomName, socket);
+      const keyboardStatus = keyboardControlManager.getStatus(context.roomName);
+      if (keyboardStatus.active && keyboardStatus.controllerId === context.participantId) {
+        void keyboardControlManager.stopByController({
+          roomName: context.roomName,
+          senderId: context.participantId,
+          reason: "websocket_disconnected"
+        });
+      }
       const result = roomStore.markParticipantDisconnected(context.roomName, context.participantId);
       if (result.controllerReleased) {
         broadcastRoleUpdate(context.roomName);
       }
       if (result.robotStatusChanged) {
+        void keyboardControlManager.forceStop(context.roomName, "robot_offline");
         broadcastRobotStatus(context.roomName);
       }
     });
@@ -328,6 +464,9 @@ export function attachWebSocketServer(
   return {
     broadcastRoleUpdate,
     broadcastRobotStatus,
-    broadcastRoomUpdate
+    broadcastRoomUpdate,
+    async stopKeyboardControl(roomName: string, reason: string): Promise<void> {
+      await keyboardControlManager.forceStop(roomName, reason);
+    }
   };
 }

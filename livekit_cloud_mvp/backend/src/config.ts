@@ -1,3 +1,4 @@
+import { readKeyboardControlConfig, type KeyboardControlConfig } from "./keyboardControl/config.js";
 import { readRobotControlConfig, type RobotControlConfig } from "./robotControl/config.js";
 
 export type AppConfig = {
@@ -11,6 +12,7 @@ export type AppConfig = {
   liveKitTokenTtl: string;
   mockRobotOnline: boolean;
   robotControl: RobotControlConfig;
+  keyboardControl: KeyboardControlConfig;
   adminEnabled: boolean;
   adminToken?: string;
 };
@@ -98,6 +100,7 @@ export function loadConfig(): AppConfig {
     liveKitTokenTtl: process.env.LIVEKIT_TOKEN_TTL?.trim() || "1h",
     mockRobotOnline: readBoolean(process.env.MOCK_ROBOT_ONLINE, true),
     robotControl: readRobotControlConfig(),
+    keyboardControl: readKeyboardControlConfig(),
     adminEnabled,
     adminToken
   };

@@ -21,7 +21,7 @@ const liveKitTokenService = new LiveKitTokenService({
   apiSecret: config.liveKitApiSecret,
   tokenTtl: config.liveKitTokenTtl
 });
-const webSocketHub = attachWebSocketServer(server, roomStore, robotControlAdapter);
+const webSocketHub = attachWebSocketServer(server, roomStore, robotControlAdapter, config.keyboardControl);
 
 app.use((req, res, next) => {
   const startedAt = Date.now();
@@ -49,6 +49,8 @@ app.use(
   createApiRouter({
     roomStore,
     liveKitTokenService,
+    keyboardControlConfig: config.keyboardControl,
+    stopKeyboardControl: webSocketHub.stopKeyboardControl,
     broadcastRoleUpdate: webSocketHub.broadcastRoleUpdate,
     broadcastRobotStatus: webSocketHub.broadcastRobotStatus
   })
@@ -59,6 +61,7 @@ app.use(
     roomStore,
     adminEnabled: config.adminEnabled,
     adminToken: config.adminToken,
+    stopKeyboardControl: webSocketHub.stopKeyboardControl,
     broadcastRoleUpdate: webSocketHub.broadcastRoleUpdate,
     broadcastRobotStatus: webSocketHub.broadcastRobotStatus,
     broadcastRoomUpdate: webSocketHub.broadcastRoomUpdate
@@ -91,5 +94,10 @@ server.listen(config.port, () => {
   console.log("Viewer media publishing: enabled");
   console.log(`Robot control mode: ${robotControlAdapter.mode}`);
   console.log(`Robot real control: ${config.robotControl.enabled ? "enabled" : "disabled"}`);
+  console.log(
+    `Keyboard 1001 control: ${
+      config.keyboardControl.enabled && config.keyboardControl.continuous1001Enabled ? "enabled" : "disabled"
+    }`
+  );
   console.log(`Admin API: ${config.adminEnabled ? "enabled" : "disabled"}`);
 });
