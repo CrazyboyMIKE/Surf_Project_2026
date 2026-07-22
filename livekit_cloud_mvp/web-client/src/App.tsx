@@ -141,13 +141,32 @@ function RoomApp() {
       {activeNotice ? <p className="notice">{activeNotice}</p> : null}
 
       <div className="workspace-grid">
-        <div className="primary-column">
+        <div className="robot-area">
           <RobotVideo
             liveKitState={liveKitRoom.connectionState}
             robotOnline={roomSocket.robotOnline}
             robotVideoTrack={liveKitRoom.robotVideoTrack}
             robotEvents={roomSocket.robotEvents}
           />
+        </div>
+
+        <aside className="participants-sidebar" aria-label="Remote participants">
+          <ParticipantsPanel
+            participants={liveKitRoom.remoteParticipants}
+            canPlaybackAudio={liveKitRoom.canPlaybackAudio}
+            onEnableAudio={liveKitRoom.enableAudioPlayback}
+          />
+        </aside>
+
+        <div className="chat-area">
+          <ChatPanel
+            messages={roomSocket.chatMessages}
+            onSend={roomSocket.sendChat}
+            disabled={roomSocket.connectionState !== "connected"}
+          />
+        </div>
+
+        <div className="control-area">
           <ControlPanel
             role={effectiveRole}
             participantId={session.participantId}
@@ -164,6 +183,9 @@ function RoomApp() {
             onKeyboardKeepalive={roomSocket.sendKeyboardControlKeepalive}
             onKeyboardStop={roomSocket.sendKeyboardControlStop}
           />
+        </div>
+
+        <div className="media-area">
           <MediaControls
             mediaPermissions={session.mediaPermissions}
             tokenMode={session.tokenMode}
@@ -174,18 +196,7 @@ function RoomApp() {
             onToggleMicrophone={liveKitRoom.toggleMicrophone}
             onToggleCamera={liveKitRoom.toggleCamera}
           />
-          <ParticipantsPanel
-            participants={liveKitRoom.remoteParticipants}
-            canPlaybackAudio={liveKitRoom.canPlaybackAudio}
-            onEnableAudio={liveKitRoom.enableAudioPlayback}
-          />
         </div>
-
-        <ChatPanel
-          messages={roomSocket.chatMessages}
-          onSend={roomSocket.sendChat}
-          disabled={roomSocket.connectionState !== "connected"}
-        />
       </div>
     </main>
   );

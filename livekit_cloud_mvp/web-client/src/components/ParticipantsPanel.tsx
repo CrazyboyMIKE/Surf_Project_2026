@@ -51,6 +51,18 @@ function RemoteVideo({ track }: { track: RemoteVideoTrack | null }) {
 }
 
 export function ParticipantsPanel({ participants, canPlaybackAudio, onEnableAudio }: ParticipantsPanelProps) {
+  const orderedParticipants = [...participants].sort((left, right) => {
+    if (left.role === "controller" && right.role !== "controller") {
+      return -1;
+    }
+
+    if (left.role !== "controller" && right.role === "controller") {
+      return 1;
+    }
+
+    return (left.name ?? left.identity).localeCompare(right.name ?? right.identity);
+  });
+
   return (
     <section className="tool-panel participants-panel" aria-labelledby="participants-title">
       <div className="panel-heading">
@@ -65,11 +77,11 @@ export function ParticipantsPanel({ participants, canPlaybackAudio, onEnableAudi
       ) : null}
 
       <div className="participants-list">
-        {participants.length === 0 ? (
+        {orderedParticipants.length === 0 ? (
           <p className="empty-state">No remote Web participants yet</p>
         ) : (
-          participants.map((participant) => (
-            <article className="participant-tile" key={participant.identity}>
+          orderedParticipants.map((participant) => (
+            <article className={`participant-tile participant-${participant.role}`} key={participant.identity}>
               <div className="participant-header">
                 <strong>{participant.name ?? participant.identity}</strong>
                 <span>{participant.role}</span>
