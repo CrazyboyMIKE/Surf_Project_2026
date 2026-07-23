@@ -178,4 +178,19 @@ function createRealConfig(): RobotControlConfig {
   );
 }
 
+{
+  assert.equal(
+    pickPadBotPostTopic(
+      {
+        robotMqttInfoList: [
+          { serialNumber: "other", robotSubTopic: "ignore-this-topic" },
+          { serialNumber: "test-serial", robotControlTopic: "robot/demo-style/control" }
+        ]
+      },
+      "test-serial"
+    ),
+    "robot/demo-style/control"
+  );
+}
+
 console.log("robotControl adapter tests passed");

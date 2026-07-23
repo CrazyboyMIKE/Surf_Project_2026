@@ -5,6 +5,26 @@ import type { RobotControlConfig } from "./config.js";
 
 const MQTT_INFO_PATH = "/cloud/openapirobot/applyRobotMqttInfo.action";
 const MQTT_CONNECT_TIMEOUT_MS = 10_000;
+const CONTROL_TOPIC_KEYS = [
+  "robotControlTopic",
+  "robotSubTopic",
+  "subTopic",
+  "robotPostTopic",
+  "postTopic",
+  "sendTopic",
+  "publishTopic"
+];
+const RECEIVE_TOPIC_KEYS = [
+  "robotStatusTopic",
+  "robotPubTopic",
+  "robotReceiveTopic",
+  "pubTopic",
+  "receiveTopic",
+  "dataTopic",
+  "statusTopic",
+  "subscribeTopic",
+  "subTopic"
+];
 
 type SafeRobotControlErrorCode = "ROBOT_CONTROL_CONFIG_INCOMPLETE" | "ROBOT_CONTROL_FAILED";
 
@@ -26,6 +46,13 @@ type ResolvedMqttInfo = {
   postTopic: string;
   receiveTopics: string[];
 };
+
+type ConnectedMqttSession = {
+  client: MqttClient;
+  info: ResolvedMqttInfo;
+};
+
+let cachedMqttSession: Promise<ConnectedMqttSession> | undefined;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -101,16 +128,25 @@ function itemMatchesSerialNumber(item: Record<string, unknown>, serialNumber: st
   return !itemSerial || itemSerial === serialNumber;
 }
 
+function firstTopicFromKeys(data: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const topics = parseTopics(data[key]);
+    if (topics.length > 0) {
+      return topics[0];
+    }
+  }
+
+  return undefined;
+}
+
 export function pickPadBotPostTopic(data: Record<string, unknown>, serialNumber: string, fallback?: string): string {
   if (fallback) {
     return fallback;
   }
 
-  for (const key of ["postTopic", "sendTopic", "publishTopic"]) {
-    const topic = asString(data[key]);
-    if (topic) {
-      return topic;
-    }
+  const topLevelTopic = firstTopicFromKeys(data, CONTROL_TOPIC_KEYS);
+  if (topLevelTopic) {
+    return topLevelTopic;
   }
 
   for (const item of getRobotItems(data)) {
@@ -118,11 +154,9 @@ export function pickPadBotPostTopic(data: Record<string, unknown>, serialNumber:
       continue;
     }
 
-    for (const key of ["postTopic", "sendTopic", "publishTopic"]) {
-      const topic = asString(item[key]);
-      if (topic) {
-        return topic;
-      }
+    const itemTopic = firstTopicFromKeys(item, CONTROL_TOPIC_KEYS);
+    if (itemTopic) {
+      return itemTopic;
     }
   }
 
@@ -140,7 +174,7 @@ function pickPadBotReceiveTopics(
 ): string[] {
   const topics = parseTopics(fallback);
 
-  for (const key of ["receiveTopic", "subscribeTopic", "subTopic"]) {
+  for (const key of RECEIVE_TOPIC_KEYS) {
     topics.push(...parseTopics(data[key]));
   }
 
@@ -149,7 +183,7 @@ function pickPadBotReceiveTopics(
       continue;
     }
 
-    for (const key of ["receiveTopic", "subscribeTopic", "subTopic"]) {
+    for (const key of RECEIVE_TOPIC_KEYS) {
       topics.push(...parseTopics(item[key]));
     }
   }
@@ -340,30 +374,98 @@ async function connectMqtt(url: string, options: IClientOptions): Promise<MqttCl
   });
 }
 
-async function publishMqttCommand(info: ResolvedMqttInfo, payload: string, keepaliveSeconds: number): Promise<void> {
+async function subscribeReceiveTopics(client: MqttClient, topics: string[]): Promise<void> {
+  const uniqueTopics = [...new Set(topics.filter(Boolean))];
+  if (uniqueTopics.length === 0) {
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    client.subscribe(uniqueTopics, { qos: 0 }, (error) => {
+      if (error) {
+        reject(new PadBotRobotControlError("ROBOT_CONTROL_FAILED", "Robot MQTT subscribe failed"));
+        return;
+      }
+
+      resolve();
+    });
+  });
+}
+
+async function createMqttSession(config: RobotControlConfig): Promise<ConnectedMqttSession> {
+  const info = await resolvePadBotMqttInfo(config);
   const client = await connectMqtt(buildMqttUrl(info), {
     clientId: info.clientId,
     username: info.username,
     password: info.token,
-    keepalive: keepaliveSeconds,
+    keepalive: config.vendor.mqttKeepaliveSeconds,
     reconnectPeriod: 0,
     connectTimeout: MQTT_CONNECT_TIMEOUT_MS
   });
 
-  try {
-    await new Promise<void>((resolve, reject) => {
-      client.publish(info.postTopic, payload, { qos: 0 }, (error) => {
-        if (error) {
-          reject(new PadBotRobotControlError("ROBOT_CONTROL_FAILED", "Robot MQTT publish failed"));
-          return;
-        }
+  client.on("message", () => {
+    console.log("[robot-control:padbot] MQTT status message received");
+  });
+  client.on("close", () => {
+    cachedMqttSession = undefined;
+    console.log("[robot-control:padbot] MQTT connection closed");
+  });
+  client.on("offline", () => {
+    cachedMqttSession = undefined;
+    console.log("[robot-control:padbot] MQTT connection offline");
+  });
+  client.on("error", () => {
+    cachedMqttSession = undefined;
+    console.error("[robot-control:padbot] MQTT client error");
+  });
 
-        resolve();
-      });
-    });
-  } finally {
-    client.end(false);
+  await subscribeReceiveTopics(client, info.receiveTopics);
+  console.log(`[robot-control:padbot] MQTT connected receiveTopics=${info.receiveTopics.length}`);
+
+  return {
+    client,
+    info
+  };
+}
+
+async function getMqttSession(config: RobotControlConfig): Promise<ConnectedMqttSession> {
+  if (cachedMqttSession) {
+    const session = await cachedMqttSession;
+    if (session.client.connected) {
+      return session;
+    }
+
+    cachedMqttSession = undefined;
   }
+
+  cachedMqttSession = createMqttSession(config);
+  try {
+    return await cachedMqttSession;
+  } catch (error) {
+    cachedMqttSession = undefined;
+    throw error;
+  }
+}
+
+function resetMqttSession(session: ConnectedMqttSession): void {
+  cachedMqttSession = undefined;
+  session.client.end(true);
+}
+
+async function publishMqttCommand(config: RobotControlConfig, payload: string): Promise<void> {
+  const session = await getMqttSession(config);
+
+  await new Promise<void>((resolve, reject) => {
+    session.client.publish(session.info.postTopic, payload, { qos: 0 }, (error) => {
+      if (error) {
+        resetMqttSession(session);
+        reject(new PadBotRobotControlError("ROBOT_CONTROL_FAILED", "Robot MQTT publish failed"));
+        return;
+      }
+
+      resolve();
+    });
+  });
 }
 
 export async function sendPadBotMqttCommand(
@@ -371,7 +473,6 @@ export async function sendPadBotMqttCommand(
   command: RobotControlEventCommand,
   parameters: RobotControlLogParameters
 ): Promise<void> {
-  const mqttInfo = await resolvePadBotMqttInfo(config);
   const payload = buildPadBotControlPayload(command, parameters, config);
-  await publishMqttCommand(mqttInfo, payload, config.vendor.mqttKeepaliveSeconds);
+  await publishMqttCommand(config, payload);
 }
