@@ -253,29 +253,6 @@ export function buildPadBotControlPayload(
   });
 }
 
-function resolveStaticMqttInfo(config: RobotControlConfig): ResolvedMqttInfo | undefined {
-  const { vendor } = config;
-  if (
-    !vendor.mqttHost ||
-    !vendor.mqttUsername ||
-    !vendor.mqttPassword ||
-    !vendor.mqttClientId ||
-    !vendor.mqttPostTopic
-  ) {
-    return undefined;
-  }
-
-  return {
-    clientId: vendor.mqttClientId,
-    username: vendor.mqttUsername,
-    token: vendor.mqttPassword,
-    host: vendor.mqttHost,
-    port: vendor.mqttPort ?? 1883,
-    postTopic: vendor.mqttPostTopic,
-    receiveTopics: parseTopics(vendor.mqttReceiveTopic)
-  };
-}
-
 async function applyPadBotMqttInfo(config: RobotControlConfig): Promise<ResolvedMqttInfo> {
   const apiBaseUrl = stripTrailingSlash(requireVendorField(config.vendor.apiBaseUrl, "ROBOT_VENDOR_API_BASE_URL"));
   const serialNumber = requireVendorField(config.vendor.serialNumber, "ROBOT_SERIAL_NUMBER");
@@ -319,21 +296,21 @@ async function applyPadBotMqttInfo(config: RobotControlConfig): Promise<Resolved
     throw new PadBotRobotControlError("ROBOT_CONTROL_FAILED", "Robot MQTT info response was incomplete");
   }
 
-  const postTopic = pickPadBotPostTopic(data, serialNumber, config.vendor.mqttPostTopic);
+  const postTopic = pickPadBotPostTopic(data, serialNumber);
 
   return {
     clientId,
     username,
     token,
     host,
-    port: readMqttPort(data.port, config.vendor.mqttPort ?? 1883),
+    port: readMqttPort(data.port, 1883),
     postTopic,
-    receiveTopics: pickPadBotReceiveTopics(data, serialNumber, config.vendor.mqttReceiveTopic, postTopic)
+    receiveTopics: pickPadBotReceiveTopics(data, serialNumber, undefined, postTopic)
   };
 }
 
 async function resolvePadBotMqttInfo(config: RobotControlConfig): Promise<ResolvedMqttInfo> {
-  return resolveStaticMqttInfo(config) ?? applyPadBotMqttInfo(config);
+  return applyPadBotMqttInfo(config);
 }
 
 function buildMqttUrl(info: ResolvedMqttInfo): string {

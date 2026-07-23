@@ -84,18 +84,6 @@ export function getMissingRobotVendorFields(config: RobotControlConfig): string[
     return [];
   }
 
-  const hasStaticMqttConfig = Boolean(
-    config.vendor.mqttHost &&
-      config.vendor.mqttUsername &&
-      config.vendor.mqttPassword &&
-      config.vendor.mqttClientId &&
-      config.vendor.mqttPostTopic
-  );
-
-  if (hasStaticMqttConfig) {
-    return [];
-  }
-
   return [
     config.vendor.apiBaseUrl ? undefined : "ROBOT_VENDOR_API_BASE_URL",
     config.vendor.appKey ? undefined : "ROBOT_VENDOR_APP_KEY",

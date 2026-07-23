@@ -132,7 +132,7 @@ function createRealConfig(): RobotControlConfig {
         mqttKeepaliveSeconds: 60
       }
     }),
-    []
+    ["ROBOT_VENDOR_API_BASE_URL", "ROBOT_VENDOR_APP_KEY", "ROBOT_VENDOR_TOKEN", "ROBOT_SERIAL_NUMBER"]
   );
 }
 
