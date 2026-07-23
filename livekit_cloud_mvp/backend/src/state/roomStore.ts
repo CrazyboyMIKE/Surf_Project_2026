@@ -115,6 +115,14 @@ export type CloseRoomResult =
       room?: RoomState;
     };
 
+export type RemoveParticipantResult = {
+  room?: RoomState;
+  removedParticipant?: Participant;
+  controllerReleased: boolean;
+  robotStatusChanged: boolean;
+  roomDeleted: boolean;
+};
+
 export class RoomStore {
   private readonly rooms = new Map<string, RoomState>();
 
@@ -406,6 +414,54 @@ export class RoomStore {
     }
 
     return { room, controllerReleased: false, robotStatusChanged };
+  }
+
+  removeParticipant(roomName: string, participantId: string): RemoveParticipantResult {
+    const room = this.rooms.get(roomName);
+    const participant = room?.participants.get(participantId);
+    if (!room || !participant) {
+      return {
+        controllerReleased: false,
+        robotStatusChanged: false,
+        roomDeleted: false
+      };
+    }
+
+    const now = Date.now();
+    const controllerReleased = room.currentControllerId === participantId;
+    const robotStatusChanged = participant.role === "robot" && room.robotOnline;
+
+    if (controllerReleased) {
+      room.currentControllerId = undefined;
+    }
+
+    if (participant.role === "robot") {
+      room.robotOnline = false;
+      if (room.robotId === participant.name) {
+        room.robotId = undefined;
+      }
+    }
+
+    room.participants.delete(participantId);
+
+    if (room.participants.size === 0) {
+      this.rooms.delete(roomName);
+      return {
+        removedParticipant: participant,
+        controllerReleased,
+        robotStatusChanged,
+        roomDeleted: true
+      };
+    }
+
+    this.touchRoom(room, now);
+    return {
+      room,
+      removedParticipant: participant,
+      controllerReleased,
+      robotStatusChanged,
+      roomDeleted: false
+    };
   }
 
   recordRobotControl(

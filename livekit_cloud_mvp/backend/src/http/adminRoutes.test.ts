@@ -92,12 +92,29 @@ try {
 
   const roomJoin = server.roomStore.joinWebParticipant("robot-room-001", "Alice", "controller");
   server.roomStore.markParticipantConnected(roomJoin.room.roomName, roomJoin.participant.id);
+  const viewerJoin = server.roomStore.joinWebParticipant("robot-room-001", "Bob", "viewer");
+  server.roomStore.markParticipantConnected(viewerJoin.room.roomName, viewerJoin.participant.id);
+  server.roomStore.removeParticipant("robot-room-001", viewerJoin.participant.id);
 
   const roomList = await requestJson(server.baseUrl, "/api/admin/rooms", {
     headers: { Authorization: `Bearer ${ADMIN_TOKEN}` }
   });
   assert.equal(roomList.status, 200);
   assert.equal(Array.isArray(roomList.body.rooms), true);
+  const rooms = roomList.body.rooms as Array<{ roomName: string; participantCount: number; connectedParticipantCount: number }>;
+  const roomSummary = rooms.find((room) => room.roomName === "robot-room-001");
+  assert.equal(roomSummary?.participantCount, 1);
+  assert.equal(roomSummary?.connectedParticipantCount, 1);
+
+  const roomDetail = await requestJson(server.baseUrl, "/api/admin/rooms/robot-room-001", {
+    headers: { Authorization: `Bearer ${ADMIN_TOKEN}` }
+  });
+  assert.equal(roomDetail.status, 200);
+  const detailBody = roomDetail.body.room as {
+    participants: Array<{ participantId: string; displayName: string; connected: boolean }>;
+  };
+  assert.equal(detailBody.participants.some((participant) => participant.participantId === viewerJoin.participant.id), false);
+  assert.equal(detailBody.participants.some((participant) => participant.displayName === "Bob"), false);
 
   const nonEmptyDelete = await requestJson(server.baseUrl, "/api/admin/rooms/robot-room-001", {
     method: "DELETE",

@@ -450,12 +450,20 @@ export function attachWebSocketServer(
           reason: "websocket_disconnected"
         });
       }
-      const result = roomStore.markParticipantDisconnected(context.roomName, context.participantId);
-      if (result.controllerReleased) {
-        broadcastRoleUpdate(context.roomName);
-      }
+      const result = roomStore.removeParticipant(context.roomName, context.participantId);
       if (result.robotStatusChanged) {
         void keyboardControlManager.forceStop(context.roomName, "robot_offline");
+      }
+
+      if (result.roomDeleted) {
+        return;
+      }
+
+      if (result.removedParticipant) {
+        broadcastRoleUpdate(context.roomName);
+      }
+
+      if (result.robotStatusChanged) {
         broadcastRobotStatus(context.roomName);
       }
     });
