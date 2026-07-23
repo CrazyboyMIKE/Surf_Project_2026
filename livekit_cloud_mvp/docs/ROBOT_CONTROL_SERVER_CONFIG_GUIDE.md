@@ -74,10 +74,12 @@ POST {ROBOT_VENDOR_API_BASE_URL}/cloud/openapirobot/applyRobotMqttInfo.action
 backend 会用 `appkey` 和 `apptoken` 做 MD5 签名，拿到 MQTT 信息后发布：
 
 ```text
-1002 -> {"t":"83","m":"{\"a\":\"1002\",\"m\":{\"d\":distanceCm,\"lv\":linearSpeed}}"}
-1003 -> {"t":"83","m":"{\"a\":\"1003\",\"m\":{\"a\":angleDeg,\"av\":angularSpeed}}"}
-1000 -> {"t":"83","m":"{\"a\":\"1000\"}"}
+1002 -> {"id":"random-message-id","t":"83","m":"{\"a\":\"1002\",\"m\":{\"d\":distanceCm,\"lv\":linearSpeed}}"}
+1003 -> {"id":"random-message-id","t":"83","m":"{\"a\":\"1003\",\"m\":{\"a\":angleDeg,\"av\":angularSpeed}}"}
+1000 -> {"id":"random-message-id","t":"83","m":"{\"a\":\"1000\"}"}
 ```
+
+backend 的 PadBot MQTT publish/subscribe 使用 QoS 1，并优先选择厂商返回的 `robotSubTopic` / `subTopic` 作为控制 topic，以贴近 PadBot Java/Python demo。
 
 backend 不使用 `1001` 作为 Web 默认控制命令。如果 receive topic 拿不到，不会伪造机器人状态。
 

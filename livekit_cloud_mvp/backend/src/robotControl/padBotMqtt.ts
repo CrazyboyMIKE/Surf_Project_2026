@@ -1,18 +1,19 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import mqtt, { type IClientOptions, type MqttClient } from "mqtt";
 import type { RobotControlEventCommand, RobotControlLogParameters } from "../types.js";
 import type { RobotControlConfig } from "./config.js";
 
 const MQTT_INFO_PATH = "/cloud/openapirobot/applyRobotMqttInfo.action";
 const MQTT_CONNECT_TIMEOUT_MS = 10_000;
+const MQTT_COMMAND_QOS = 1;
 const CONTROL_TOPIC_KEYS = [
-  "robotControlTopic",
   "robotSubTopic",
   "subTopic",
-  "robotPostTopic",
   "postTopic",
   "sendTopic",
-  "publishTopic"
+  "publishTopic",
+  "robotControlTopic",
+  "robotPostTopic"
 ];
 const RECEIVE_TOPIC_KEYS = [
   "robotStatusTopic",
@@ -64,6 +65,10 @@ function asString(value: unknown): string | undefined {
 
 function compactJson(value: unknown): string {
   return JSON.stringify(value, undefined, 0);
+}
+
+function compactMessageId(): string {
+  return randomUUID().replaceAll("-", "");
 }
 
 function valueForSign(value: unknown): string {
@@ -222,7 +227,8 @@ export function buildPadBotSignedPayload(
 export function buildPadBotControlPayload(
   command: RobotControlEventCommand,
   parameters: RobotControlLogParameters,
-  config: RobotControlConfig
+  config: RobotControlConfig,
+  messageId = compactMessageId()
 ): string {
   const inner: Record<string, unknown> = { a: command };
 
@@ -248,9 +254,57 @@ export function buildPadBotControlPayload(
   }
 
   return compactJson({
+    id: messageId,
     t: "83",
     m: compactJson(inner)
   });
+}
+
+function summarizeMqttStatusPayload(payload: Buffer): Record<string, unknown> {
+  const text = payload.toString("utf8");
+  const summary: Record<string, unknown> = {
+    bytes: Buffer.byteLength(text)
+  };
+
+  try {
+    const outer: unknown = JSON.parse(text);
+    if (!isRecord(outer)) {
+      summary.json = false;
+      return summary;
+    }
+
+    summary.json = true;
+    summary.keys = Object.keys(outer).filter(
+      (key) => !/token|password|secret|sign|appkey/i.test(key)
+    );
+    if (outer.t !== undefined) {
+      summary.t = String(outer.t);
+    }
+    if (outer.messageCode !== undefined) {
+      summary.messageCode = outer.messageCode;
+    }
+    if (typeof outer.message === "string") {
+      summary.message = outer.message.slice(0, 120);
+    }
+
+    if (typeof outer.m === "string") {
+      try {
+        const inner: unknown = JSON.parse(outer.m);
+        if (isRecord(inner)) {
+          summary.innerKeys = Object.keys(inner);
+          if (inner.a !== undefined) {
+            summary.action = String(inner.a);
+          }
+        }
+      } catch {
+        summary.innerJson = false;
+      }
+    }
+  } catch {
+    summary.json = false;
+  }
+
+  return summary;
 }
 
 async function applyPadBotMqttInfo(config: RobotControlConfig): Promise<ResolvedMqttInfo> {
@@ -358,7 +412,7 @@ async function subscribeReceiveTopics(client: MqttClient, topics: string[]): Pro
   }
 
   await new Promise<void>((resolve, reject) => {
-    client.subscribe(uniqueTopics, { qos: 0 }, (error) => {
+    client.subscribe(uniqueTopics, { qos: MQTT_COMMAND_QOS }, (error) => {
       if (error) {
         reject(new PadBotRobotControlError("ROBOT_CONTROL_FAILED", "Robot MQTT subscribe failed"));
         return;
@@ -375,13 +429,19 @@ async function createMqttSession(config: RobotControlConfig): Promise<ConnectedM
     clientId: info.clientId,
     username: info.username,
     password: info.token,
+    clean: true,
     keepalive: config.vendor.mqttKeepaliveSeconds,
     reconnectPeriod: 0,
+    protocolVersion: 4,
     connectTimeout: MQTT_CONNECT_TIMEOUT_MS
   });
 
-  client.on("message", () => {
-    console.log("[robot-control:padbot] MQTT status message received");
+  client.on("message", (_topic, payload) => {
+    console.log(
+      `[robot-control:padbot] MQTT status message received summary=${JSON.stringify(
+        summarizeMqttStatusPayload(payload)
+      )}`
+    );
   });
   client.on("close", () => {
     cachedMqttSession = undefined;
@@ -397,7 +457,7 @@ async function createMqttSession(config: RobotControlConfig): Promise<ConnectedM
   });
 
   await subscribeReceiveTopics(client, info.receiveTopics);
-  console.log(`[robot-control:padbot] MQTT connected receiveTopics=${info.receiveTopics.length}`);
+  console.log(`[robot-control:padbot] MQTT connected receiveTopics=${info.receiveTopics.length} qos=${MQTT_COMMAND_QOS}`);
 
   return {
     client,
@@ -433,7 +493,7 @@ async function publishMqttCommand(config: RobotControlConfig, payload: string): 
   const session = await getMqttSession(config);
 
   await new Promise<void>((resolve, reject) => {
-    session.client.publish(session.info.postTopic, payload, { qos: 0 }, (error) => {
+    session.client.publish(session.info.postTopic, payload, { qos: MQTT_COMMAND_QOS }, (error) => {
       if (error) {
         resetMqttSession(session);
         reject(new PadBotRobotControlError("ROBOT_CONTROL_FAILED", "Robot MQTT publish failed"));

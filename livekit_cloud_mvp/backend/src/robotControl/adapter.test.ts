@@ -138,18 +138,21 @@ function createRealConfig(): RobotControlConfig {
 
 {
   const config = createRealConfig();
-  assert.equal(buildPadBotControlPayload("1000", {}, config), '{"t":"83","m":"{\\"a\\":\\"1000\\"}"}');
   assert.equal(
-    buildPadBotControlPayload("1002", { distanceCm: -20 }, config),
-    '{"t":"83","m":"{\\"a\\":\\"1002\\",\\"m\\":{\\"d\\":-20,\\"lv\\":200}}"}'
+    buildPadBotControlPayload("1000", {}, config, "test-message-id"),
+    '{"id":"test-message-id","t":"83","m":"{\\"a\\":\\"1000\\"}"}'
   );
   assert.equal(
-    buildPadBotControlPayload("1003", { angleDeg: 15, speed: 30 }, config),
-    '{"t":"83","m":"{\\"a\\":\\"1003\\",\\"m\\":{\\"a\\":15,\\"av\\":30}}"}'
+    buildPadBotControlPayload("1002", { distanceCm: -20 }, config, "test-message-id"),
+    '{"id":"test-message-id","t":"83","m":"{\\"a\\":\\"1002\\",\\"m\\":{\\"d\\":-20,\\"lv\\":200}}"}'
   );
   assert.equal(
-    buildPadBotControlPayload("1001", { lv: 80, av: -15, direction: "forward_right" }, config),
-    '{"t":"83","m":"{\\"a\\":\\"1001\\",\\"m\\":{\\"lv\\":80,\\"av\\":-15}}"}'
+    buildPadBotControlPayload("1003", { angleDeg: 15, speed: 30 }, config, "test-message-id"),
+    '{"id":"test-message-id","t":"83","m":"{\\"a\\":\\"1003\\",\\"m\\":{\\"a\\":15,\\"av\\":30}}"}'
+  );
+  assert.equal(
+    buildPadBotControlPayload("1001", { lv: 80, av: -15, direction: "forward_right" }, config, "test-message-id"),
+    '{"id":"test-message-id","t":"83","m":"{\\"a\\":\\"1001\\",\\"m\\":{\\"lv\\":80,\\"av\\":-15}}"}'
   );
 }
 
