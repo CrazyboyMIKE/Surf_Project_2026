@@ -19,6 +19,10 @@ function positiveInteger(value: number, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? Math.round(value) : fallback;
 }
 
+function nonNegativeInteger(value: number, fallback: number): number {
+  return Number.isFinite(value) && value >= 0 ? Math.round(value) : fallback;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
@@ -43,7 +47,7 @@ export function readKeyboardControlConfig(env: NodeJS.ProcessEnv = process.env):
     mode: "1001",
     sendIntervalMs: positiveInteger(readInteger(env.ROBOT_KEYBOARD_SEND_INTERVAL_MS, 300), 300),
     deadmanTimeoutMs: positiveInteger(readInteger(env.ROBOT_KEYBOARD_DEADMAN_TIMEOUT_MS, 900), 900),
-    maxSessionMs: positiveInteger(readInteger(env.ROBOT_KEYBOARD_MAX_SESSION_MS, 10_000), 10_000),
+    maxSessionMs: nonNegativeInteger(readInteger(env.ROBOT_KEYBOARD_MAX_SESSION_MS, 0), 0),
     maxLinearSpeed,
     maxAngularSpeed,
     defaultLinearSpeed,

@@ -49,7 +49,7 @@ ROBOT_ENABLE_CONTINUOUS_1001=false
 ROBOT_KEYBOARD_CONTROL_MODE=1001
 ROBOT_KEYBOARD_SEND_INTERVAL_MS=300
 ROBOT_KEYBOARD_DEADMAN_TIMEOUT_MS=900
-ROBOT_KEYBOARD_MAX_SESSION_MS=10000
+ROBOT_KEYBOARD_MAX_SESSION_MS=0
 ROBOT_KEYBOARD_MAX_LINEAR_SPEED=120
 ROBOT_KEYBOARD_MAX_ANGULAR_SPEED=20
 ROBOT_KEYBOARD_DEFAULT_LINEAR_SPEED=80
@@ -61,7 +61,7 @@ ROBOT_KEYBOARD_REQUIRE_FOCUS=true
 
 - `ROBOT_KEYBOARD_SEND_INTERVAL_MS`：按住方向键时前端 keepalive 重发间隔。
 - `ROBOT_KEYBOARD_DEADMAN_TIMEOUT_MS`：backend 超过该时间没有收到 keepalive，自动 stop。
-- `ROBOT_KEYBOARD_MAX_SESSION_MS`：单次连续控制最长时间，超时自动 stop。
+- `ROBOT_KEYBOARD_MAX_SESSION_MS`：单次连续控制最长时间；`0` 表示不设置单次最长时间，只依赖 deadman、松手、失焦、断线等 stop 保护。
 - `ROBOT_KEYBOARD_MAX_LINEAR_SPEED`：backend 允许的最大线速度。
 - `ROBOT_KEYBOARD_MAX_ANGULAR_SPEED`：backend 允许的最大角速度。
 - `ROBOT_KEYBOARD_DEFAULT_LINEAR_SPEED`：前端默认低速线速度。
@@ -134,7 +134,7 @@ viewer 不可用，非当前 controller 不可用。
 - 页面失焦 stop。
 - 前端定时 keepalive。
 - backend deadman timeout stop。
-- backend max session timeout stop。
+- 可选 backend max session timeout stop；默认 `ROBOT_KEYBOARD_MAX_SESSION_MS=0`，不开启单次时长上限。
 - WebSocket 断开 stop。
 - controller release stop。
 - controller transfer stop。

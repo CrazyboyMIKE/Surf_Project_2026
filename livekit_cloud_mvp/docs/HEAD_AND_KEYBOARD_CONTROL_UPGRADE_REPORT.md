@@ -61,7 +61,7 @@ right    -> { lv: 0, av: -angularSpeed }
 - 必须同时开启 `ROBOT_ENABLE_KEYBOARD_CONTROL=true` 和 `ROBOT_ENABLE_CONTINUOUS_1001=true`。
 - viewer 和非当前 controller 会被后端拒绝。
 - 后端校验 direction、线速度、角速度和机器人在线状态。
-- 松手、空格、失焦、deadman timeout、max session timeout、断线、释放/转移控制权都会触发 `1000 stop`。
+- 松手、空格、失焦、deadman timeout、断线、释放/转移控制权都会触发 `1000 stop`；单次最大时长保护已改为可选，默认 `ROBOT_KEYBOARD_MAX_SESSION_MS=0` 表示不启用。
 
 ## 1004 / 1005 / 1006 头部控制
 

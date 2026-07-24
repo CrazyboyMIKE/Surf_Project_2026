@@ -466,6 +466,11 @@ export class KeyboardControlManager {
       clearTimeout(session.maxSessionTimer);
     }
 
+    if (this.config.maxSessionMs <= 0) {
+      session.maxSessionTimer = undefined;
+      return;
+    }
+
     const elapsedMs = Date.now() - session.startedAt;
     const remainingMs = Math.max(0, this.config.maxSessionMs - elapsedMs);
     session.maxSessionTimer = setTimeout(() => {

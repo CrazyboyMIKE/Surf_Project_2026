@@ -26,7 +26,7 @@ function createConfig(overrides: Partial<KeyboardControlConfig> = {}): KeyboardC
     mode: "1001",
     sendIntervalMs: 300,
     deadmanTimeoutMs: 900,
-    maxSessionMs: 10_000,
+    maxSessionMs: 0,
     maxLinearSpeed: 120,
     maxAngularSpeed: 20,
     defaultLinearSpeed: 80,
@@ -235,6 +235,21 @@ function sleep(ms: number): Promise<void> {
 
   assert.equal(adapter.requests.at(-1)?.command, "1000");
   assert.deepEqual(adapter.requests.at(-1)?.parameters, { stopReason: "max_session_timeout" });
+}
+
+{
+  const { manager, adapter, controller } = createFixture(createConfig({ deadmanTimeoutMs: 1_000, maxSessionMs: 0 }));
+  await manager.start({
+    roomName: "robot-room-001",
+    senderId: controller.id,
+    direction: "forward",
+    linearSpeed: 80,
+    angularSpeed: 15
+  });
+  await sleep(60);
+
+  assert.equal(adapter.requests.at(-1)?.command, "1001");
+  await manager.forceStop("robot-room-001", "test_cleanup");
 }
 
 console.log("keyboardControl manager tests passed");

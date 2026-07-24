@@ -313,7 +313,7 @@ export function KeyboardControlPanel({
           Deadman <strong>{config.deadmanTimeoutMs}ms</strong>
         </span>
         <span>
-          Max session <strong>{config.maxSessionMs}ms</strong>
+          Max session <strong>{config.maxSessionMs > 0 ? `${config.maxSessionMs}ms` : "disabled"}</strong>
         </span>
       </div>
 

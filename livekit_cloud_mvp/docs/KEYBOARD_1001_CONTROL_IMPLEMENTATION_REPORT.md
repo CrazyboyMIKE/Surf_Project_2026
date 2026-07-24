@@ -51,7 +51,7 @@ ROBOT_ENABLE_CONTINUOUS_1001=false
 ROBOT_KEYBOARD_CONTROL_MODE=1001
 ROBOT_KEYBOARD_SEND_INTERVAL_MS=300
 ROBOT_KEYBOARD_DEADMAN_TIMEOUT_MS=900
-ROBOT_KEYBOARD_MAX_SESSION_MS=10000
+ROBOT_KEYBOARD_MAX_SESSION_MS=0
 ROBOT_KEYBOARD_MAX_LINEAR_SPEED=120
 ROBOT_KEYBOARD_MAX_ANGULAR_SPEED=20
 ROBOT_KEYBOARD_DEFAULT_LINEAR_SPEED=80
@@ -93,7 +93,7 @@ backward_right -> { lv: -linearSpeed, av: -angularSpeed }
 - 页面卸载尽力 stop
 - WebSocket 断开
 - deadman timeout
-- max session timeout
+- max session timeout 可选；默认 `ROBOT_KEYBOARD_MAX_SESSION_MS=0`，不限制单次持续控制时间
 - controller release
 - controller transfer
 - robot offline
