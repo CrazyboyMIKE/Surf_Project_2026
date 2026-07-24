@@ -278,6 +278,8 @@ button:focus-visible {
   min-height: 0;
   background: #10191c;
   object-fit: contain;
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
 .preview-placeholder,
@@ -308,12 +310,14 @@ button:focus-visible {
 }
 
 .compact-video-tile {
-  min-height: 118px;
+  height: clamp(132px, 18vw, 184px);
+  min-height: 132px;
   aspect-ratio: 16 / 9;
 }
 
 .local-preview.compact-video-tile {
-  min-height: 118px;
+  height: clamp(132px, 18vw, 184px);
+  min-height: 132px;
 }
 
 .remote-video-tile video {
@@ -326,10 +330,13 @@ button:focus-visible {
 .compact-video-tile video,
 .remote-video-tile.compact-video-tile video {
   height: 100%;
+  background: #10191c;
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
 .local-preview.compact-video-tile video {
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .controller-stage {

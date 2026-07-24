@@ -13,7 +13,7 @@ import {
 import "./styles.css";
 
 type Role = "robot" | "controller" | "viewer";
-type RobotCommand = "1002" | "1003" | "1000" | "1001";
+type RobotCommand = "1000" | "1001" | "1002" | "1003" | "1004" | "1005" | "1006";
 type KeyboardDirection =
   | "forward"
   | "backward"
@@ -68,6 +68,8 @@ type RobotControlMessage = {
   parameters?: {
     direction?: KeyboardDirection;
     stopReason?: string;
+    d?: number;
+    a?: number;
     lv?: number;
     av?: number;
   };
@@ -354,6 +356,7 @@ function LocalPreview({
     }
 
     let disposed = false;
+    const mediaStream = new MediaStream([track.mediaStreamTrack]);
     setPreviewWarning("");
     videoElement.muted = true;
     videoElement.defaultMuted = true;
@@ -362,15 +365,15 @@ function LocalPreview({
     videoElement.setAttribute("muted", "");
     videoElement.setAttribute("playsinline", "");
     videoElement.setAttribute("webkit-playsinline", "true");
-    track.attach(videoElement);
+    videoElement.srcObject = mediaStream;
 
     const playPreview = () => {
       if (disposed) {
         return;
       }
 
-      if (!videoElement.srcObject) {
-        videoElement.srcObject = new MediaStream([track.mediaStreamTrack]);
+      if (videoElement.srcObject !== mediaStream) {
+        videoElement.srcObject = mediaStream;
       }
 
       void videoElement.play().then(
@@ -387,21 +390,47 @@ function LocalPreview({
       );
     };
 
+    const nudgePreviewPaint = () => {
+      if (disposed) {
+        return;
+      }
+
+      videoElement.style.transform = "translateZ(0)";
+      window.requestAnimationFrame(() => {
+        videoElement.style.transform = "";
+        playPreview();
+      });
+    };
+
     if (videoElement.readyState >= HTMLMediaElement.HAVE_METADATA) {
       playPreview();
     } else {
-      videoElement.addEventListener("loadedmetadata", playPreview, { once: true });
+      videoElement.addEventListener("loadedmetadata", playPreview);
     }
 
+    videoElement.addEventListener("canplay", playPreview);
+    videoElement.addEventListener("playing", nudgePreviewPaint);
     document.addEventListener("visibilitychange", playPreview);
     window.addEventListener("focus", playPreview);
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => nudgePreviewPaint()) : undefined;
+    resizeObserver?.observe(videoElement);
+    if (tileRef.current) {
+      resizeObserver?.observe(tileRef.current);
+    }
+
+    window.requestAnimationFrame(playPreview);
+    const retryTimer = window.setTimeout(playPreview, 250);
 
     return () => {
       disposed = true;
+      window.clearTimeout(retryTimer);
       videoElement.removeEventListener("loadedmetadata", playPreview);
+      videoElement.removeEventListener("canplay", playPreview);
+      videoElement.removeEventListener("playing", nudgePreviewPaint);
       document.removeEventListener("visibilitychange", playPreview);
       window.removeEventListener("focus", playPreview);
-      track.detach(videoElement);
+      resizeObserver?.disconnect();
       videoElement.pause();
       videoElement.srcObject = null;
     };

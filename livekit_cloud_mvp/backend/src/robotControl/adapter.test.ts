@@ -167,6 +167,10 @@ function createRealConfig(): RobotControlConfig {
     '{"id":"test-message-id","t":"83","m":"{\\"a\\":\\"1005\\",\\"m\\":{\\"d\\":1,\\"a\\":90,\\"av\\":60}}"}'
   );
   assert.equal(
+    buildPadBotControlPayload("1005", { d: 1, a: -15, av: 60 }, config, "test-message-id"),
+    '{"id":"test-message-id","t":"83","m":"{\\"a\\":\\"1005\\",\\"m\\":{\\"d\\":1,\\"a\\":-15,\\"av\\":60}}"}'
+  );
+  assert.equal(
     buildPadBotControlPayload("1006", { d: 1 }, config, "test-message-id"),
     '{"id":"test-message-id","t":"83","m":"{\\"a\\":\\"1006\\",\\"m\\":{\\"d\\":1}}"}'
   );
