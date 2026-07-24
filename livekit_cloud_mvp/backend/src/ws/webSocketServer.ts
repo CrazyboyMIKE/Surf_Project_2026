@@ -20,6 +20,7 @@ type WebSocketMessage = {
   roomName?: unknown;
   participantId?: unknown;
   senderId?: unknown;
+  recipientId?: unknown;
   message?: unknown;
   command?: unknown;
   parameters?: unknown;
@@ -35,6 +36,7 @@ export type WebSocketHub = {
   stopKeyboardControl: (roomName: string, reason: string) => Promise<void>;
   disconnectParticipant: (roomName: string, participantId: string, payload: Record<string, unknown>) => void;
   disconnectRoom: (roomName: string, payload: Record<string, unknown>) => void;
+  close: () => void;
 };
 
 function isRecord(value: unknown): value is WebSocketMessage {
@@ -65,6 +67,16 @@ function sendError(
     type: "error",
     code,
     message
+  });
+}
+
+function sendPrivateChatError(socket: WebSocket, roomName: string | undefined, code: string, message: string): void {
+  sendJson(socket, {
+    type: "private_chat_error",
+    roomName,
+    code,
+    message,
+    timestamp: Date.now()
   });
 }
 
@@ -164,6 +176,20 @@ export function attachWebSocketServer(
 
     for (const client of clients) {
       sendJson(client, payload);
+    }
+  }
+
+  function sendToParticipant(roomName: string, participantId: string, payload: Record<string, unknown>): void {
+    const clients = clientsByRoom.get(roomName);
+    if (!clients) {
+      return;
+    }
+
+    for (const client of clients) {
+      const clientContext = socketContexts.get(client);
+      if (clientContext?.roomName === roomName && clientContext.participantId === participantId) {
+        sendJson(client, payload);
+      }
     }
   }
 
@@ -403,6 +429,88 @@ export function attachWebSocketServer(
         return;
       }
 
+      if (message.type === "private_chat") {
+        if (!hasOnlyKeys(message, ["type", "roomName", "senderId", "recipientId", "message"])) {
+          sendPrivateChatError(socket, readString(message.roomName), "INVALID_REQUEST", "Private chat message contains unsupported fields");
+          return;
+        }
+
+        const roomName = readString(message.roomName);
+        const senderId = readString(message.senderId);
+        const recipientId = readString(message.recipientId);
+        const chatText = typeof message.message === "string" ? message.message.trim() : "";
+
+        if (!roomName || !senderId || !recipientId || !contextMatches(context, roomName, senderId)) {
+          sendPrivateChatError(
+            socket,
+            roomName,
+            context ? "SENDER_MISMATCH" : "SOCKET_NOT_IDENTIFIED",
+            "Private chat sender does not match this WebSocket"
+          );
+          return;
+        }
+
+        const room = roomStore.getRoom(roomName);
+        const sender = room?.participants.get(senderId);
+        const recipient = room?.participants.get(recipientId);
+        if (!room) {
+          sendPrivateChatError(socket, roomName, "ROOM_NOT_FOUND", "Room does not exist");
+          return;
+        }
+
+        if (!sender || !sender.connected) {
+          sendPrivateChatError(socket, roomName, "PARTICIPANT_NOT_FOUND", "Sender is not an online participant");
+          return;
+        }
+
+        if (!recipient) {
+          sendPrivateChatError(socket, roomName, "PARTICIPANT_NOT_FOUND", "Recipient is not in this room");
+          return;
+        }
+
+        if (!recipient.connected) {
+          sendPrivateChatError(socket, roomName, "TARGET_OFFLINE", "Recipient viewer is offline");
+          return;
+        }
+
+        if (sender.id === recipient.id) {
+          sendPrivateChatError(socket, roomName, "INVALID_REQUEST", "Private chat recipient must be another viewer");
+          return;
+        }
+
+        if (sender.role !== "viewer") {
+          sendPrivateChatError(socket, roomName, "FORBIDDEN", "Only viewers can send private chat");
+          return;
+        }
+
+        if (recipient.role !== "viewer") {
+          sendPrivateChatError(socket, roomName, "TARGET_NOT_VIEWER", "Private chat recipient must be an online viewer");
+          return;
+        }
+
+        if (!chatText || chatText.length > 500) {
+          sendPrivateChatError(socket, roomName, "INVALID_REQUEST", "Private chat message must be between 1 and 500 characters");
+          return;
+        }
+
+        const timestamp = Date.now();
+        const payload = {
+          type: "private_chat_delivered",
+          roomName,
+          messageId: `private-${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
+          senderId,
+          senderName: sender.name,
+          recipientId,
+          recipientName: recipient.name,
+          message: chatText,
+          timestamp
+        };
+
+        sendToParticipant(roomName, senderId, payload);
+        sendToParticipant(roomName, recipientId, payload);
+        return;
+      }
+
       if (message.type === "robot_control") {
         const roomName = readString(message.roomName);
         const senderId = readString(message.senderId);
@@ -628,6 +736,14 @@ export function attachWebSocketServer(
     async stopKeyboardControl(roomName: string, reason: string): Promise<void> {
       await keyboardControlManager.forceStop(roomName, reason);
       await forceHeadStop(roomName, "system", reason);
+    },
+    close(): void {
+      clearInterval(heartbeatTimer);
+      for (const timer of pendingRemovalTimers.values()) {
+        clearTimeout(timer);
+      }
+      pendingRemovalTimers.clear();
+      webSocketServer.close();
     }
   };
 }

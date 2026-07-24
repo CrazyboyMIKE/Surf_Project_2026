@@ -243,6 +243,26 @@ export type ChatMessage = {
   timestamp: number;
 };
 
+export type PrivateChatMessage = {
+  type: "private_chat_delivered";
+  roomName: string;
+  messageId: string;
+  senderId: string;
+  senderName: string;
+  recipientId: string;
+  recipientName: string;
+  message: string;
+  timestamp: number;
+};
+
+export type PrivateChatErrorMessage = {
+  type: "private_chat_error";
+  roomName?: string;
+  code: string;
+  message: string;
+  timestamp: number;
+};
+
 export type RobotControlEvent = {
   type: "robot_control";
   roomName: string;
@@ -302,6 +322,8 @@ export type ServerErrorMessage = {
 
 export type RoomSocketMessage =
   | ChatMessage
+  | PrivateChatMessage
+  | PrivateChatErrorMessage
   | RobotControlEvent
   | RobotControlResultEvent
   | KeyboardControlResultEvent

@@ -1,12 +1,16 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RobotControlEvent } from "../types";
-import type { LiveKitConnectionState, RobotVideoTrackInfo } from "../useLiveKitRoom";
+import type { LiveKitConnectionState, RobotAudioTrackInfo, RobotVideoTrackInfo } from "../useLiveKitRoom";
 
 type RobotVideoProps = {
   liveKitState: LiveKitConnectionState;
   robotOnline: boolean;
   robotVideoTrack: RobotVideoTrackInfo | null;
+  robotAudioTrack: RobotAudioTrackInfo | null;
+  robotAudioMuted: boolean;
+  canPlaybackAudio: boolean;
   robotEvents: RobotControlEvent[];
+  onEnableAudio: () => Promise<void>;
 };
 
 function describeEvent(event: RobotControlEvent): string {
@@ -53,7 +57,102 @@ function getPlaceholderText(liveKitState: LiveKitConnectionState, robotOnline: b
   return "Robot video will appear here";
 }
 
-export function RobotVideo({ liveKitState, robotOnline, robotVideoTrack, robotEvents }: RobotVideoProps) {
+function getRobotAudioUnavailableText(liveKitState: LiveKitConnectionState, robotOnline: boolean): string {
+  if (!robotOnline) {
+    return "robot offline";
+  }
+
+  if (liveKitState !== "connected") {
+    return `LiveKit ${liveKitState}`;
+  }
+
+  return "robot has no microphone track";
+}
+
+function RobotAudioPlayer({
+  liveKitState,
+  robotOnline,
+  robotAudioTrack,
+  robotAudioMuted,
+  canPlaybackAudio,
+  onEnableAudio
+}: {
+  liveKitState: LiveKitConnectionState;
+  robotOnline: boolean;
+  robotAudioTrack: RobotAudioTrackInfo | null;
+  robotAudioMuted: boolean;
+  canPlaybackAudio: boolean;
+  onEnableAudio: () => Promise<void>;
+}) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [audioState, setAudioState] = useState("waiting");
+
+  useEffect(() => {
+    const audioElement = audioRef.current;
+    if (!audioElement || !robotAudioTrack) {
+      setAudioState(getRobotAudioUnavailableText(liveKitState, robotOnline));
+      return;
+    }
+
+    robotAudioTrack.track.attach(audioElement);
+    audioElement.muted = robotAudioMuted;
+    audioElement.volume = 1;
+    setAudioState(robotAudioMuted ? "muted for you" : "subscribed");
+
+    void audioElement.play().then(
+      () => setAudioState(robotAudioMuted ? "muted for you" : "playing"),
+      () => setAudioState("audio playback blocked")
+    );
+
+    return () => {
+      robotAudioTrack.track.detach(audioElement);
+    };
+  }, [canPlaybackAudio, liveKitState, robotAudioMuted, robotAudioTrack, robotOnline]);
+
+  async function enableRobotAudio() {
+    const audioElement = audioRef.current;
+    if (!audioElement || !robotAudioTrack) {
+      setAudioState(getRobotAudioUnavailableText(liveKitState, robotOnline));
+      return;
+    }
+
+    try {
+      await onEnableAudio();
+      audioElement.muted = robotAudioMuted;
+      await audioElement.play();
+      setAudioState(robotAudioMuted ? "muted for you" : "playing");
+    } catch {
+      setAudioState("audio playback blocked");
+    }
+  }
+
+  const shouldShowEnableButton = Boolean(robotAudioTrack) && (!canPlaybackAudio || audioState === "audio playback blocked");
+
+  return (
+    <div className="robot-audio-panel">
+      <audio ref={audioRef} autoPlay playsInline />
+      <span>
+        Robot audio <strong>{audioState}</strong>
+      </span>
+      {shouldShowEnableButton ? (
+        <button type="button" className="secondary-button audio-unlock" onClick={enableRobotAudio}>
+          Enable robot audio
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+export function RobotVideo({
+  liveKitState,
+  robotOnline,
+  robotVideoTrack,
+  robotAudioTrack,
+  robotAudioMuted,
+  canPlaybackAudio,
+  robotEvents,
+  onEnableAudio
+}: RobotVideoProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
@@ -84,6 +183,15 @@ export function RobotVideo({ liveKitState, robotOnline, robotVideoTrack, robotEv
           </div>
         </div>
       )}
+
+      <RobotAudioPlayer
+        liveKitState={liveKitState}
+        robotOnline={robotOnline}
+        robotAudioTrack={robotAudioTrack}
+        robotAudioMuted={robotAudioMuted}
+        canPlaybackAudio={canPlaybackAudio}
+        onEnableAudio={onEnableAudio}
+      />
 
       <div className="event-strip" aria-label="Mock robot control log">
         {robotEvents.length === 0 ? (

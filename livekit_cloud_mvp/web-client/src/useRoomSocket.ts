@@ -7,6 +7,8 @@ import type {
   KeyboardControlStatus,
   KeyboardDirection,
   ParticipantSummary,
+  PrivateChatErrorMessage,
+  PrivateChatMessage,
   RobotCommand,
   RobotControlEvent,
   RoomSocketMessage,
@@ -30,6 +32,8 @@ export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconne
   const [robotOnline, setRobotOnline] = useState<boolean>(session?.robotOnline ?? false);
   const [participants, setParticipants] = useState<ParticipantSummary[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [privateMessages, setPrivateMessages] = useState<PrivateChatMessage[]>([]);
+  const [privateChatErrors, setPrivateChatErrors] = useState<PrivateChatErrorMessage[]>([]);
   const [robotEvents, setRobotEvents] = useState<RobotControlEvent[]>([]);
   const [keyboardStatus, setKeyboardStatus] = useState<KeyboardControlStatus | null>(null);
   const [lastKeyboardResult, setLastKeyboardResult] = useState("");
@@ -48,6 +52,8 @@ export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconne
     setRobotOnline(session?.robotOnline ?? false);
     setParticipants([]);
     setChatMessages([]);
+    setPrivateMessages([]);
+    setPrivateChatErrors([]);
     setRobotEvents([]);
     setKeyboardStatus(null);
     setLastKeyboardResult("");
@@ -121,6 +127,16 @@ export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconne
 
         if (message.type === "chat") {
           setChatMessages((messages) => [...messages, message]);
+          return;
+        }
+
+        if (message.type === "private_chat_delivered") {
+          setPrivateMessages((messages) => [...messages, message]);
+          return;
+        }
+
+        if (message.type === "private_chat_error") {
+          setPrivateChatErrors((errors) => [...errors, message].slice(-8));
           return;
         }
 
@@ -231,6 +247,25 @@ export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconne
     [session]
   );
 
+  const sendPrivateChat = useCallback(
+    (recipientId: string, message: string) => {
+      if (!session || socketRef.current?.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
+      socketRef.current.send(
+        JSON.stringify({
+          type: "private_chat",
+          roomName: session.roomName,
+          senderId: session.participantId,
+          recipientId,
+          message
+        })
+      );
+    },
+    [session]
+  );
+
   const sendControl = useCallback(
     (command: RobotCommand, parameters: ControlParameters = {}) => {
       if (!session || role !== "controller" || socketRef.current?.readyState !== WebSocket.OPEN) {
@@ -309,11 +344,14 @@ export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconne
       robotOnline,
       participants,
       chatMessages,
+      privateMessages,
+      privateChatErrors,
       robotEvents,
       keyboardStatus,
       lastKeyboardResult,
       lastError,
       sendChat,
+      sendPrivateChat,
       sendControl,
       sendKeyboardControlStart,
       sendKeyboardControlKeepalive,
@@ -325,12 +363,15 @@ export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconne
       currentControllerName,
       lastError,
       participants,
+      privateChatErrors,
+      privateMessages,
       robotEvents,
       keyboardStatus,
       lastKeyboardResult,
       robotOnline,
       role,
       sendChat,
+      sendPrivateChat,
       sendControl,
       sendKeyboardControlKeepalive,
       sendKeyboardControlStart,

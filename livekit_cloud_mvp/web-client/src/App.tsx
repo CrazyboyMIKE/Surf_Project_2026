@@ -6,6 +6,7 @@ import { ControlPanel } from "./components/ControlPanel";
 import { JoinRoomForm } from "./components/JoinRoomForm";
 import { MediaControls } from "./components/MediaControls";
 import { ParticipantsPanel } from "./components/ParticipantsPanel";
+import { PrivateChatPanel } from "./components/PrivateChatPanel";
 import { RobotVideo } from "./components/RobotVideo";
 import { StatusBar } from "./components/StatusBar";
 import { useLiveKitRoom } from "./useLiveKitRoom";
@@ -105,7 +106,11 @@ function RoomApp() {
   const [session, setSession] = useState<JoinRoomResponse | null>(() => readStoredSession());
   const [actionPending, setActionPending] = useState(false);
   const [notice, setNotice] = useState("");
+  const [locallyMutedAudio, setLocallyMutedAudio] = useState<Record<string, boolean>>({});
+  const [selectedPrivateChatParticipantId, setSelectedPrivateChatParticipantId] = useState<string | null>(null);
+  const [privateUnreadCounts, setPrivateUnreadCounts] = useState<Record<string, number>>({});
   const recoveringSessionRef = useRef(false);
+  const seenPrivateMessageIdsRef = useRef(new Set<string>());
   const handleForcedDisconnect = useCallback((message: string) => {
     clearStoredSession();
     setSession(null);
@@ -113,6 +118,21 @@ function RoomApp() {
   }, []);
   const roomSocket = useRoomSocket(session, handleForcedDisconnect);
   const liveKitRoom = useLiveKitRoom(session);
+
+  const handleToggleLocalAudioMute = useCallback((participantId: string) => {
+    setLocallyMutedAudio((current) => ({
+      ...current,
+      [participantId]: !current[participantId]
+    }));
+  }, []);
+
+  const handleSelectPrivateChatParticipant = useCallback((participantId: string) => {
+    setSelectedPrivateChatParticipantId(participantId);
+    setPrivateUnreadCounts((current) => ({
+      ...current,
+      [participantId]: 0
+    }));
+  }, []);
 
   const recoverSession = useCallback(
     async (successMessage: string) => {
@@ -257,6 +277,52 @@ function RoomApp() {
   }, [roomSocket.role, session]);
 
   useEffect(() => {
+    setLocallyMutedAudio({});
+    setSelectedPrivateChatParticipantId(null);
+    setPrivateUnreadCounts({});
+    seenPrivateMessageIdsRef.current.clear();
+  }, [session?.participantId]);
+
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+
+    for (const message of roomSocket.privateMessages) {
+      if (seenPrivateMessageIdsRef.current.has(message.messageId)) {
+        continue;
+      }
+
+      seenPrivateMessageIdsRef.current.add(message.messageId);
+      if (message.senderId === session.participantId) {
+        continue;
+      }
+
+      const peerId = message.senderId;
+      if (peerId === selectedPrivateChatParticipantId) {
+        continue;
+      }
+
+      setPrivateUnreadCounts((current) => ({
+        ...current,
+        [peerId]: (current[peerId] ?? 0) + 1
+      }));
+    }
+  }, [roomSocket.privateMessages, selectedPrivateChatParticipantId, session]);
+
+  useEffect(() => {
+    if (
+      selectedPrivateChatParticipantId &&
+      !roomSocket.participants.some(
+        (participant) =>
+          participant.id === selectedPrivateChatParticipantId && participant.role === "viewer" && participant.connected
+      )
+    ) {
+      setSelectedPrivateChatParticipantId(null);
+    }
+  }, [roomSocket.participants, selectedPrivateChatParticipantId]);
+
+  useEffect(() => {
     if (!roomSocket.lastError.startsWith("PARTICIPANT_NOT_FOUND")) {
       return;
     }
@@ -278,6 +344,11 @@ function RoomApp() {
 
   const effectiveRole = roomSocket.role ?? session.role;
   const activeNotice = roomSocket.lastError || liveKitRoom.lastError || notice;
+  const robotAudioParticipantId =
+    liveKitRoom.robotAudioTrack?.participantIdentity ??
+    roomSocket.participants.find((participant) => participant.role === "robot" && participant.connected)?.id;
+  const robotAudioMuted = robotAudioParticipantId ? Boolean(locallyMutedAudio[robotAudioParticipantId]) : false;
+  const privateChatErrors = roomSocket.privateChatErrors;
 
   return (
     <main className="app-shell">
@@ -305,15 +376,27 @@ function RoomApp() {
             liveKitState={liveKitRoom.connectionState}
             robotOnline={roomSocket.robotOnline}
             robotVideoTrack={liveKitRoom.robotVideoTrack}
+            robotAudioTrack={liveKitRoom.robotAudioTrack}
+            robotAudioMuted={robotAudioMuted}
+            canPlaybackAudio={liveKitRoom.canPlaybackAudio}
             robotEvents={roomSocket.robotEvents}
+            onEnableAudio={liveKitRoom.enableAudioPlayback}
           />
         </div>
 
         <aside className="participants-sidebar" aria-label="Remote participants">
           <ParticipantsPanel
             participants={liveKitRoom.remoteParticipants}
+            roomParticipants={roomSocket.participants}
+            currentParticipantId={session.participantId}
+            currentRole={effectiveRole}
+            robotAudioTrack={liveKitRoom.robotAudioTrack}
             canPlaybackAudio={liveKitRoom.canPlaybackAudio}
+            locallyMutedAudio={locallyMutedAudio}
+            privateUnreadCounts={privateUnreadCounts}
             onEnableAudio={liveKitRoom.enableAudioPlayback}
+            onToggleLocalAudioMute={handleToggleLocalAudioMute}
+            onStartPrivateChat={handleSelectPrivateChatParticipant}
           />
         </aside>
 
@@ -322,6 +405,18 @@ function RoomApp() {
             messages={roomSocket.chatMessages}
             onSend={roomSocket.sendChat}
             disabled={roomSocket.connectionState !== "connected"}
+          />
+          <PrivateChatPanel
+            currentParticipantId={session.participantId}
+            currentRole={effectiveRole}
+            participants={roomSocket.participants}
+            selectedParticipantId={selectedPrivateChatParticipantId}
+            messages={roomSocket.privateMessages}
+            errors={privateChatErrors}
+            unreadCounts={privateUnreadCounts}
+            disabled={roomSocket.connectionState !== "connected"}
+            onSelectParticipant={handleSelectPrivateChatParticipant}
+            onSend={roomSocket.sendPrivateChat}
           />
         </div>
 
