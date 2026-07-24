@@ -1,5 +1,7 @@
 import type {
   AdminActionResponse,
+  AdminRoomRecordResponse,
+  AdminRoomRecordsResponse,
   AdminRoomResponse,
   AdminRoomsResponse,
   ControlResponse,
@@ -111,8 +113,41 @@ export function adminCleanupParticipants(adminToken: string, roomName: string): 
 }
 
 export function adminCloseRoom(adminToken: string, roomName: string): Promise<AdminActionResponse> {
+  return requestJson<AdminActionResponse>(`/api/admin/rooms/${encodeURIComponent(roomName)}/close`, {
+    method: "POST",
+    headers: adminHeaders(adminToken)
+  });
+}
+
+export function adminCloseEmptyRoom(adminToken: string, roomName: string): Promise<AdminActionResponse> {
   return requestJson<AdminActionResponse>(`/api/admin/rooms/${encodeURIComponent(roomName)}`, {
     method: "DELETE",
+    headers: adminHeaders(adminToken)
+  });
+}
+
+export function adminKickParticipant(
+  adminToken: string,
+  roomName: string,
+  participantId: string
+): Promise<AdminActionResponse> {
+  return requestJson<AdminActionResponse>(
+    `/api/admin/rooms/${encodeURIComponent(roomName)}/participants/${encodeURIComponent(participantId)}/kick`,
+    {
+      method: "POST",
+      headers: adminHeaders(adminToken)
+    }
+  );
+}
+
+export function listAdminRoomRecords(adminToken: string, days = 30): Promise<AdminRoomRecordsResponse> {
+  return requestJson<AdminRoomRecordsResponse>(`/api/admin/room-records?days=${encodeURIComponent(String(days))}`, {
+    headers: adminHeaders(adminToken)
+  });
+}
+
+export function getAdminRoomRecord(adminToken: string, roomId: number): Promise<AdminRoomRecordResponse> {
+  return requestJson<AdminRoomRecordResponse>(`/api/admin/room-records/${encodeURIComponent(String(roomId))}`, {
     headers: adminHeaders(adminToken)
   });
 }

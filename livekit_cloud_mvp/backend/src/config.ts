@@ -6,6 +6,8 @@ export type AppConfig = {
   publicBaseUrl: string;
   nodeEnv: string;
   corsOrigins: string[];
+  databaseUrl: string;
+  roomRecordRetentionDays: number;
   liveKitUrl: string;
   liveKitApiKey?: string;
   liveKitApiSecret?: string;
@@ -25,6 +27,19 @@ function readBoolean(value: string | undefined, defaultValue: boolean): boolean 
   }
 
   return value.toLowerCase() === "true";
+}
+
+function readPositiveInteger(value: string | undefined, defaultValue: number, maxValue: number): number {
+  if (!value) {
+    return defaultValue;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return defaultValue;
+  }
+
+  return Math.min(parsed, maxValue);
 }
 
 export function getLiveKitTokenMode(liveKitUrl: string): LiveKitTokenMode {
@@ -76,6 +91,8 @@ export function loadConfig(): AppConfig {
   const liveKitUrl = process.env.LIVEKIT_URL?.trim() || "mock://livekit";
   const liveKitApiKey = process.env.LIVEKIT_API_KEY?.trim() || undefined;
   const liveKitApiSecret = process.env.LIVEKIT_API_SECRET?.trim() || undefined;
+  const databaseUrl = process.env.DATABASE_URL?.trim() || "file:./data/livekit_cloud_mvp.sqlite";
+  const roomRecordRetentionDays = readPositiveInteger(process.env.ROOM_RECORD_RETENTION_DAYS, 30, 30);
   const adminEnabled = readBoolean(process.env.ADMIN_ENABLED, false);
   const adminToken = process.env.ADMIN_TOKEN?.trim() || undefined;
 
@@ -94,6 +111,8 @@ export function loadConfig(): AppConfig {
     publicBaseUrl,
     nodeEnv,
     corsOrigins,
+    databaseUrl,
+    roomRecordRetentionDays,
     liveKitUrl,
     liveKitApiKey,
     liveKitApiSecret,

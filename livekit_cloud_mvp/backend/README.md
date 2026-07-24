@@ -13,6 +13,8 @@ PORT=3001
 NODE_ENV=production
 PUBLIC_BASE_URL=https://api.example.com
 CORS_ORIGIN=https://web.example.com
+DATABASE_URL=file:./data/livekit_cloud_mvp.sqlite
+ROOM_RECORD_RETENTION_DAYS=30
 LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_API_KEY=YOUR_LIVEKIT_CLOUD_API_KEY
 LIVEKIT_API_SECRET=YOUR_LIVEKIT_CLOUD_API_SECRET
@@ -26,6 +28,8 @@ ADMIN_TOKEN=CHANGE_ME_ADMIN_TOKEN
 
 Set `ADMIN_ENABLED=true` only when you need `/admin`. Replace `ADMIN_TOKEN` with a strong random value before enabling it.
 
+`DATABASE_URL` uses SQLite for MVP room history. The default `backend/data/livekit_cloud_mvp.sqlite` file is local server data and must not be committed.
+
 ## API
 
 - `GET /health`
@@ -35,8 +39,12 @@ Set `ADMIN_ENABLED=true` only when you need `/admin`. Replace `ADMIN_TOKEN` with
 - `POST /api/rooms/control/release`
 - `GET /api/admin/rooms`
 - `GET /api/admin/rooms/:roomName`
+- `GET /api/admin/room-records?days=30`
+- `GET /api/admin/room-records/:roomId`
 - `POST /api/admin/rooms/:roomName/control/release`
 - `POST /api/admin/rooms/:roomName/participants/cleanup`
+- `POST /api/admin/rooms/:roomName/participants/:participantId/kick`
+- `POST /api/admin/rooms/:roomName/close`
 - `DELETE /api/admin/rooms/:roomName`
 - WebSocket `/ws`
 
@@ -82,5 +90,6 @@ npm run check:livekit-env
 - API responses return a short-lived LiveKit token, not the API secret.
 - Logs must not print key, secret, or token values.
 - Admin APIs require `Authorization: Bearer <ADMIN_TOKEN>` and never return tokens or secrets.
+- Room history stores room metadata, participants, and sanitized events only. It must not store LiveKit secrets, LiveKit tokens, robot keys, or robot tokens.
 - Viewer robot-control attempts are rejected by backend business logic.
-- Allowed robot-control commands are `1002`, `1003`, and `1000`.
+- Allowed normal robot-control commands are `1000`, `1002`, `1003`, `1004`, `1005`, and `1006`; `1001` remains keyboard-control-only.

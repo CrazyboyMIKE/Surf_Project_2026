@@ -890,6 +890,11 @@ button:focus-visible {
   overflow-x: auto;
 }
 
+.compact-history {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
 .admin-table {
   width: 100%;
   border-collapse: collapse;
@@ -940,6 +945,17 @@ button:focus-visible {
 .danger-button:disabled {
   color: #8a9897;
   background: #edf2f1;
+}
+
+.compact-button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 0.82rem;
+}
+
+.admin-subheading {
+  margin: 16px 0 8px;
+  font-size: 1rem;
 }
 
 .state-pill,

@@ -33,6 +33,8 @@ export type WebSocketHub = {
   broadcastRobotStatus: (roomName: string) => void;
   broadcastRoomUpdate: (roomName: string) => void;
   stopKeyboardControl: (roomName: string, reason: string) => Promise<void>;
+  disconnectParticipant: (roomName: string, participantId: string, payload: Record<string, unknown>) => void;
+  disconnectRoom: (roomName: string, payload: Record<string, unknown>) => void;
 };
 
 function isRecord(value: unknown): value is WebSocketMessage {
@@ -87,6 +89,7 @@ export function attachWebSocketServer(
   const webSocketServer = new WebSocketServer({ server, path: "/ws" });
   const clientsByRoom = new Map<string, Set<WebSocket>>();
   const socketAlive = new WeakMap<WebSocket, boolean>();
+  const socketContexts = new WeakMap<WebSocket, SocketContext>();
   const pendingRemovalTimers = new Map<string, NodeJS.Timeout>();
 
   function participantTimerKey(roomName: string, participantId: string): string {
@@ -347,6 +350,7 @@ export function attachWebSocketServer(
         }
 
         context = { roomName, participantId };
+        socketContexts.set(socket, context);
         addClient(roomName, socket);
 
         sendJson(socket, {
@@ -559,6 +563,7 @@ export function attachWebSocketServer(
       }
 
       removeClient(context.roomName, socket);
+      socketContexts.delete(socket);
       const keyboardStatus = keyboardControlManager.getStatus(context.roomName);
       if (keyboardStatus.active && keyboardStatus.controllerId === context.participantId) {
         void keyboardControlManager.stopByController({
@@ -598,6 +603,28 @@ export function attachWebSocketServer(
     broadcastRoleUpdate,
     broadcastRobotStatus,
     broadcastRoomUpdate,
+    disconnectParticipant(roomName: string, participantId: string, payload: Record<string, unknown>): void {
+      for (const client of webSocketServer.clients) {
+        const clientContext = socketContexts.get(client);
+        if (!clientContext || clientContext.roomName !== roomName || clientContext.participantId !== participantId) {
+          continue;
+        }
+
+        sendJson(client, payload);
+        client.close(4001, String(payload.code ?? "participant_disconnected").slice(0, 120));
+      }
+    },
+    disconnectRoom(roomName: string, payload: Record<string, unknown>): void {
+      for (const client of webSocketServer.clients) {
+        const clientContext = socketContexts.get(client);
+        if (!clientContext || clientContext.roomName !== roomName) {
+          continue;
+        }
+
+        sendJson(client, payload);
+        client.close(4002, String(payload.code ?? "room_closed").slice(0, 120));
+      }
+    },
     async stopKeyboardControl(roomName: string, reason: string): Promise<void> {
       await keyboardControlManager.forceStop(roomName, reason);
       await forceHeadStop(roomName, "system", reason);

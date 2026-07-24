@@ -78,6 +78,7 @@ export type Participant = {
 
 export type RoomState = {
   roomName: string;
+  historyRoomId?: number;
   robotId?: string;
   robotOnline: boolean;
   participants: Map<string, Participant>;
@@ -146,6 +147,56 @@ export type AdminRoomDetail = AdminRoomSummary & {
   participants: AdminParticipantSnapshot[];
 };
 
+export type RoomRecordStatus = "open" | "closed";
+
+export type RoomRecordSummary = {
+  id: number;
+  roomName: string;
+  inviteCode?: string;
+  status: RoomRecordStatus;
+  currentControllerParticipantId?: string;
+  robotId?: string;
+  createdAt: number;
+  updatedAt: number;
+  closedAt?: number;
+  closeReason?: string;
+  participantCount: number;
+  viewerCount: number;
+  controllerCount: number;
+  latestControllerName?: string;
+  robotParticipantName?: string;
+};
+
+export type RoomParticipantRecord = {
+  id: number;
+  roomId: number;
+  participantId: string;
+  clientSessionId?: string;
+  participantName: string;
+  role: Role;
+  connected: boolean;
+  joinedAt: number;
+  lastSeenAt: number;
+  leftAt?: number;
+  kickedAt?: number;
+  kickReason?: string;
+};
+
+export type RoomEventRecord = {
+  id: number;
+  roomId: number;
+  type: string;
+  actorParticipantId?: string;
+  actorName?: string;
+  payload?: Record<string, unknown>;
+  createdAt: number;
+};
+
+export type RoomRecordDetail = RoomRecordSummary & {
+  participants: RoomParticipantRecord[];
+  events: RoomEventRecord[];
+};
+
 export type ApiErrorCode =
   | "INVALID_REQUEST"
   | "ROOM_NOT_FOUND"
@@ -166,4 +217,6 @@ export type ApiErrorCode =
   | "ADMIN_DISABLED"
   | "UNAUTHORIZED"
   | "FORBIDDEN"
-  | "ROOM_NOT_EMPTY";
+  | "ROOM_NOT_EMPTY"
+  | "ROOM_CLOSED"
+  | "PARTICIPANT_KICKED";

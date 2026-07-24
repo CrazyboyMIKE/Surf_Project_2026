@@ -56,6 +56,8 @@ PORT=3001
 NODE_ENV=production
 PUBLIC_BASE_URL=https://api.example.com
 CORS_ORIGIN=https://web.example.com
+DATABASE_URL=file:./data/livekit_cloud_mvp.sqlite
+ROOM_RECORD_RETENTION_DAYS=30
 LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_API_KEY=YOUR_LIVEKIT_CLOUD_API_KEY
 LIVEKIT_API_SECRET=YOUR_LIVEKIT_CLOUD_API_SECRET
@@ -66,6 +68,8 @@ ADMIN_TOKEN=CHANGE_ME_ADMIN_TOKEN
 ```
 
 For the admin console, set `ADMIN_ENABLED=true` and replace `ADMIN_TOKEN` with a strong random value. Do not use `CHANGE_ME_ADMIN_TOKEN` on a public deployment.
+
+The SQLite file under `backend/data/` stores room history. Keep this directory on the server and do not copy it into Git. If your deployment script replaces the whole backend directory, back up `backend/data/` first.
 
 Start with pm2 or systemd:
 

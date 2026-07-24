@@ -106,7 +106,12 @@ function RoomApp() {
   const [actionPending, setActionPending] = useState(false);
   const [notice, setNotice] = useState("");
   const recoveringSessionRef = useRef(false);
-  const roomSocket = useRoomSocket(session);
+  const handleForcedDisconnect = useCallback((message: string) => {
+    clearStoredSession();
+    setSession(null);
+    setNotice(message);
+  }, []);
+  const roomSocket = useRoomSocket(session, handleForcedDisconnect);
   const liveKitRoom = useLiveKitRoom(session);
 
   const recoverSession = useCallback(
@@ -268,7 +273,7 @@ function RoomApp() {
   }, [liveKitRoom.lastError, recoverSession]);
 
   if (!session) {
-    return <JoinRoomForm onJoin={handleJoin} />;
+    return <JoinRoomForm onJoin={handleJoin} notice={notice} />;
   }
 
   const effectiveRole = roomSocket.role ?? session.role;

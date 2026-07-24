@@ -21,8 +21,9 @@ function getReconnectDelayMs(attempt: number): number {
   return Math.min(1000 * 2 ** Math.max(attempt - 1, 0), MAX_RECONNECT_DELAY_MS);
 }
 
-export function useRoomSocket(session: JoinRoomResponse | null) {
+export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconnect?: (message: string) => void) {
   const socketRef = useRef<WebSocket | null>(null);
+  const onForcedDisconnectRef = useRef(onForcedDisconnect);
   const [connectionState, setConnectionState] = useState<ConnectionState>("idle");
   const [role, setRole] = useState<WebRole | null>(session?.role ?? null);
   const [currentControllerName, setCurrentControllerName] = useState<string | undefined>(session?.currentControllerName);
@@ -33,6 +34,10 @@ export function useRoomSocket(session: JoinRoomResponse | null) {
   const [keyboardStatus, setKeyboardStatus] = useState<KeyboardControlStatus | null>(null);
   const [lastKeyboardResult, setLastKeyboardResult] = useState("");
   const [lastError, setLastError] = useState<string>("");
+
+  useEffect(() => {
+    onForcedDisconnectRef.current = onForcedDisconnect;
+  }, [onForcedDisconnect]);
 
   useEffect(() => {
     setRole(session?.role ?? null);
@@ -163,7 +168,12 @@ export function useRoomSocket(session: JoinRoomResponse | null) {
         }
 
         if (message.type === "error") {
-          setLastError(`${message.code}: ${message.message}`);
+          const errorText = `${message.code}: ${message.message}`;
+          setLastError(errorText);
+          if (message.code === "PARTICIPANT_KICKED" || message.code === "ROOM_CLOSED") {
+            onForcedDisconnectRef.current?.(errorText);
+            socket.close(1000, "forced_disconnect");
+          }
         }
       });
 

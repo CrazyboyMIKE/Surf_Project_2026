@@ -7,4 +7,9 @@
 **/.env.local
 **/.env.production
 **/local.properties
+backend/data/
+backend/.data/
+**/*.sqlite
+**/*.sqlite-shm
+**/*.sqlite-wal
 **/.DS_Store

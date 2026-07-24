@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import express from "express";
 import { createAdminRouter } from "./adminRoutes.js";
+import { RoomHistoryRepository } from "../db/roomHistoryRepository.js";
 import { RoomStore } from "../state/roomStore.js";
 
 const ADMIN_TOKEN = "TEST_ADMIN_TOKEN";
@@ -10,6 +11,7 @@ const ADMIN_TOKEN = "TEST_ADMIN_TOKEN";
 type TestServer = {
   baseUrl: string;
   roomStore: RoomStore;
+  historyRepository: RoomHistoryRepository;
   close: () => Promise<void>;
 };
 
@@ -25,7 +27,11 @@ function listen(server: Server): Promise<number> {
 }
 
 async function createTestServer(adminEnabled: boolean): Promise<TestServer> {
-  const roomStore = new RoomStore({ mockRobotOnline: false });
+  const historyRepository = new RoomHistoryRepository({
+    databaseUrl: ":memory:",
+    retentionDays: 30
+  });
+  const roomStore = new RoomStore({ mockRobotOnline: false, historyRepository });
   const app = express();
   app.use(express.json());
   app.use(
@@ -36,7 +42,9 @@ async function createTestServer(adminEnabled: boolean): Promise<TestServer> {
       stopKeyboardControl: async () => undefined,
       broadcastRoleUpdate: () => undefined,
       broadcastRobotStatus: () => undefined,
-      broadcastRoomUpdate: () => undefined
+      broadcastRoomUpdate: () => undefined,
+      disconnectParticipant: () => undefined,
+      disconnectRoom: () => undefined
     })
   );
   const server = createServer(app);
@@ -45,6 +53,7 @@ async function createTestServer(adminEnabled: boolean): Promise<TestServer> {
   return {
     baseUrl: `http://127.0.0.1:${port}`,
     roomStore,
+    historyRepository,
     close: () =>
       new Promise((resolve, reject) => {
         server.close((error) => {
@@ -52,6 +61,7 @@ async function createTestServer(adminEnabled: boolean): Promise<TestServer> {
             reject(error);
             return;
           }
+          historyRepository.close();
           resolve();
         });
       })
@@ -89,6 +99,16 @@ try {
   });
   assert.equal(wrongToken.status, 403);
   assert.equal(wrongToken.body.code, "FORBIDDEN");
+
+  const unauthorizedKick = await requestJson(server.baseUrl, "/api/admin/rooms/robot-room-001/participants/user-a/kick", {
+    method: "POST"
+  });
+  assert.equal(unauthorizedKick.status, 401);
+
+  const unauthorizedClose = await requestJson(server.baseUrl, "/api/admin/rooms/robot-room-001/close", {
+    method: "POST"
+  });
+  assert.equal(unauthorizedClose.status, 401);
 
   const roomJoin = server.roomStore.joinWebParticipant("robot-room-001", "Alice", "controller");
   server.roomStore.markParticipantConnected(roomJoin.room.roomName, roomJoin.participant.id);
@@ -130,6 +150,56 @@ try {
   assert.equal(release.status, 200);
   assert.equal(release.body.released, true);
   assert.equal(server.roomStore.getRoom("robot-room-001")?.currentControllerId, undefined);
+
+  const charlieJoin = server.roomStore.joinWebParticipant("robot-room-001", "Charlie", "viewer");
+  server.roomStore.markParticipantConnected("robot-room-001", charlieJoin.participant.id);
+  const kick = await requestJson(
+    server.baseUrl,
+    `/api/admin/rooms/robot-room-001/participants/${encodeURIComponent(charlieJoin.participant.id)}/kick`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${ADMIN_TOKEN}` }
+    }
+  );
+  assert.equal(kick.status, 200);
+  assert.equal(kick.body.kickedParticipantId, charlieJoin.participant.id);
+  assert.equal(server.roomStore.getRoom("robot-room-001")?.participants.has(charlieJoin.participant.id), false);
+
+  const records = await requestJson(server.baseUrl, "/api/admin/room-records", {
+    headers: { Authorization: `Bearer ${ADMIN_TOKEN}` }
+  });
+  assert.equal(records.status, 200);
+  const recordList = records.body.records as Array<{ id: number; roomName: string; status: string }>;
+  const activeRecord = recordList.find((record) => record.roomName === "robot-room-001" && record.status === "open");
+  assert.ok(activeRecord);
+
+  const recordDetail = await requestJson(server.baseUrl, `/api/admin/room-records/${activeRecord.id}`, {
+    headers: { Authorization: `Bearer ${ADMIN_TOKEN}` }
+  });
+  assert.equal(recordDetail.status, 200);
+  const historyDetail = recordDetail.body.record as {
+    participants: Array<{ participantId: string; kickedAt?: number }>;
+    events: Array<{ type: string; payload?: Record<string, unknown> }>;
+  };
+  assert.equal(
+    historyDetail.participants.some((participant) => participant.participantId === charlieJoin.participant.id && typeof participant.kickedAt === "number"),
+    true
+  );
+  assert.equal(historyDetail.events.some((event) => event.type === "participant_kicked"), true);
+  assert.equal(
+    historyDetail.events.some((event) => Object.prototype.hasOwnProperty.call(event.payload ?? {}, "LIVEKIT_API_SECRET")),
+    false
+  );
+
+  const close = await requestJson(server.baseUrl, "/api/admin/rooms/robot-room-001/close", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${ADMIN_TOKEN}` }
+  });
+  assert.equal(close.status, 200);
+  assert.equal(server.roomStore.getRoom("robot-room-001"), undefined);
+  const closedRecord = server.roomStore.getRoomRecord(activeRecord.id);
+  assert.equal(closedRecord?.status, "closed");
+  assert.equal(closedRecord?.closeReason, "admin_closed");
 } finally {
   await server.close();
 }

@@ -75,6 +75,12 @@ type RobotControlMessage = {
   timestamp: number;
 };
 
+type ServerErrorMessage = {
+  type: "error";
+  code: string;
+  message: string;
+};
+
 type RoomSession = JoinRobotResponse & {
   robotName: string;
 };
@@ -165,6 +171,19 @@ function isKeyboardControlStatusMessage(message: unknown): message is KeyboardCo
 
 function isRobotControlMessage(message: unknown): message is RobotControlMessage {
   return typeof message === "object" && message !== null && "type" in message && message.type === "robot_control";
+}
+
+function isServerErrorMessage(message: unknown): message is ServerErrorMessage {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    "type" in message &&
+    message.type === "error" &&
+    "code" in message &&
+    typeof message.code === "string" &&
+    "message" in message &&
+    typeof message.message === "string"
+  );
 }
 
 async function joinRobot(roomName: string, robotId: string): Promise<JoinRobotResponse> {
@@ -733,6 +752,18 @@ function App() {
     setTokenMode("none");
   }
 
+  function forceExit(message: string) {
+    resetConnections();
+    setSession(null);
+    setView("entry");
+    setBackendState("idle");
+    setWebSocketState("idle");
+    setLiveKitState("idle");
+    setPublishState("idle");
+    setTokenMode("none");
+    setError(message);
+  }
+
   async function enterRoom(_mode: "create" | "join") {
     const trimmedRoomName = roomName.trim();
     const trimmedRobotName = robotName.trim();
@@ -788,6 +819,16 @@ function App() {
         if (isRoleUpdateMessage(message)) {
           participantsByIdRef.current = new Map(message.participants.map((participant) => [participant.id, participant]));
           updateRemoteVideos();
+          return;
+        }
+
+        if (isServerErrorMessage(message)) {
+          if (message.code === "PARTICIPANT_KICKED" || message.code === "ROOM_CLOSED") {
+            forceExit(`${message.code}: ${message.message}`);
+            return;
+          }
+
+          setError(`${message.code}: ${message.message}`);
           return;
         }
 

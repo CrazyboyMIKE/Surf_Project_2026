@@ -152,6 +152,56 @@ export type AdminRoomDetail = AdminRoomSummary & {
   participants: AdminParticipant[];
 };
 
+export type RoomRecordStatus = "open" | "closed";
+
+export type AdminRoomRecordSummary = {
+  id: number;
+  roomName: string;
+  inviteCode?: string;
+  status: RoomRecordStatus;
+  currentControllerParticipantId?: string;
+  robotId?: string;
+  createdAt: number;
+  updatedAt: number;
+  closedAt?: number;
+  closeReason?: string;
+  participantCount: number;
+  viewerCount: number;
+  controllerCount: number;
+  latestControllerName?: string;
+  robotParticipantName?: string;
+};
+
+export type AdminRoomParticipantRecord = {
+  id: number;
+  roomId: number;
+  participantId: string;
+  clientSessionId?: string;
+  participantName: string;
+  role: Role;
+  connected: boolean;
+  joinedAt: number;
+  lastSeenAt: number;
+  leftAt?: number;
+  kickedAt?: number;
+  kickReason?: string;
+};
+
+export type AdminRoomEventRecord = {
+  id: number;
+  roomId: number;
+  type: string;
+  actorParticipantId?: string;
+  actorName?: string;
+  payload?: Record<string, unknown>;
+  createdAt: number;
+};
+
+export type AdminRoomRecordDetail = AdminRoomRecordSummary & {
+  participants: AdminRoomParticipantRecord[];
+  events: AdminRoomEventRecord[];
+};
+
 export type AdminRoomsResponse = {
   ok: true;
   rooms: AdminRoomSummary[];
@@ -167,7 +217,21 @@ export type AdminActionResponse = {
   message?: string;
   released?: boolean;
   removedCount?: number;
+  kickedParticipantId?: string;
+  closedParticipants?: number;
+  roomDeleted?: boolean;
   room?: AdminRoomDetail;
+};
+
+export type AdminRoomRecordsResponse = {
+  ok: true;
+  days: number;
+  records: AdminRoomRecordSummary[];
+};
+
+export type AdminRoomRecordResponse = {
+  ok: true;
+  record: AdminRoomRecordDetail;
 };
 
 export type ChatMessage = {

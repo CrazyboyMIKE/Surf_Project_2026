@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { RoomHistoryRepository } from "../db/roomHistoryRepository.js";
 import type {
   AdminRoomDetail,
   AdminRoomSummary,
@@ -7,6 +8,8 @@ import type {
   RobotControlEventCommand,
   RobotControlLogParameters,
   RoomSnapshot,
+  RoomRecordDetail,
+  RoomRecordSummary,
   RoomState,
   WebRole
 } from "../types.js";
@@ -106,6 +109,7 @@ export type CleanupParticipantsResult =
 export type CloseRoomResult =
   | {
       ok: true;
+      closedParticipants?: Participant[];
       message: string;
     }
   | {
@@ -114,6 +118,36 @@ export type CloseRoomResult =
       code: "ROOM_NOT_FOUND" | "ROOM_NOT_EMPTY";
       message: string;
       room?: RoomState;
+    };
+
+export type AdminKickParticipantResult =
+  | {
+      ok: true;
+      room?: RoomState;
+      kickedParticipant: Participant;
+      controllerReleased: boolean;
+      robotStatusChanged: boolean;
+      roomDeleted: boolean;
+      message: string;
+    }
+  | {
+      ok: false;
+      status: number;
+      code: "ROOM_NOT_FOUND" | "PARTICIPANT_NOT_FOUND";
+      message: string;
+    };
+
+export type AdminCloseRoomResult =
+  | {
+      ok: true;
+      closedParticipants: Participant[];
+      message: string;
+    }
+  | {
+      ok: false;
+      status: number;
+      code: "ROOM_NOT_FOUND";
+      message: string;
     };
 
 export type RemoveParticipantResult = {
@@ -126,8 +160,11 @@ export type RemoveParticipantResult = {
 
 export class RoomStore {
   private readonly rooms = new Map<string, RoomState>();
+  private readonly historyRepository?: RoomHistoryRepository;
 
-  constructor(private readonly options: { mockRobotOnline: boolean }) {}
+  constructor(private readonly options: { mockRobotOnline: boolean; historyRepository?: RoomHistoryRepository }) {
+    this.historyRepository = options.historyRepository;
+  }
 
   getRoom(roomName: string): RoomState | undefined {
     return this.rooms.get(roomName);
@@ -147,6 +184,7 @@ export class RoomStore {
     };
 
     this.rooms.set(roomName, room);
+    this.ensureHistoryRoom(room);
     return room;
   }
 
@@ -170,6 +208,7 @@ export class RoomStore {
       reusableParticipant.lastSeenAt = now;
       reusableParticipant.disconnectedAt = undefined;
       this.touchRoom(room, now);
+      this.persistParticipant(room, reusableParticipant, "participant_joined", now);
 
       return {
         room,
@@ -198,6 +237,14 @@ export class RoomStore {
       room.currentControllerId = participantId;
     }
     this.touchRoom(room);
+    this.persistParticipant(room, participant, "participant_joined", now);
+    if (role === "controller") {
+      this.recordHistoryEvent(room, "controller_changed", participant, {
+        participantId,
+        participantName,
+        role
+      }, now);
+    }
 
     return {
       room,
@@ -224,6 +271,7 @@ export class RoomStore {
     room.robotOnline = true;
     room.participants.set(participantId, participant);
     this.touchRoom(room);
+    this.persistParticipant(room, participant, "robot_online", now);
 
     return {
       room,
@@ -271,6 +319,11 @@ export class RoomStore {
     room.currentControllerId = participantId;
     participant.lastSeenAt = Date.now();
     this.touchRoom(room);
+    this.persistParticipant(room, participant, "controller_changed", participant.lastSeenAt, {
+      participantId,
+      participantName: participant.name,
+      role: participant.role
+    });
 
     return {
       ok: true,
@@ -308,6 +361,11 @@ export class RoomStore {
     participant.role = "viewer";
     participant.lastSeenAt = Date.now();
     this.touchRoom(room);
+    this.persistParticipant(room, participant, released ? "controller_changed" : undefined, participant.lastSeenAt, {
+      participantId,
+      participantName: participant.name,
+      role: participant.role
+    });
 
     return {
       ok: true,
@@ -387,6 +445,13 @@ export class RoomStore {
     targetParticipant.lastSeenAt = now;
     room.currentControllerId = targetParticipant.id;
     this.touchRoom(room, now);
+    this.persistParticipant(room, fromParticipant, undefined, now);
+    this.persistParticipant(room, targetParticipant, "controller_changed", now, {
+      previousRole: "controller",
+      newRole: "controller",
+      targetParticipantId: targetParticipant.id,
+      targetName: targetParticipant.name
+    });
 
     return {
       ok: true,
@@ -410,6 +475,7 @@ export class RoomStore {
       }
       if (room) {
         this.touchRoom(room, now);
+        this.persistParticipant(room, participant, undefined, now);
       }
     }
     return participant;
@@ -430,11 +496,16 @@ export class RoomStore {
     participant.lastSeenAt = now;
     participant.disconnectedAt = now;
     this.touchRoom(room, now);
+    this.persistParticipant(room, participant, undefined, now);
 
     return { room, robotStatusChanged: false };
   }
 
-  removeParticipant(roomName: string, participantId: string): RemoveParticipantResult {
+  removeParticipant(
+    roomName: string,
+    participantId: string,
+    options: { closeReason?: string; eventType?: "participant_left" | "participant_kicked"; kickReason?: string } = {}
+  ): RemoveParticipantResult {
     const room = this.rooms.get(roomName);
     const participant = room?.participants.get(participantId);
     if (!room || !participant) {
@@ -459,10 +530,12 @@ export class RoomStore {
         room.robotId = undefined;
       }
     }
+    this.markHistoryParticipantRemoved(room, participant, options, now);
 
     room.participants.delete(participantId);
 
     if (room.participants.size === 0) {
+      this.closeHistoryRoom(room, options.closeReason ?? "empty_room", undefined, now);
       this.rooms.delete(roomName);
       return {
         removedParticipant: participant,
@@ -473,6 +546,7 @@ export class RoomStore {
     }
 
     this.touchRoom(room, now);
+    this.persistRoomState(room, now);
     return {
       room,
       removedParticipant: participant,
@@ -501,6 +575,17 @@ export class RoomStore {
       timestamp
     };
     this.touchRoom(room, timestamp);
+    this.recordHistoryEvent(
+      room,
+      "robot_control",
+      room.participants.get(from),
+      {
+        command,
+        participantId: from,
+        timestamp
+      },
+      timestamp
+    );
   }
 
   setKeyboardControlStatus(roomName: string, status: KeyboardControlStatus): void {
@@ -595,9 +680,16 @@ export class RoomStore {
     if (controller && controller.role !== "robot") {
       controller.role = "viewer";
       controller.lastSeenAt = Date.now();
+      this.persistParticipant(room, controller, undefined, controller.lastSeenAt);
     }
     room.currentControllerId = undefined;
     this.touchRoom(room);
+    this.persistRoomState(room);
+    this.recordHistoryEvent(room, "controller_changed", controller, {
+      participantId: controller?.id ?? controllerId,
+      participantName: controller?.name ?? "",
+      role: "viewer"
+    });
 
     return {
       ok: true,
@@ -628,6 +720,7 @@ export class RoomStore {
 
       room.participants.delete(participant.id);
       removedCount += 1;
+      this.markHistoryParticipantRemoved(room, participant, { eventType: "participant_left" }, now);
       if (room.currentControllerId === participant.id) {
         room.currentControllerId = undefined;
       }
@@ -642,7 +735,10 @@ export class RoomStore {
     if (removedCount > 0) {
       this.touchRoom(room, now);
       if (room.participants.size === 0) {
+        this.closeHistoryRoom(room, "empty_room", undefined, now);
         this.rooms.delete(roomName);
+      } else {
+        this.persistRoomState(room, now);
       }
     }
 
@@ -676,10 +772,220 @@ export class RoomStore {
     }
 
     this.rooms.delete(roomName);
+    this.closeHistoryRoom(room, "admin_closed", undefined, Date.now());
     return {
       ok: true,
       message: "Room closed"
     };
+  }
+
+  listRoomRecords(days?: number): RoomRecordSummary[] {
+    return this.historyRepository?.listRoomRecords(days) ?? [];
+  }
+
+  getRoomRecord(roomId: number): RoomRecordDetail | undefined {
+    return this.historyRepository?.getRoomRecord(roomId);
+  }
+
+  kickParticipantByAdmin(roomName: string, participantId: string, kickReason = "admin_kicked"): AdminKickParticipantResult {
+    const room = this.rooms.get(roomName);
+    if (!room) {
+      return {
+        ok: false,
+        status: 404,
+        code: "ROOM_NOT_FOUND",
+        message: "Room does not exist"
+      };
+    }
+
+    const participant = room.participants.get(participantId);
+    if (!participant) {
+      return {
+        ok: false,
+        status: 404,
+        code: "PARTICIPANT_NOT_FOUND",
+        message: "Participant is not in this room"
+      };
+    }
+
+    const result = this.removeParticipant(roomName, participantId, {
+      eventType: "participant_kicked",
+      kickReason,
+      closeReason: "empty_room"
+    });
+
+    return {
+      ok: true,
+      room: result.room,
+      kickedParticipant: participant,
+      controllerReleased: result.controllerReleased,
+      robotStatusChanged: result.robotStatusChanged,
+      roomDeleted: result.roomDeleted,
+      message: "Participant kicked"
+    };
+  }
+
+  closeRoomByAdmin(roomName: string): AdminCloseRoomResult {
+    const room = this.rooms.get(roomName);
+    if (!room) {
+      return {
+        ok: false,
+        status: 404,
+        code: "ROOM_NOT_FOUND",
+        message: "Room does not exist"
+      };
+    }
+
+    const now = Date.now();
+    const closedParticipants = Array.from(room.participants.values());
+    this.closeHistoryRoom(room, "admin_closed", undefined, now);
+    this.rooms.delete(roomName);
+
+    return {
+      ok: true,
+      closedParticipants,
+      message: "Room closed by admin"
+    };
+  }
+
+  private ensureHistoryRoom(room: RoomState, timestamp = Date.now()): number | undefined {
+    if (!this.historyRepository) {
+      return undefined;
+    }
+
+    if (!room.historyRoomId) {
+      room.historyRoomId = this.historyRepository.ensureOpenRoom(room.roomName, timestamp);
+    }
+
+    this.persistRoomState(room, timestamp);
+    return room.historyRoomId;
+  }
+
+  private persistRoomState(room: RoomState, timestamp = Date.now()): void {
+    if (!this.historyRepository) {
+      return;
+    }
+
+    const roomId = room.historyRoomId ?? this.ensureHistoryRoom(room, timestamp);
+    if (!roomId) {
+      return;
+    }
+
+    this.historyRepository.updateRoomState(roomId, {
+      currentControllerParticipantId: room.currentControllerId,
+      robotId: room.robotId,
+      updatedAt: timestamp
+    });
+  }
+
+  private persistParticipant(
+    room: RoomState,
+    participant: Participant,
+    eventType?: string,
+    timestamp = Date.now(),
+    payload?: Record<string, unknown>
+  ): void {
+    if (!this.historyRepository) {
+      return;
+    }
+
+    const roomId = room.historyRoomId ?? this.ensureHistoryRoom(room, timestamp);
+    if (!roomId) {
+      return;
+    }
+
+    this.historyRepository.upsertParticipant(roomId, participant, timestamp);
+    this.persistRoomState(room, timestamp);
+
+    if (eventType) {
+      this.historyRepository.recordEvent(
+        roomId,
+        eventType,
+        participant,
+        {
+          participantId: participant.id,
+          participantName: participant.name,
+          role: participant.role,
+          ...payload
+        },
+        timestamp
+      );
+    }
+  }
+
+  private markHistoryParticipantRemoved(
+    room: RoomState,
+    participant: Participant,
+    options: { eventType?: "participant_left" | "participant_kicked"; kickReason?: string } = {},
+    timestamp = Date.now()
+  ): void {
+    if (!this.historyRepository) {
+      return;
+    }
+
+    const roomId = room.historyRoomId ?? this.ensureHistoryRoom(room, timestamp);
+    if (!roomId) {
+      return;
+    }
+
+    const eventType = options.eventType ?? "participant_left";
+    if (eventType === "participant_kicked") {
+      this.historyRepository.markParticipantKicked(roomId, participant, options.kickReason ?? "admin_kicked", timestamp);
+    } else {
+      this.historyRepository.markParticipantLeft(roomId, participant, timestamp);
+    }
+
+    this.historyRepository.recordEvent(
+      roomId,
+      eventType,
+      participant,
+      {
+        participantId: participant.id,
+        participantName: participant.name,
+        role: participant.role,
+        kickReason: options.kickReason
+      },
+      timestamp
+    );
+
+    if (participant.role === "robot") {
+      this.historyRepository.recordEvent(roomId, "robot_offline", participant, {
+        robotId: participant.name,
+        participantId: participant.id
+      }, timestamp);
+    }
+  }
+
+  private closeHistoryRoom(room: RoomState, closeReason: string, actor?: Participant, timestamp = Date.now()): void {
+    if (!this.historyRepository) {
+      return;
+    }
+
+    const roomId = room.historyRoomId ?? this.ensureHistoryRoom(room, timestamp);
+    if (!roomId) {
+      return;
+    }
+
+    this.historyRepository.closeRoom(roomId, closeReason, actor, timestamp);
+  }
+
+  private recordHistoryEvent(
+    room: RoomState,
+    eventType: string,
+    actor?: Participant,
+    payload?: Record<string, unknown>,
+    timestamp = Date.now()
+  ): void {
+    if (!this.historyRepository) {
+      return;
+    }
+
+    const roomId = room.historyRoomId ?? this.ensureHistoryRoom(room, timestamp);
+    if (!roomId) {
+      return;
+    }
+
+    this.historyRepository.recordEvent(roomId, eventType, actor, payload, timestamp);
   }
 
   private touchRoom(room: RoomState, timestamp = Date.now()): void {

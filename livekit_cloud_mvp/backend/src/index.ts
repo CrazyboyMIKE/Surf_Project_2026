@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import cors from "cors";
 import express from "express";
 import { loadConfig } from "./config.js";
+import { RoomHistoryRepository } from "./db/roomHistoryRepository.js";
 import { createAdminRouter } from "./http/adminRoutes.js";
 import { createApiRouter } from "./http/routes.js";
 import { createRobotControlAdapter } from "./robotControl/adapter.js";
@@ -13,7 +14,11 @@ import { attachWebSocketServer } from "./ws/webSocketServer.js";
 const config = loadConfig();
 const app = express();
 const server = createServer(app);
-const roomStore = new RoomStore({ mockRobotOnline: config.mockRobotOnline });
+const roomHistoryRepository = new RoomHistoryRepository({
+  databaseUrl: config.databaseUrl,
+  retentionDays: config.roomRecordRetentionDays
+});
+const roomStore = new RoomStore({ mockRobotOnline: config.mockRobotOnline, historyRepository: roomHistoryRepository });
 const robotControlAdapter = createRobotControlAdapter(config.robotControl);
 const liveKitTokenService = new LiveKitTokenService({
   liveKitUrl: config.liveKitUrl,
@@ -64,7 +69,9 @@ app.use(
     stopKeyboardControl: webSocketHub.stopKeyboardControl,
     broadcastRoleUpdate: webSocketHub.broadcastRoleUpdate,
     broadcastRobotStatus: webSocketHub.broadcastRobotStatus,
-    broadcastRoomUpdate: webSocketHub.broadcastRoomUpdate
+    broadcastRoomUpdate: webSocketHub.broadcastRoomUpdate,
+    disconnectParticipant: webSocketHub.disconnectParticipant,
+    disconnectRoom: webSocketHub.disconnectRoom
   })
 );
 
@@ -95,6 +102,8 @@ server.listen(config.port, () => {
   console.log(`Robot control mode: ${robotControlAdapter.mode}`);
   console.log(`Robot real control: ${config.robotControl.enabled ? "enabled" : "disabled"}`);
   console.log(`Robot head control: ${config.robotControl.headControlEnabled ? "enabled" : "disabled"}`);
+  console.log(`Room history database: ${config.databaseUrl}`);
+  console.log(`Room record retention days: ${config.roomRecordRetentionDays}`);
   console.log(
     `Keyboard 1001 control: ${
       config.keyboardControl.enabled && config.keyboardControl.continuous1001Enabled ? "enabled" : "disabled"

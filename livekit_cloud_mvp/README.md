@@ -26,9 +26,11 @@ Implemented in this isolated project:
 - viewer/controller tokens can publish microphone and camera media
 - robot video subscription in Web
 - `/admin` room management console protected by backend admin token
+- SQLite-backed room history for the latest 30 days
+- admin room history, participant/event detail, kick participant, and close room operations
 - robot-web-publisher camera publishing
 - Android robot camera publishing code copied from the main MVP
-- mock-only robot control commands: `1002`, `1003`, `1000`
+- safe robot control commands through backend validation
 
 Not included:
 
@@ -38,7 +40,7 @@ Not included:
 - LiveKit Nginx proxy
 - custom WebRTC/SFU
 - backend audio/video frame forwarding
-- database or account system
+- account system
 - real robot motion control
 
 ## LiveKit Cloud Setup
@@ -52,6 +54,8 @@ PORT=3001
 NODE_ENV=production
 PUBLIC_BASE_URL=https://api.example.com
 CORS_ORIGIN=https://web.example.com
+DATABASE_URL=file:./data/livekit_cloud_mvp.sqlite
+ROOM_RECORD_RETENTION_DAYS=30
 LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_API_KEY=YOUR_LIVEKIT_CLOUD_API_KEY
 LIVEKIT_API_SECRET=YOUR_LIVEKIT_CLOUD_API_SECRET
@@ -78,7 +82,7 @@ Web, robot-web-publisher, and Android never need `LIVEKIT_API_SECRET`.
 
 Viewer and controller users can both manually turn microphone/camera on in Web after joining with a LiveKit Cloud token. Robot movement/control permissions are still separate: only the active controller can send `1002`, `1003`, or `1000`.
 
-Admin console is available at `/admin` when backend `ADMIN_ENABLED=true` and a strong `ADMIN_TOKEN` is configured.
+Admin console is available at `/admin` when backend `ADMIN_ENABLED=true` and a strong `ADMIN_TOKEN` is configured. It can inspect active rooms, query 30-day SQLite room records, kick online participants, and close rooms. It must not display tokens or secrets.
 
 ## Local Development
 

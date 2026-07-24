@@ -11,9 +11,13 @@ type AdminRouterDependencies = {
   broadcastRoleUpdate: (roomName: string) => void;
   broadcastRobotStatus: (roomName: string) => void;
   broadcastRoomUpdate: (roomName: string) => void;
+  disconnectParticipant: (roomName: string, participantId: string, payload: Record<string, unknown>) => void;
+  disconnectRoom: (roomName: string, payload: Record<string, unknown>) => void;
 };
 
 const SAFE_ROOM_NAME_PATTERN = /^[A-Za-z0-9._:-]{1,80}$/;
+const SAFE_PARTICIPANT_ID_PATTERN = /^[A-Za-z0-9._:-]{1,120}$/;
+const MAX_RECORD_DAYS = 30;
 
 function sendError(res: Response, status: number, code: ApiErrorCode, message: string): void {
   res.status(status).json({
@@ -87,6 +91,35 @@ function readSafeRoomName(req: Request, res: Response): string | undefined {
   return roomName;
 }
 
+function readSafeParticipantId(req: Request, res: Response): string | undefined {
+  const participantId = req.params.participantId;
+  if (!participantId || !SAFE_PARTICIPANT_ID_PATTERN.test(participantId)) {
+    sendError(res, 400, "INVALID_REQUEST", "participantId contains unsupported characters");
+    return undefined;
+  }
+
+  return participantId;
+}
+
+function readRecordDays(req: Request): number {
+  const value = typeof req.query.days === "string" ? Number.parseInt(req.query.days, 10) : 30;
+  if (!Number.isFinite(value) || value <= 0) {
+    return 30;
+  }
+
+  return Math.min(Math.trunc(value), MAX_RECORD_DAYS);
+}
+
+function readRecordId(req: Request, res: Response): number | undefined {
+  const roomId = Number.parseInt(req.params.roomId ?? "", 10);
+  if (!Number.isFinite(roomId) || roomId <= 0) {
+    sendError(res, 400, "INVALID_REQUEST", "roomId must be a positive integer");
+    return undefined;
+  }
+
+  return roomId;
+}
+
 function broadcastRoomState(dependencies: AdminRouterDependencies, roomName: string): void {
   dependencies.broadcastRoleUpdate(roomName);
   dependencies.broadcastRobotStatus(roomName);
@@ -127,6 +160,41 @@ export function createAdminRouter(dependencies: AdminRouterDependencies): Router
     res.json({
       ok: true,
       room
+    });
+  });
+
+  router.get("/api/admin/room-records", (req, res) => {
+    if (!adminGuard(req, res)) {
+      return;
+    }
+
+    const days = readRecordDays(req);
+    res.json({
+      ok: true,
+      days,
+      records: dependencies.roomStore.listRoomRecords(days)
+    });
+  });
+
+  router.get("/api/admin/room-records/:roomId", (req, res) => {
+    if (!adminGuard(req, res)) {
+      return;
+    }
+
+    const roomId = readRecordId(req, res);
+    if (!roomId) {
+      return;
+    }
+
+    const record = dependencies.roomStore.getRoomRecord(roomId);
+    if (!record) {
+      sendError(res, 404, "ROOM_NOT_FOUND", "Room record does not exist");
+      return;
+    }
+
+    res.json({
+      ok: true,
+      record
     });
   });
 
@@ -177,6 +245,89 @@ export function createAdminRouter(dependencies: AdminRouterDependencies): Router
       ok: true,
       removedCount: result.removedCount,
       room: dependencies.roomStore.getAdminRoomDetail(roomName)
+    });
+  });
+
+  router.post("/api/admin/rooms/:roomName/participants/:participantId/kick", async (req, res) => {
+    if (!adminGuard(req, res)) {
+      return;
+    }
+
+    const roomName = readSafeRoomName(req, res);
+    const participantId = readSafeParticipantId(req, res);
+    if (!roomName || !participantId) {
+      return;
+    }
+
+    const roomBefore = dependencies.roomStore.getRoom(roomName);
+    const participantBefore = roomBefore?.participants.get(participantId);
+    if (!participantBefore) {
+      sendError(res, 404, "PARTICIPANT_NOT_FOUND", "Participant is not in this room");
+      return;
+    }
+
+    if (roomBefore?.currentControllerId === participantId) {
+      await dependencies.stopKeyboardControl(roomName, "admin_kicked_controller");
+    }
+
+    const result = dependencies.roomStore.kickParticipantByAdmin(roomName, participantId);
+    if (!result.ok) {
+      sendError(res, result.status, result.code, result.message);
+      return;
+    }
+
+    dependencies.disconnectParticipant(roomName, participantId, {
+      type: "error",
+      code: "PARTICIPANT_KICKED",
+      message: "You were kicked by admin"
+    });
+
+    if (result.roomDeleted) {
+      dependencies.disconnectRoom(roomName, {
+        type: "error",
+        code: "ROOM_CLOSED",
+        message: "Room closed"
+      });
+    } else {
+      broadcastRoomState(dependencies, roomName);
+    }
+
+    res.json({
+      ok: true,
+      message: result.message,
+      kickedParticipantId: participantId,
+      roomDeleted: result.roomDeleted,
+      room: result.roomDeleted ? undefined : dependencies.roomStore.getAdminRoomDetail(roomName)
+    });
+  });
+
+  router.post("/api/admin/rooms/:roomName/close", async (req, res) => {
+    if (!adminGuard(req, res)) {
+      return;
+    }
+
+    const roomName = readSafeRoomName(req, res);
+    if (!roomName) {
+      return;
+    }
+
+    await dependencies.stopKeyboardControl(roomName, "admin_closed_room");
+    const result = dependencies.roomStore.closeRoomByAdmin(roomName);
+    if (!result.ok) {
+      sendError(res, result.status, result.code, result.message);
+      return;
+    }
+
+    dependencies.disconnectRoom(roomName, {
+      type: "error",
+      code: "ROOM_CLOSED",
+      message: "Room closed by admin"
+    });
+
+    res.json({
+      ok: true,
+      message: result.message,
+      closedParticipants: result.closedParticipants.length
     });
   });
 

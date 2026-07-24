@@ -5,9 +5,10 @@ type RoomEntryIntent = "create" | "join";
 
 type JoinRoomFormProps = {
   onJoin: (payload: JoinRoomRequest) => Promise<void>;
+  notice?: string;
 };
 
-export function JoinRoomForm({ onJoin }: JoinRoomFormProps) {
+export function JoinRoomForm({ onJoin, notice }: JoinRoomFormProps) {
   const [roomName, setRoomName] = useState("robot-room-001");
   const [participantName, setParticipantName] = useState("");
   const [requestedRole, setRequestedRole] = useState<WebRole>("viewer");
@@ -78,6 +79,7 @@ export function JoinRoomForm({ onJoin }: JoinRoomFormProps) {
             </select>
           </label>
 
+          {notice ? <p className="notice">{notice}</p> : null}
           {error ? <p className="inline-error">{error}</p> : null}
 
           <div className="join-actions">
