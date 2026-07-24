@@ -353,17 +353,57 @@ function LocalPreview({
       return;
     }
 
+    let disposed = false;
     setPreviewWarning("");
     videoElement.muted = true;
+    videoElement.defaultMuted = true;
     videoElement.autoplay = true;
     videoElement.playsInline = true;
+    videoElement.setAttribute("muted", "");
+    videoElement.setAttribute("playsinline", "");
+    videoElement.setAttribute("webkit-playsinline", "true");
     track.attach(videoElement);
-    void videoElement.play().catch(() => {
-      setPreviewWarning("Preview paused by browser. Tap fullscreen or retry camera.");
-    });
+
+    const playPreview = () => {
+      if (disposed) {
+        return;
+      }
+
+      if (!videoElement.srcObject) {
+        videoElement.srcObject = new MediaStream([track.mediaStreamTrack]);
+      }
+
+      void videoElement.play().then(
+        () => {
+          if (!disposed) {
+            setPreviewWarning("");
+          }
+        },
+        () => {
+          if (!disposed) {
+            setPreviewWarning("Preview paused by browser. Tap fullscreen or retry camera.");
+          }
+        }
+      );
+    };
+
+    if (videoElement.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      playPreview();
+    } else {
+      videoElement.addEventListener("loadedmetadata", playPreview, { once: true });
+    }
+
+    document.addEventListener("visibilitychange", playPreview);
+    window.addEventListener("focus", playPreview);
 
     return () => {
+      disposed = true;
+      videoElement.removeEventListener("loadedmetadata", playPreview);
+      document.removeEventListener("visibilitychange", playPreview);
+      window.removeEventListener("focus", playPreview);
       track.detach(videoElement);
+      videoElement.pause();
+      videoElement.srcObject = null;
     };
   }, [track]);
 

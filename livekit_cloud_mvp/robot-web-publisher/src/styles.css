@@ -264,13 +264,19 @@ button:focus-visible {
 
 .local-preview {
   position: relative;
+  aspect-ratio: 16 / 9;
   min-height: clamp(280px, 54vh, 620px);
 }
 
 .local-preview video {
   display: block;
+  position: absolute;
+  inset: 0;
   width: 100%;
-  height: clamp(280px, 54vh, 620px);
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: #10191c;
   object-fit: contain;
 }
 
@@ -304,6 +310,10 @@ button:focus-visible {
 .compact-video-tile {
   min-height: 118px;
   aspect-ratio: 16 / 9;
+}
+
+.local-preview.compact-video-tile {
+  min-height: 118px;
 }
 
 .remote-video-tile video {

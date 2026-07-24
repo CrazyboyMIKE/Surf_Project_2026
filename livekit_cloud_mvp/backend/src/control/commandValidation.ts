@@ -5,7 +5,8 @@ export const ALLOWED_COMMANDS = ["1000", "1002", "1003", "1004", "1005", "1006"]
 const MAX_DISTANCE_CM = 100;
 const MAX_ROTATION_DEG = 180;
 const MAX_SPEED = 600;
-const MAX_HEAD_ANGLE_DEG = 90;
+const MIN_HEAD_ANGLE_DEG = 0;
+const MAX_HEAD_ANGLE_DEG = 180;
 const MAX_HEAD_ANGULAR_SPEED = 120;
 
 type ValidationSuccess = {
@@ -208,11 +209,11 @@ export function normalizeControlParameters(
     }
 
     const a = readFiniteNumber(parameters.a);
-    if (a === undefined || Math.abs(a) > MAX_HEAD_ANGLE_DEG) {
+    if (a === undefined || a < MIN_HEAD_ANGLE_DEG || a > MAX_HEAD_ANGLE_DEG) {
       return {
         ok: false,
         code: "INVALID_PARAMETERS",
-        message: `a must be between -${MAX_HEAD_ANGLE_DEG} and ${MAX_HEAD_ANGLE_DEG}`
+        message: `a must be between ${MIN_HEAD_ANGLE_DEG} and ${MAX_HEAD_ANGLE_DEG}`
       };
     }
 

@@ -154,12 +154,12 @@ assert.deepEqual(
     room: createRoom(),
     senderId: "user-controller",
     command: "1005",
-    parameters: { d: 1, a: -15, av: 60 }
+    parameters: { d: 1, a: 90, av: 60 }
   }),
   {
     ok: true,
     command: "1005",
-    parameters: { d: 1, a: -15, av: 60 }
+    parameters: { d: 1, a: 90, av: 60 }
   }
 );
 
@@ -182,12 +182,12 @@ assert.deepEqual(
     room: createRoom(),
     senderId: "user-controller",
     command: "1005",
-    parameters: { d: 1, a: 120, av: 60 }
+    parameters: { d: 1, a: -1, av: 60 }
   }),
   {
     ok: false,
     code: "INVALID_PARAMETERS",
-    message: "a must be between -90 and 90"
+    message: "a must be between 0 and 180"
   }
 );
 

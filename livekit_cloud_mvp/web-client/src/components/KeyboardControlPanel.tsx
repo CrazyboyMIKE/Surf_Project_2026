@@ -194,7 +194,7 @@ export function KeyboardControlPanel({
   }, [canUseKeyboard, config.requireFocus, onKeepalive, onStart, onStop]);
 
   useEffect(() => {
-    if (!canUseKeyboard || !latestDirectionRef.current) {
+    if (!canUseKeyboard || !localDirection) {
       return;
     }
 
@@ -206,7 +206,7 @@ export function KeyboardControlPanel({
     }, config.sendIntervalMs);
 
     return () => window.clearInterval(intervalId);
-  }, [canUseKeyboard, config.sendIntervalMs, onKeepalive]);
+  }, [canUseKeyboard, config.sendIntervalMs, localDirection, onKeepalive]);
 
   return (
     <div className="keyboard-control-panel" aria-labelledby="keyboard-control-title">
