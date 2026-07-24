@@ -107,22 +107,27 @@ export function ControlPanel({
         <button type="button" disabled={disabled} onClick={() => onControl("1002", { distanceCm: 20 })}>
           ↑
           <span>Forward</span>
+          <small>1002 d=20cm</small>
         </button>
         <button type="button" disabled={disabled} onClick={() => onControl("1003", { angleDeg: 15 })}>
           ↺
           <span>Left</span>
+          <small>1003 a=15deg</small>
         </button>
         <button type="button" className="stop-button" disabled={disabled} onClick={() => onControl("1000")}>
           ■
           <span>Stop</span>
+          <small>1000 stop</small>
         </button>
         <button type="button" disabled={disabled} onClick={() => onControl("1003", { angleDeg: -15 })}>
           ↻
           <span>Right</span>
+          <small>1003 a=-15deg</small>
         </button>
         <button type="button" disabled={disabled} onClick={() => onControl("1002", { distanceCm: -20 })}>
           ↓
           <span>Back</span>
+          <small>1002 d=-20cm</small>
         </button>
       </div>
 
@@ -136,18 +141,22 @@ export function ControlPanel({
           <button type="button" disabled={disabled} onClick={() => sendHeadTilt(HEAD_TILT_UP_ANGLE_DEG)}>
             抬头
             <span>{HEAD_TILT_UP_ANGLE_DEG}deg</span>
+            <small>1005 d=1</small>
           </button>
           <button type="button" disabled={disabled} onClick={() => sendHeadTilt(HEAD_TILT_DOWN_ANGLE_DEG)}>
             低头
             <span>{HEAD_TILT_DOWN_ANGLE_DEG}deg</span>
+            <small>1005 d=1</small>
           </button>
           <button type="button" className="head-stop-button" disabled={disabled} onClick={sendHeadStop}>
             头部停止
             <span>1004</span>
+            <small>head stop</small>
           </button>
           <button type="button" disabled={disabled} onClick={sendHeadReset}>
             头部复位
             <span>d=1</span>
+            <small>1006 vertical</small>
           </button>
         </div>
 

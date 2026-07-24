@@ -326,6 +326,7 @@ function LocalPreview({
 }) {
   const tileRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [previewWarning, setPreviewWarning] = useState("");
 
   useEffect(() => {
     const videoElement = videoRef.current;
@@ -333,7 +334,14 @@ function LocalPreview({
       return;
     }
 
+    setPreviewWarning("");
+    videoElement.muted = true;
+    videoElement.autoplay = true;
+    videoElement.playsInline = true;
     track.attach(videoElement);
+    void videoElement.play().catch(() => {
+      setPreviewWarning("Preview paused by browser. Tap fullscreen or retry camera.");
+    });
 
     return () => {
       track.detach(videoElement);
@@ -343,6 +351,7 @@ function LocalPreview({
   return (
     <div className={compact ? "local-preview compact-video-tile" : "local-preview"} ref={tileRef}>
       {track ? <video ref={videoRef} autoPlay muted playsInline /> : <div className="preview-placeholder">Robot camera preview</div>}
+      {previewWarning ? <span className="preview-warning">{previewWarning}</span> : null}
       <span className="role-badge">robot</span>
       <span className="name-badge">{robotName}</span>
       <button

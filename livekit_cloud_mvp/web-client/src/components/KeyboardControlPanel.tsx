@@ -227,6 +227,52 @@ export function KeyboardControlPanel({
 
       <p className="risk-note">请低速测试，松开方向键自动停止，空格急停。</p>
 
+      <div className="keyboard-cheatsheet" aria-label="Keyboard control mapping">
+        <div className="keyboard-cheatsheet-header">
+          <strong>启用后按键说明</strong>
+          <span>按住持续发送 1001，松开自动 1000 stop</span>
+        </div>
+        <div className="keyboard-cheatsheet-grid">
+          <span>
+            <kbd>W</kbd> / <kbd>↑</kbd>
+            <strong>前进</strong>
+          </span>
+          <span>
+            <kbd>S</kbd> / <kbd>↓</kbd>
+            <strong>后退</strong>
+          </span>
+          <span>
+            <kbd>A</kbd> / <kbd>←</kbd>
+            <strong>左转</strong>
+          </span>
+          <span>
+            <kbd>D</kbd> / <kbd>→</kbd>
+            <strong>右转</strong>
+          </span>
+          <span>
+            <kbd>W</kbd> + <kbd>A</kbd>
+            <strong>左前</strong>
+          </span>
+          <span>
+            <kbd>W</kbd> + <kbd>D</kbd>
+            <strong>右前</strong>
+          </span>
+          <span>
+            <kbd>S</kbd> + <kbd>A</kbd>
+            <strong>左后</strong>
+          </span>
+          <span>
+            <kbd>S</kbd> + <kbd>D</kbd>
+            <strong>右后</strong>
+          </span>
+          <span className="keyboard-cheatsheet-stop">
+            <kbd>Space</kbd>
+            <strong>急停</strong>
+          </span>
+        </div>
+        <p>聊天输入框聚焦时不会触发移动；页面失焦或断线会自动 stop。</p>
+      </div>
+
       <div className="keyboard-settings">
         <label>
           线速度 {linearSpeed}

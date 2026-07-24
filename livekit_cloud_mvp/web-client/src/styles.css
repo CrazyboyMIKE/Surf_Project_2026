@@ -351,6 +351,12 @@ button:focus-visible {
   font-weight: 800;
 }
 
+.control-pad button small {
+  color: #587073;
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
 .control-pad button:first-child {
   grid-column: 2;
 }
@@ -410,9 +416,20 @@ button:focus-visible {
   font-weight: 800;
 }
 
+.head-control-grid button small {
+  color: #587073;
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
 .head-control-grid .head-stop-button {
   color: #ffffff;
   background: #8f3d2e;
+}
+
+.head-control-grid .head-stop-button small,
+.head-control-grid .head-stop-button span {
+  color: #ffe8df;
 }
 
 .head-control-grid button:disabled {
@@ -421,6 +438,8 @@ button:focus-visible {
   background: #edf2f1;
 }
 
+.control-pad button:disabled small,
+.head-control-grid button:disabled small,
 .head-control-grid button:disabled span {
   color: #8a9897;
 }
@@ -461,6 +480,72 @@ button:focus-visible {
   background: #fff3ee;
   padding: 9px 10px;
   font-weight: 750;
+}
+
+.keyboard-cheatsheet {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #d5dfdd;
+  border-radius: 6px;
+  background: #f8fbfa;
+  padding: 10px;
+}
+
+.keyboard-cheatsheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #172026;
+}
+
+.keyboard-cheatsheet-header span,
+.keyboard-cheatsheet p {
+  margin: 0;
+  color: #587073;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.keyboard-cheatsheet-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.keyboard-cheatsheet-grid span {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #dbe6e4;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 8px;
+  color: #4b5f62;
+  font-size: 0.78rem;
+}
+
+.keyboard-cheatsheet-grid strong {
+  color: #172026;
+  font-size: 0.86rem;
+}
+
+.keyboard-cheatsheet kbd {
+  display: inline-grid;
+  min-width: 22px;
+  place-items: center;
+  margin-right: 3px;
+  border: 1px solid #aac0bc;
+  border-radius: 4px;
+  background: #eef7f4;
+  color: #172026;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.keyboard-cheatsheet-stop {
+  border-color: #e2baa9 !important;
+  background: #fff3ee !important;
 }
 
 .keyboard-settings {
@@ -962,6 +1047,7 @@ button:focus-visible {
   .status-grid,
   .control-pad,
   .head-control-grid,
+  .keyboard-cheatsheet-grid,
   .media-status-grid,
   .admin-detail-grid {
     grid-template-columns: 1fr;
