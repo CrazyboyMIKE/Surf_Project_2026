@@ -1,10 +1,12 @@
 import type { ApiErrorCode, ControlParameters, RobotCommand, RoomState } from "../types.js";
 
-export const ALLOWED_COMMANDS = ["1002", "1003", "1000"] as const;
+export const ALLOWED_COMMANDS = ["1000", "1002", "1003", "1004", "1005", "1006"] as const;
 
 const MAX_DISTANCE_CM = 100;
 const MAX_ROTATION_DEG = 180;
 const MAX_SPEED = 600;
+const MAX_HEAD_ANGLE_DEG = 90;
+const MAX_HEAD_ANGULAR_SPEED = 120;
 
 type ValidationSuccess = {
   ok: true;
@@ -22,6 +24,13 @@ type SpeedValidationResult =
   | {
       ok: true;
       speed?: number;
+    }
+  | ValidationFailure;
+
+type HeadAngularSpeedValidationResult =
+  | {
+      ok: true;
+      av: number;
     }
   | ValidationFailure;
 
@@ -47,6 +56,11 @@ function hasOnlyAllowedKeys(parameters: Record<string, unknown>, allowedKeys: st
   return Object.keys(parameters).every((key) => allowedKeys.includes(key));
 }
 
+function readIntegerNumber(value: unknown): number | undefined {
+  const numberValue = readFiniteNumber(value);
+  return numberValue !== undefined && Number.isInteger(numberValue) ? numberValue : undefined;
+}
+
 function readSpeed(parameters: Record<string, unknown>): SpeedValidationResult {
   if (parameters.speed === undefined) {
     return { ok: true };
@@ -64,6 +78,22 @@ function readSpeed(parameters: Record<string, unknown>): SpeedValidationResult {
   return {
     ok: true,
     speed
+  };
+}
+
+function readHeadAngularSpeed(parameters: Record<string, unknown>): HeadAngularSpeedValidationResult {
+  const av = readFiniteNumber(parameters.av);
+  if (av === undefined || av <= 0 || av > MAX_HEAD_ANGULAR_SPEED) {
+    return {
+      ok: false,
+      code: "INVALID_PARAMETERS",
+      message: `av must be greater than 0 and no more than ${MAX_HEAD_ANGULAR_SPEED}`
+    };
+  }
+
+  return {
+    ok: true,
+    av
   };
 }
 
@@ -143,6 +173,86 @@ export function normalizeControlParameters(
     };
   }
 
+  if (command === "1004") {
+    if (Object.keys(parameters).length > 0) {
+      return {
+        ok: false,
+        code: "INVALID_PARAMETERS",
+        message: "1004 head stop must not include movement parameters"
+      };
+    }
+
+    return {
+      ok: true,
+      command,
+      parameters: {}
+    };
+  }
+
+  if (command === "1005") {
+    if (!hasOnlyAllowedKeys(parameters, ["d", "a", "av"])) {
+      return {
+        ok: false,
+        code: "INVALID_PARAMETERS",
+        message: "1005 only accepts d, a, and av"
+      };
+    }
+
+    const d = readIntegerNumber(parameters.d);
+    if (d !== 1 && d !== 2) {
+      return {
+        ok: false,
+        code: "INVALID_PARAMETERS",
+        message: "d must be 1 for vertical head movement or 2 for horizontal head movement"
+      };
+    }
+
+    const a = readFiniteNumber(parameters.a);
+    if (a === undefined || Math.abs(a) > MAX_HEAD_ANGLE_DEG) {
+      return {
+        ok: false,
+        code: "INVALID_PARAMETERS",
+        message: `a must be between -${MAX_HEAD_ANGLE_DEG} and ${MAX_HEAD_ANGLE_DEG}`
+      };
+    }
+
+    const avResult = readHeadAngularSpeed(parameters);
+    if (!avResult.ok) {
+      return avResult;
+    }
+
+    return {
+      ok: true,
+      command,
+      parameters: { d, a, av: avResult.av }
+    };
+  }
+
+  if (command === "1006") {
+    if (!hasOnlyAllowedKeys(parameters, ["d"])) {
+      return {
+        ok: false,
+        code: "INVALID_PARAMETERS",
+        message: "1006 only accepts d"
+      };
+    }
+
+    const d = parameters.d === undefined ? 0 : readIntegerNumber(parameters.d);
+    if (d !== 0 && d !== 1 && d !== 2) {
+      return {
+        ok: false,
+        code: "INVALID_PARAMETERS",
+        message: "d must be 0, 1, or 2"
+      };
+    }
+
+    return {
+      ok: true,
+      command,
+      parameters: { d }
+    };
+  }
+
   if (Object.keys(parameters).length > 0) {
     return {
       ok: false,
@@ -204,7 +314,7 @@ export function validateRobotControlMessage(options: {
     return {
       ok: false,
       code: "COMMAND_NOT_ALLOWED",
-      message: "Command must be one of 1002, 1003, or 1000"
+      message: "Command must be one of 1000, 1002, 1003, 1004, 1005, or 1006"
     };
   }
 

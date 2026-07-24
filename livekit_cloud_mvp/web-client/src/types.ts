@@ -1,6 +1,6 @@
 export type Role = "robot" | "controller" | "viewer";
 export type WebRole = "controller" | "viewer";
-export type RobotCommand = "1002" | "1003" | "1000";
+export type RobotCommand = "1000" | "1002" | "1003" | "1004" | "1005" | "1006";
 export type RobotControlEventCommand = RobotCommand | "1001";
 export type KeyboardDirection =
   | "forward"
@@ -16,6 +16,8 @@ export type ControlParameters = {
   distanceCm?: number;
   angleDeg?: number;
   speed?: number;
+  d?: number;
+  a?: number;
   lv?: number;
   av?: number;
   direction?: KeyboardDirection;
@@ -59,14 +61,18 @@ export type JoinRoomRequest = {
   roomName: string;
   participantName: string;
   requestedRole: WebRole;
+  previousParticipantId?: string;
+  clientSessionId?: string;
 };
 
 export type JoinRoomResponse = {
   roomName: string;
   participantId: string;
   participantName: string;
+  clientSessionId?: string;
   role: WebRole;
   requestedControllerGranted: boolean;
+  reusedParticipant?: boolean;
   liveKitUrl: string;
   token: string;
   tokenMode: "mock" | "livekit";
@@ -98,6 +104,12 @@ export type ControlTransferResponse = {
   currentControllerName?: string;
   participants?: ParticipantSummary[];
   code?: string;
+};
+
+export type LeaveRoomResponse = {
+  ok: boolean;
+  roomDeleted: boolean;
+  message: string;
 };
 
 export type ParticipantSummary = {

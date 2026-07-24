@@ -12,6 +12,7 @@ type StatusBarProps = {
   participants: ParticipantSummary[];
   onRequestControl: () => void;
   onReleaseControl: () => void;
+  onLeaveRoom: () => void;
   actionPending: boolean;
 };
 
@@ -27,6 +28,7 @@ export function StatusBar({
   participants,
   onRequestControl,
   onReleaseControl,
+  onLeaveRoom,
   actionPending
 }: StatusBarProps) {
   const isController = role === "controller";
@@ -71,6 +73,9 @@ export function StatusBar({
         </button>
         <button type="button" className="secondary-button" onClick={onReleaseControl} disabled={!isController || actionPending}>
           Release
+        </button>
+        <button type="button" className="secondary-button" onClick={onLeaveRoom} disabled={actionPending}>
+          Leave room
         </button>
       </div>
     </header>

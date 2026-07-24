@@ -23,6 +23,7 @@ export type RobotVendorConfig = {
 export type RobotControlConfig = {
   mode: RobotControlMode;
   enabled: boolean;
+  headControlEnabled: boolean;
   vendor: RobotVendorConfig;
 };
 
@@ -57,6 +58,7 @@ export function readRobotControlConfig(env: NodeJS.ProcessEnv = process.env): Ro
   return {
     mode: readMode(env.ROBOT_CONTROL_MODE),
     enabled: readBoolean(env.ROBOT_CONTROL_ENABLED, false),
+    headControlEnabled: readBoolean(env.ROBOT_ENABLE_HEAD_CONTROL, false),
     vendor: {
       apiBaseUrl: readOptionalString(env.ROBOT_VENDOR_API_BASE_URL),
       appKey: readOptionalString(env.ROBOT_VENDOR_APP_KEY),

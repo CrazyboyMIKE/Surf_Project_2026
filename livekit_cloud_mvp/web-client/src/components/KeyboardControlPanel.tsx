@@ -13,7 +13,26 @@ type KeyboardControlPanelProps = {
   onStop: () => void;
 };
 
-const ARROW_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
+function normalizeControlKey(key: string): string | null {
+  if (key === "ArrowUp" || key.toLowerCase() === "w") return "ArrowUp";
+  if (key === "ArrowDown" || key.toLowerCase() === "s") return "ArrowDown";
+  if (key === "ArrowLeft" || key.toLowerCase() === "a") return "ArrowLeft";
+  if (key === "ArrowRight" || key.toLowerCase() === "d") return "ArrowRight";
+  return null;
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    target.isContentEditable ||
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "SELECT"
+  );
+}
 
 function directionFromKeys(keys: Set<string>): KeyboardDirection | null {
   const up = keys.has("ArrowUp");
@@ -106,18 +125,23 @@ export function KeyboardControlPanel({
     }
 
     function handleKeyDown(event: KeyboardEvent) {
+      if (isTypingTarget(event.target)) {
+        return;
+      }
+
       if (event.key === " ") {
         event.preventDefault();
         sendStop("space_stop");
         return;
       }
 
-      if (!ARROW_KEYS.has(event.key)) {
+      const normalizedKey = normalizeControlKey(event.key);
+      if (!normalizedKey) {
         return;
       }
 
       event.preventDefault();
-      pressedKeysRef.current.add(event.key);
+      pressedKeysRef.current.add(normalizedKey);
       const nextDirection = directionFromKeys(pressedKeysRef.current);
       if (nextDirection) {
         sendDirection(nextDirection);
@@ -125,12 +149,17 @@ export function KeyboardControlPanel({
     }
 
     function handleKeyUp(event: KeyboardEvent) {
-      if (!ARROW_KEYS.has(event.key)) {
+      if (isTypingTarget(event.target)) {
+        return;
+      }
+
+      const normalizedKey = normalizeControlKey(event.key);
+      if (!normalizedKey) {
         return;
       }
 
       event.preventDefault();
-      pressedKeysRef.current.delete(event.key);
+      pressedKeysRef.current.delete(normalizedKey);
       const nextDirection = directionFromKeys(pressedKeysRef.current);
       if (!nextDirection) {
         sendStop("key_release");

@@ -12,6 +12,9 @@ type SocketContext = {
   participantId: string;
 };
 
+const WEBSOCKET_HEARTBEAT_INTERVAL_MS = 25_000;
+const WEBSOCKET_RECONNECT_GRACE_MS = 30_000;
+
 type WebSocketMessage = {
   type?: unknown;
   roomName?: unknown;
@@ -83,6 +86,54 @@ export function attachWebSocketServer(
 ): WebSocketHub {
   const webSocketServer = new WebSocketServer({ server, path: "/ws" });
   const clientsByRoom = new Map<string, Set<WebSocket>>();
+  const socketAlive = new WeakMap<WebSocket, boolean>();
+  const pendingRemovalTimers = new Map<string, NodeJS.Timeout>();
+
+  function participantTimerKey(roomName: string, participantId: string): string {
+    return `${roomName}\u0000${participantId}`;
+  }
+
+  function clearPendingRemoval(roomName: string, participantId: string): void {
+    const key = participantTimerKey(roomName, participantId);
+    const timer = pendingRemovalTimers.get(key);
+    if (!timer) {
+      return;
+    }
+
+    clearTimeout(timer);
+    pendingRemovalTimers.delete(key);
+  }
+
+  function scheduleParticipantRemoval(roomName: string, participantId: string): void {
+    clearPendingRemoval(roomName, participantId);
+
+    const key = participantTimerKey(roomName, participantId);
+    const timer = setTimeout(() => {
+      pendingRemovalTimers.delete(key);
+      const room = roomStore.getRoom(roomName);
+      const participant = room?.participants.get(participantId);
+      if (!room || !participant || participant.connected) {
+        return;
+      }
+
+      const result = roomStore.removeParticipant(roomName, participantId);
+      if (result.roomDeleted) {
+        console.log(`[ws] removed stale participant and deleted empty room room=${roomName} participant=${participantId}`);
+        return;
+      }
+
+      if (result.removedParticipant) {
+        console.log(`[ws] removed stale participant room=${roomName} participant=${participantId}`);
+        broadcastRoleUpdate(roomName);
+      }
+
+      if (result.robotStatusChanged) {
+        broadcastRobotStatus(roomName);
+      }
+    }, WEBSOCKET_RECONNECT_GRACE_MS);
+
+    pendingRemovalTimers.set(key, timer);
+  }
 
   function addClient(roomName: string, socket: WebSocket): void {
     const clients = clientsByRoom.get(roomName) ?? new Set<WebSocket>();
@@ -180,6 +231,63 @@ export function attachWebSocketServer(
     }
   });
 
+  async function forceHeadStop(roomName: string, senderId: string, reason: string): Promise<void> {
+    const room = roomStore.getRoom(roomName);
+    if (!room?.robotOnline) {
+      return;
+    }
+
+    const timestamp = Date.now();
+    const parameters = { stopReason: reason };
+    const result = await robotControlAdapter.sendCommand({
+      roomName,
+      senderId,
+      robotId: room.robotId,
+      command: "1004",
+      parameters,
+      timestamp
+    });
+
+    if (!result.ok) {
+      console.error(`[robot-control:head-stop] room=${roomName} reason=${reason} failed=${result.code}`);
+      return;
+    }
+
+    roomStore.recordRobotControl(roomName, "1004", parameters, senderId, timestamp);
+    broadcast(roomName, {
+      type: "robot_control",
+      roomName,
+      command: "1004",
+      parameters,
+      from: senderId,
+      timestamp
+    });
+  }
+
+  const heartbeatTimer = setInterval(() => {
+    for (const client of webSocketServer.clients) {
+      if (client.readyState !== WebSocket.OPEN) {
+        continue;
+      }
+
+      if (socketAlive.get(client) === false) {
+        client.terminate();
+        continue;
+      }
+
+      socketAlive.set(client, false);
+      client.ping();
+    }
+  }, WEBSOCKET_HEARTBEAT_INTERVAL_MS);
+
+  webSocketServer.on("close", () => {
+    clearInterval(heartbeatTimer);
+    for (const timer of pendingRemovalTimers.values()) {
+      clearTimeout(timer);
+    }
+    pendingRemovalTimers.clear();
+  });
+
   function sendKeyboardResult(socket: WebSocket, result: Awaited<ReturnType<KeyboardControlManager["start"]>>): void {
     if (!result.ok) {
       sendJson(socket, {
@@ -204,8 +312,14 @@ export function attachWebSocketServer(
 
   webSocketServer.on("connection", (socket) => {
     let context: SocketContext | undefined;
+    socketAlive.set(socket, true);
+
+    socket.on("pong", () => {
+      socketAlive.set(socket, true);
+    });
 
     socket.on("message", (raw) => {
+      socketAlive.set(socket, true);
       const message = parseMessage(raw);
       if (!message || typeof message.type !== "string") {
         sendError(socket, "INVALID_REQUEST", "Message must be a JSON object with type");
@@ -226,6 +340,7 @@ export function attachWebSocketServer(
           sendError(socket, "PARTICIPANT_NOT_FOUND", "Participant must join the room before opening WebSocket");
           return;
         }
+        clearPendingRemoval(roomName, participantId);
 
         if (context) {
           removeClient(context.roomName, socket);
@@ -436,8 +551,10 @@ export function attachWebSocketServer(
       sendError(socket, "INVALID_REQUEST", `Unsupported message type: ${message.type}`);
     });
 
-    socket.on("close", () => {
+    socket.on("close", (code, reason) => {
+      const safeReason = reason.toString("utf8").slice(0, 120);
       if (!context) {
+        console.log(`[ws] closed unidentified code=${code} reason=${safeReason || "-"}`);
         return;
       }
 
@@ -450,18 +567,26 @@ export function attachWebSocketServer(
           reason: "websocket_disconnected"
         });
       }
-      const result = roomStore.removeParticipant(context.roomName, context.participantId);
+      const roomBeforeDisconnect = roomStore.getRoom(context.roomName);
+      if (roomBeforeDisconnect?.currentControllerId === context.participantId) {
+        void forceHeadStop(context.roomName, context.participantId, "websocket_disconnected");
+      }
+      const result = roomStore.markParticipantDisconnected(context.roomName, context.participantId);
+      console.log(
+        `[ws] closed room=${context.roomName} participant=${context.participantId} code=${code} reason=${
+          safeReason || "-"
+        } reconnectGraceMs=${WEBSOCKET_RECONNECT_GRACE_MS}`
+      );
       if (result.robotStatusChanged) {
         void keyboardControlManager.forceStop(context.roomName, "robot_offline");
       }
 
-      if (result.roomDeleted) {
+      if (!result.room) {
         return;
       }
 
-      if (result.removedParticipant) {
-        broadcastRoleUpdate(context.roomName);
-      }
+      broadcastRoleUpdate(context.roomName);
+      scheduleParticipantRemoval(context.roomName, context.participantId);
 
       if (result.robotStatusChanged) {
         broadcastRobotStatus(context.roomName);
@@ -475,6 +600,7 @@ export function attachWebSocketServer(
     broadcastRoomUpdate,
     async stopKeyboardControl(roomName: string, reason: string): Promise<void> {
       await keyboardControlManager.forceStop(roomName, reason);
+      await forceHeadStop(roomName, "system", reason);
     }
   };
 }

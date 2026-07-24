@@ -18,6 +18,18 @@ function describeEvent(event: RobotControlEvent): string {
     return `1003 rotate ${event.parameters.angleDeg ?? 15}deg`;
   }
 
+  if (event.command === "1004") {
+    return "1004 head stop";
+  }
+
+  if (event.command === "1005") {
+    return `1005 head d=${event.parameters.d ?? 1} a=${event.parameters.a ?? 0}deg`;
+  }
+
+  if (event.command === "1006") {
+    return `1006 head reset d=${event.parameters.d ?? 0}`;
+  }
+
   return "1000 stop";
 }
 

@@ -1,6 +1,6 @@
 export type Role = "robot" | "controller" | "viewer";
 export type WebRole = "controller" | "viewer";
-export type RobotCommand = "1002" | "1003" | "1000";
+export type RobotCommand = "1000" | "1002" | "1003" | "1004" | "1005" | "1006";
 export type RobotContinuousCommand = "1001";
 export type RobotControlEventCommand = RobotCommand | RobotContinuousCommand;
 export type KeyboardDirection =
@@ -24,6 +24,9 @@ export type ControlParameters = {
   distanceCm?: number;
   angleDeg?: number;
   speed?: number;
+  d?: number;
+  a?: number;
+  av?: number;
 };
 
 export type ContinuousControlParameters = {
@@ -66,6 +69,7 @@ export type Participant = {
   id: string;
   name: string;
   role: Role;
+  clientSessionId?: string;
   connected: boolean;
   joinedAt: number;
   lastSeenAt: number;

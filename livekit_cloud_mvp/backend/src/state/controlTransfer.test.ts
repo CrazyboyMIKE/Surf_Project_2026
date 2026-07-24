@@ -103,14 +103,14 @@ function createRoomWithControllerViewer() {
   assert.equal(result.ok, true);
   const room = store.getRoom("robot-room-001");
 
-  for (const command of ["1002", "1003", "1000"] as const) {
+  for (const command of ["1000", "1002", "1003", "1004", "1006"] as const) {
     assert.equal(validateRobotControlMessage({ room, senderId: viewer.id, command, parameters: {} }).ok, true);
   }
 
   assert.deepEqual(validateRobotControlMessage({ room, senderId: viewer.id, command: "1001", parameters: {} }), {
     ok: false,
     code: "COMMAND_NOT_ALLOWED",
-    message: "Command must be one of 1002, 1003, or 1000"
+    message: "Command must be one of 1000, 1002, 1003, 1004, 1005, or 1006"
   });
 }
 

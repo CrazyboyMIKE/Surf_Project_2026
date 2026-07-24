@@ -16,6 +16,7 @@ type RouterDependencies = {
 
 const MAX_NAME_LENGTH = 80;
 const MAX_ROOM_LENGTH = 80;
+const MAX_SESSION_ID_LENGTH = 120;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -97,6 +98,8 @@ export function createApiRouter(dependencies: RouterDependencies): Router {
 
     const roomName = readTrimmedString(body, "roomName", MAX_ROOM_LENGTH);
     const participantName = readTrimmedString(body, "participantName", MAX_NAME_LENGTH);
+    const previousParticipantId = readTrimmedString(body, "previousParticipantId", MAX_NAME_LENGTH);
+    const clientSessionId = readTrimmedString(body, "clientSessionId", MAX_SESSION_ID_LENGTH);
     const requestedRole = readRequestedRole(body.requestedRole ?? "viewer");
 
     if (!roomName || !participantName || !requestedRole) {
@@ -104,7 +107,10 @@ export function createApiRouter(dependencies: RouterDependencies): Router {
       return;
     }
 
-    const result = roomStore.joinWebParticipant(roomName, participantName, requestedRole);
+    const result = roomStore.joinWebParticipant(roomName, participantName, requestedRole, {
+      previousParticipantId,
+      clientSessionId
+    });
     const token = await liveKitTokenService.generateToken({
       roomName,
       identity: result.participant.id,
@@ -122,8 +128,10 @@ export function createApiRouter(dependencies: RouterDependencies): Router {
           roomName,
           participantId: result.participant.id,
           participantName,
+          clientSessionId: result.participant.clientSessionId,
           role: result.participant.role,
           requestedControllerGranted: result.requestedControllerGranted,
+          reusedParticipant: result.reusedParticipant,
           liveKitUrl: token.liveKitUrl,
           token: token.token,
           tokenMode: token.isMock ? "mock" : "livekit",
@@ -133,6 +141,53 @@ export function createApiRouter(dependencies: RouterDependencies): Router {
         roomStore.getRoomSnapshot(roomName)
       )
     );
+  }));
+
+  router.post("/api/rooms/leave", asyncRoute(async (req, res) => {
+    const body = readBody(req, res);
+    if (!body) {
+      return;
+    }
+
+    const roomName = readTrimmedString(body, "roomName", MAX_ROOM_LENGTH);
+    const participantId = readTrimmedString(body, "participantId", MAX_NAME_LENGTH);
+    const clientSessionId = readTrimmedString(body, "clientSessionId", MAX_SESSION_ID_LENGTH);
+
+    if (!roomName || !participantId || !clientSessionId) {
+      sendError(res, 400, "INVALID_REQUEST", "roomName, participantId, and clientSessionId are required");
+      return;
+    }
+
+    const room = roomStore.getRoom(roomName);
+    const participant = room?.participants.get(participantId);
+    if (!room || !participant || participant.role === "robot") {
+      sendError(res, 404, "PARTICIPANT_NOT_FOUND", "Participant is not in this room");
+      return;
+    }
+
+    if (participant.clientSessionId !== clientSessionId) {
+      sendError(res, 403, "FORBIDDEN", "clientSessionId does not match participant");
+      return;
+    }
+
+    const wasController = room.currentControllerId === participantId;
+    if (wasController) {
+      await stopKeyboardControl(roomName, "participant_left");
+    }
+
+    const result = roomStore.removeParticipant(roomName, participantId);
+    if (!result.roomDeleted) {
+      broadcastRoleUpdate(roomName);
+      if (result.robotStatusChanged) {
+        broadcastRobotStatus(roomName);
+      }
+    }
+
+    res.json({
+      ok: true,
+      roomDeleted: result.roomDeleted,
+      message: result.roomDeleted ? "Participant left and room was closed" : "Participant left room"
+    });
   }));
 
   router.post("/api/robots/join", asyncRoute(async (req, res) => {

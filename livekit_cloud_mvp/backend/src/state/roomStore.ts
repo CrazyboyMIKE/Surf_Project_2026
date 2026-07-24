@@ -17,6 +17,7 @@ export type JoinWebParticipantResult = {
   room: RoomState;
   participant: Participant;
   requestedControllerGranted: boolean;
+  reusedParticipant: boolean;
 };
 
 export type JoinRobotResult = {
@@ -149,9 +150,35 @@ export class RoomStore {
     return room;
   }
 
-  joinWebParticipant(roomName: string, participantName: string, requestedRole: WebRole): JoinWebParticipantResult {
+  joinWebParticipant(
+    roomName: string,
+    participantName: string,
+    requestedRole: WebRole,
+    options: { previousParticipantId?: string; clientSessionId?: string } = {}
+  ): JoinWebParticipantResult {
     const room = this.getOrCreateRoom(roomName);
     const now = Date.now();
+    const reusableParticipant = this.findReusableWebParticipant(room, participantName, options);
+    if (reusableParticipant) {
+      const canGrantController = requestedRole === "controller" && !room.currentControllerId;
+      if (canGrantController) {
+        reusableParticipant.role = "controller";
+        room.currentControllerId = reusableParticipant.id;
+      }
+      reusableParticipant.name = participantName;
+      reusableParticipant.clientSessionId = options.clientSessionId ?? reusableParticipant.clientSessionId;
+      reusableParticipant.lastSeenAt = now;
+      reusableParticipant.disconnectedAt = undefined;
+      this.touchRoom(room, now);
+
+      return {
+        room,
+        participant: reusableParticipant,
+        requestedControllerGranted: reusableParticipant.role === "controller",
+        reusedParticipant: true
+      };
+    }
+
     const participantId = `user-${randomUUID()}`;
     const canGrantController = requestedRole === "controller" && !room.currentControllerId;
     const role: WebRole = canGrantController ? "controller" : "viewer";
@@ -160,6 +187,7 @@ export class RoomStore {
       id: participantId,
       name: participantName,
       role,
+      clientSessionId: options.clientSessionId,
       connected: false,
       joinedAt: now,
       lastSeenAt: now
@@ -174,7 +202,8 @@ export class RoomStore {
     return {
       room,
       participant,
-      requestedControllerGranted: canGrantController
+      requestedControllerGranted: canGrantController,
+      reusedParticipant: false
     };
   }
 
@@ -388,32 +417,21 @@ export class RoomStore {
 
   markParticipantDisconnected(roomName: string, participantId: string): {
     room?: RoomState;
-    controllerReleased: boolean;
     robotStatusChanged: boolean;
   } {
     const room = this.rooms.get(roomName);
     const participant = room?.participants.get(participantId);
     if (!room || !participant) {
-      return { controllerReleased: false, robotStatusChanged: false };
+      return { robotStatusChanged: false };
     }
 
     const now = Date.now();
     participant.connected = false;
     participant.lastSeenAt = now;
     participant.disconnectedAt = now;
-    const robotStatusChanged = participant.role === "robot" && room.robotOnline;
-    if (robotStatusChanged) {
-      room.robotOnline = false;
-    }
     this.touchRoom(room, now);
 
-    if (room.currentControllerId === participantId) {
-      room.currentControllerId = undefined;
-      participant.role = "viewer";
-      return { room, controllerReleased: true, robotStatusChanged };
-    }
-
-    return { room, controllerReleased: false, robotStatusChanged };
+    return { room, robotStatusChanged: false };
   }
 
   removeParticipant(roomName: string, participantId: string): RemoveParticipantResult {
@@ -623,6 +641,9 @@ export class RoomStore {
 
     if (removedCount > 0) {
       this.touchRoom(room, now);
+      if (room.participants.size === 0) {
+        this.rooms.delete(roomName);
+      }
     }
 
     return {
@@ -663,6 +684,40 @@ export class RoomStore {
 
   private touchRoom(room: RoomState, timestamp = Date.now()): void {
     room.updatedAt = timestamp;
+  }
+
+  private findReusableWebParticipant(
+    room: RoomState,
+    participantName: string,
+    options: { previousParticipantId?: string; clientSessionId?: string }
+  ): Participant | undefined {
+    const previousParticipant = options.previousParticipantId ? room.participants.get(options.previousParticipantId) : undefined;
+    if (
+      previousParticipant &&
+      previousParticipant.role !== "robot" &&
+      previousParticipant.name === participantName &&
+      options.clientSessionId &&
+      previousParticipant.clientSessionId === options.clientSessionId
+    ) {
+      return previousParticipant;
+    }
+
+    if (options.clientSessionId) {
+      return Array.from(room.participants.values()).find(
+        (participant) =>
+          participant.role !== "robot" &&
+          participant.name === participantName &&
+          participant.clientSessionId === options.clientSessionId
+      );
+    }
+
+    return Array.from(room.participants.values()).find(
+      (participant) =>
+        participant.role !== "robot" &&
+        !participant.connected &&
+        !participant.clientSessionId &&
+        participant.name === participantName
+    );
   }
 
   private toAdminRoomSummary(room: RoomState): AdminRoomSummary {

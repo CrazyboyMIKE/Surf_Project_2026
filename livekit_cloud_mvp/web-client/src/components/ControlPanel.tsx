@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type {
   ControlParameters,
   KeyboardControlConfig,
@@ -8,6 +9,11 @@ import type {
   WebRole
 } from "../types";
 import { KeyboardControlPanel } from "./KeyboardControlPanel";
+
+const HEAD_VERTICAL_DIRECTION = 1;
+const HEAD_TILT_SPEED_DEG_PER_SEC = 60;
+const HEAD_TILT_UP_ANGLE_DEG = 15;
+const HEAD_TILT_DOWN_ANGLE_DEG = -15;
 
 type ControlPanelProps = {
   role: WebRole | null;
@@ -43,9 +49,52 @@ export function ControlPanel({
   onKeyboardStop
 }: ControlPanelProps) {
   const disabled = role !== "controller" || !robotOnline || connectionState !== "connected";
+  const [headStopArmed, setHeadStopArmed] = useState(false);
+  const headStopArmedRef = useRef(false);
   const transferableViewers = participants.filter(
     (participant) => participant.id !== participantId && participant.role === "viewer" && participant.connected
   );
+
+  function sendHeadTilt(angleDeg: number) {
+    onControl("1005", {
+      d: HEAD_VERTICAL_DIRECTION,
+      a: angleDeg,
+      av: HEAD_TILT_SPEED_DEG_PER_SEC
+    });
+    headStopArmedRef.current = true;
+    setHeadStopArmed(true);
+  }
+
+  function sendHeadStop() {
+    onControl("1004");
+    headStopArmedRef.current = false;
+    setHeadStopArmed(false);
+  }
+
+  function sendHeadReset() {
+    onControl("1006", { d: HEAD_VERTICAL_DIRECTION });
+    headStopArmedRef.current = false;
+    setHeadStopArmed(false);
+  }
+
+  useEffect(() => {
+    if (!headStopArmed && headStopArmedRef.current) {
+      headStopArmedRef.current = false;
+    }
+  }, [headStopArmed]);
+
+  useEffect(() => {
+    function handleBlur() {
+      if (!headStopArmedRef.current || disabled) {
+        return;
+      }
+
+      sendHeadStop();
+    }
+
+    window.addEventListener("blur", handleBlur);
+    return () => window.removeEventListener("blur", handleBlur);
+  }, [disabled]);
 
   return (
     <section className="tool-panel" aria-labelledby="control-title">
@@ -59,7 +108,7 @@ export function ControlPanel({
           ↑
           <span>Forward</span>
         </button>
-        <button type="button" disabled={disabled} onClick={() => onControl("1003", { angleDeg: -15 })}>
+        <button type="button" disabled={disabled} onClick={() => onControl("1003", { angleDeg: 15 })}>
           ↺
           <span>Left</span>
         </button>
@@ -67,7 +116,7 @@ export function ControlPanel({
           ■
           <span>Stop</span>
         </button>
-        <button type="button" disabled={disabled} onClick={() => onControl("1003", { angleDeg: 15 })}>
+        <button type="button" disabled={disabled} onClick={() => onControl("1003", { angleDeg: -15 })}>
           ↻
           <span>Right</span>
         </button>
@@ -75,6 +124,34 @@ export function ControlPanel({
           ↓
           <span>Back</span>
         </button>
+      </div>
+
+      <div className="head-control-panel" aria-labelledby="head-control-title">
+        <div className="panel-heading">
+          <h3 id="head-control-title">Head Control</h3>
+          <span>{role === "controller" ? "safe step" : "viewer locked"}</span>
+        </div>
+
+        <div className="head-control-grid">
+          <button type="button" disabled={disabled} onClick={() => sendHeadTilt(HEAD_TILT_UP_ANGLE_DEG)}>
+            抬头
+            <span>{HEAD_TILT_UP_ANGLE_DEG}deg</span>
+          </button>
+          <button type="button" disabled={disabled} onClick={() => sendHeadTilt(HEAD_TILT_DOWN_ANGLE_DEG)}>
+            低头
+            <span>{HEAD_TILT_DOWN_ANGLE_DEG}deg</span>
+          </button>
+          <button type="button" className="head-stop-button" disabled={disabled} onClick={sendHeadStop}>
+            头部停止
+            <span>1004</span>
+          </button>
+          <button type="button" disabled={disabled} onClick={sendHeadReset}>
+            头部复位
+            <span>d=1</span>
+          </button>
+        </div>
+
+        <p className="calibration-note">抬头/低头角度符号可能需要按真实机器人方向校准。</p>
       </div>
 
       <KeyboardControlPanel

@@ -5,7 +5,8 @@ import type {
   ControlResponse,
   ControlTransferResponse,
   JoinRoomRequest,
-  JoinRoomResponse
+  JoinRoomResponse,
+  LeaveRoomResponse
 } from "./types";
 
 function stripTrailingSlash(value: string): string {
@@ -48,6 +49,13 @@ export function joinRoom(payload: JoinRoomRequest): Promise<JoinRoomResponse> {
   return requestJson<JoinRoomResponse>("/api/rooms/join", {
     method: "POST",
     body: JSON.stringify(payload)
+  });
+}
+
+export function leaveRoom(roomName: string, participantId: string, clientSessionId: string): Promise<LeaveRoomResponse> {
+  return requestJson<LeaveRoomResponse>("/api/rooms/leave", {
+    method: "POST",
+    body: JSON.stringify({ roomName, participantId, clientSessionId })
   });
 }
 

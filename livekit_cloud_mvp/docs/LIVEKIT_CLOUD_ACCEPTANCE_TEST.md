@@ -54,10 +54,10 @@ Do not mark tests as passed unless they were run against a real LiveKit Cloud pr
 46. [ ] 开启 `ROBOT_ENABLE_KEYBOARD_CONTROL=true` 和 `ROBOT_ENABLE_CONTINUOUS_1001=true` 后 controller 可用键盘控制。
 47. [ ] viewer 不可用键盘控制。
 48. [ ] 非当前 controller 不可用键盘控制。
-49. [ ] `ArrowUp` 映射为 `forward`。
-50. [ ] `ArrowDown` 映射为 `backward`。
-51. [ ] `ArrowLeft` 映射为 `left`。
-52. [ ] `ArrowRight` 映射为 `right`。
+49. [ ] `ArrowUp` / `W` 映射为 `forward`。
+50. [ ] `ArrowDown` / `S` 映射为 `backward`。
+51. [ ] `ArrowLeft` / `A` 映射为 `left`。
+52. [ ] `ArrowRight` / `D` 映射为 `right`。
 53. [ ] 组合方向映射正确：`forward_left`、`forward_right`、`backward_left`、`backward_right`。
 54. [ ] Space 触发 `1000 stop`。
 55. [ ] 松手触发 `1000 stop`。
@@ -71,7 +71,19 @@ Do not mark tests as passed unless they were run against a real LiveKit Cloud pr
 63. [ ] 超过最大角速度被拒绝。
 64. [ ] 普通 `robot_control` 发送 `1001` 被拒绝。
 65. [ ] `1002/1003/1000` 原有控制不受影响。
-66. [ ] Issues are recorded with timestamp, room name, participant type, browser/device, and logs without secrets.
+66. [ ] 聊天输入框、textarea、select 聚焦时按 `W/A/S/D` 不触发机器人运动。
+67. [ ] `ROBOT_ENABLE_HEAD_CONTROL=false` 时 real 模式头部控制被后端拒绝。
+68. [ ] `ROBOT_ENABLE_HEAD_CONTROL=true` 后 controller 可发送 `1004 head stop`。
+69. [ ] controller 可发送 `1005 head move`，payload 使用 `d/a/av`。
+70. [ ] controller 可发送 `1006 head reset`，payload 使用 `d`。
+71. [ ] viewer 发送 `1004/1005/1006` 被拒绝。
+72. [ ] `1004` 带多余参数被拒绝。
+73. [ ] `1005` 非法 `d/a/av` 被拒绝。
+74. [ ] `1006` 非法 `d` 被拒绝。
+75. [ ] `1007/1008/1009` 默认被拒绝。
+76. [ ] controller 断开、释放或转移控制权时，backend 尽力发送 `1004 head stop`。
+77. [ ] 真实机器人现场先测 `1000 stop` 和 `1004 head stop`，再测低速底盘和小角度头部动作。
+78. [ ] Issues are recorded with timestamp, room name, participant type, browser/device, and logs without secrets.
 
 ## Evidence To Capture
 
@@ -88,6 +100,7 @@ Do not mark tests as passed unless they were run against a real LiveKit Cloud pr
 - real mode config error screenshot or log, if real credentials are not ready.
 - PadBot MQTT info request result without key/token/secret values.
 - Keyboard control status showing active direction and stop reason.
+- Head control mock/real adapter result showing `1004/1005/1006` without secrets.
 - Android camera publishing screenshot or log.
 - LiveKit Cloud usage page screenshot without secrets.
 - Admin console screenshot with token/secret fields hidden.

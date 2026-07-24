@@ -379,6 +379,59 @@ button:focus-visible {
   background: #edf2f1;
 }
 
+.head-control-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  border-top: 1px solid #d5dfdd;
+  padding-top: 14px;
+}
+
+.head-control-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.head-control-grid button {
+  display: grid;
+  min-height: 58px;
+  place-items: center;
+  border: 1px solid #aac0bc;
+  border-radius: 6px;
+  color: #172026;
+  background: #eef7f4;
+  font-weight: 900;
+}
+
+.head-control-grid button span {
+  color: #587073;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.head-control-grid .head-stop-button {
+  color: #ffffff;
+  background: #8f3d2e;
+}
+
+.head-control-grid button:disabled {
+  border-color: #d5dfdd;
+  color: #8a9897;
+  background: #edf2f1;
+}
+
+.head-control-grid button:disabled span {
+  color: #8a9897;
+}
+
+.calibration-note {
+  margin: 0;
+  color: #596d70;
+  font-size: 0.84rem;
+  font-weight: 750;
+}
+
 .keyboard-control-panel {
   display: grid;
   gap: 12px;
@@ -908,6 +961,7 @@ button:focus-visible {
 
   .status-grid,
   .control-pad,
+  .head-control-grid,
   .media-status-grid,
   .admin-detail-grid {
     grid-template-columns: 1fr;

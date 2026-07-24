@@ -13,7 +13,13 @@ import type {
   WebRole
 } from "./types";
 
-type ConnectionState = "idle" | "connecting" | "connected" | "closed" | "error";
+type ConnectionState = "idle" | "connecting" | "connected" | "reconnecting" | "closed" | "error";
+
+const MAX_RECONNECT_DELAY_MS = 10_000;
+
+function getReconnectDelayMs(attempt: number): number {
+  return Math.min(1000 * 2 ** Math.max(attempt - 1, 0), MAX_RECONNECT_DELAY_MS);
+}
 
 export function useRoomSocket(session: JoinRoomResponse | null) {
   const socketRef = useRef<WebSocket | null>(null);
@@ -51,105 +57,148 @@ export function useRoomSocket(session: JoinRoomResponse | null) {
 
     const roomName = session.roomName;
     const participantId = session.participantId;
-    const socket = new WebSocket(WS_URL);
-    socketRef.current = socket;
-    setConnectionState("connecting");
+    let active = true;
+    let reconnectAttempt = 0;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
-    socket.addEventListener("open", () => {
-      setConnectionState("connected");
-      setLastError("");
-      socket.send(
-        JSON.stringify({
-          type: "hello",
-          roomName,
-          participantId
-        })
-      );
-    });
+    function clearReconnectTimer(): void {
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = undefined;
+      }
+    }
 
-    socket.addEventListener("message", (event) => {
-      let message: RoomSocketMessage;
-      try {
-        message = JSON.parse(event.data as string) as RoomSocketMessage;
-      } catch {
-        setLastError("WebSocket received an invalid message");
+    function connectSocket(): void {
+      if (!active) {
         return;
       }
 
-      if (message.type === "hello" && message.participantId === participantId) {
-        if (message.role === "controller" || message.role === "viewer") {
-          setRole(message.role);
+      const socket = new WebSocket(WS_URL);
+      socketRef.current = socket;
+      setConnectionState(reconnectAttempt > 0 ? "reconnecting" : "connecting");
+
+      socket.addEventListener("open", () => {
+        if (!active || socketRef.current !== socket) {
+          return;
         }
-        return;
-      }
 
-      if (message.type === "chat") {
-        setChatMessages((messages) => [...messages, message]);
-        return;
-      }
+        reconnectAttempt = 0;
+        setConnectionState("connected");
+        setLastError("");
+        socket.send(
+          JSON.stringify({
+            type: "hello",
+            roomName,
+            participantId
+          })
+        );
+      });
 
-      if (message.type === "role_update") {
-        setParticipants(message.participants);
-        setCurrentControllerName(message.currentControllerName);
-        const currentUser = message.participants.find((participant) => participant.id === participantId);
-        if (currentUser?.role === "controller" || currentUser?.role === "viewer") {
-          setRole(currentUser.role);
+      socket.addEventListener("message", (event) => {
+        if (!active || socketRef.current !== socket) {
+          return;
         }
-        return;
-      }
 
-      if (message.type === "robot_status") {
-        setRobotOnline(message.online);
-        return;
-      }
-
-      if (message.type === "robot_control") {
-        setRobotEvents((events) => [message, ...events].slice(0, 6));
-        return;
-      }
-
-      if (message.type === "robot_control_result") {
-        if (!message.ok) {
-          setLastError(`${message.code ?? "ROBOT_CONTROL_FAILED"}: ${message.message}`);
+        let message: RoomSocketMessage;
+        try {
+          message = JSON.parse(event.data as string) as RoomSocketMessage;
+        } catch {
+          setLastError("WebSocket received an invalid message");
+          return;
         }
-        return;
-      }
 
-      if (message.type === "keyboard_control_status") {
-        setKeyboardStatus(message);
-        return;
-      }
-
-      if (message.type === "keyboard_control_result") {
-        setLastKeyboardResult(message.ok ? message.message : `${message.code ?? "KEYBOARD_CONTROL_FAILED"}: ${message.message}`);
-        if (!message.ok) {
-          setLastError(`${message.code ?? "KEYBOARD_CONTROL_FAILED"}: ${message.message}`);
+        if (message.type === "hello" && message.participantId === participantId) {
+          if (message.role === "controller" || message.role === "viewer") {
+            setRole(message.role);
+          }
+          return;
         }
-        if (message.status) {
-          setKeyboardStatus(message.status);
+
+        if (message.type === "chat") {
+          setChatMessages((messages) => [...messages, message]);
+          return;
         }
-        return;
-      }
 
-      if (message.type === "error") {
-        setLastError(`${message.code}: ${message.message}`);
-      }
-    });
+        if (message.type === "role_update") {
+          setParticipants(message.participants);
+          setCurrentControllerName(message.currentControllerName);
+          const currentUser = message.participants.find((participant) => participant.id === participantId);
+          if (currentUser?.role === "controller" || currentUser?.role === "viewer") {
+            setRole(currentUser.role);
+          }
+          return;
+        }
 
-    socket.addEventListener("close", (event) => {
-      setConnectionState("closed");
-      if (!event.wasClean) {
-        setLastError("WebSocket closed unexpectedly. Check the public WSS URL and backend health.");
-      }
-    });
+        if (message.type === "robot_status") {
+          setRobotOnline(message.online);
+          return;
+        }
 
-    socket.addEventListener("error", () => {
-      setConnectionState("error");
-      setLastError("WebSocket connection error. Check VITE_WS_BASE_URL, HTTPS/WSS, and backend CORS.");
-    });
+        if (message.type === "robot_control") {
+          setRobotEvents((events) => [message, ...events].slice(0, 6));
+          return;
+        }
+
+        if (message.type === "robot_control_result") {
+          if (!message.ok) {
+            setLastError(`${message.code ?? "ROBOT_CONTROL_FAILED"}: ${message.message}`);
+          }
+          return;
+        }
+
+        if (message.type === "keyboard_control_status") {
+          setKeyboardStatus(message);
+          return;
+        }
+
+        if (message.type === "keyboard_control_result") {
+          setLastKeyboardResult(message.ok ? message.message : `${message.code ?? "KEYBOARD_CONTROL_FAILED"}: ${message.message}`);
+          if (!message.ok) {
+            setLastError(`${message.code ?? "KEYBOARD_CONTROL_FAILED"}: ${message.message}`);
+          }
+          if (message.status) {
+            setKeyboardStatus(message.status);
+          }
+          return;
+        }
+
+        if (message.type === "error") {
+          setLastError(`${message.code}: ${message.message}`);
+        }
+      });
+
+      socket.addEventListener("close", (event) => {
+        if (!active || socketRef.current !== socket) {
+          return;
+        }
+
+        socketRef.current = null;
+        reconnectAttempt += 1;
+        const delayMs = getReconnectDelayMs(reconnectAttempt);
+        setConnectionState("reconnecting");
+        setLastError(
+          `WebSocket disconnected (code ${event.code || "unknown"}). Reconnecting in ${Math.round(delayMs / 1000)}s...`
+        );
+        clearReconnectTimer();
+        reconnectTimer = setTimeout(connectSocket, delayMs);
+      });
+
+      socket.addEventListener("error", () => {
+        if (!active || socketRef.current !== socket) {
+          return;
+        }
+
+        setConnectionState("error");
+        setLastError("WebSocket connection error. Retrying automatically; check VITE_WS_BASE_URL, HTTPS/WSS, and backend CORS if it persists.");
+      });
+    }
+
+    connectSocket();
 
     return () => {
-      socket.close();
+      active = false;
+      clearReconnectTimer();
+      socketRef.current?.close(1000, "session_changed");
       socketRef.current = null;
     };
   }, [session?.roomName, session?.participantId]);

@@ -85,7 +85,165 @@ assert.deepEqual(
   {
     ok: false,
     code: "COMMAND_NOT_ALLOWED",
-    message: "Command must be one of 1002, 1003, or 1000"
+    message: "Command must be one of 1000, 1002, 1003, 1004, 1005, or 1006"
+  }
+);
+
+for (const command of ["1007", "1008", "1009"] as const) {
+  assert.deepEqual(
+    validateRobotControlMessage({
+      room: createRoom(),
+      senderId: "user-controller",
+      command,
+      parameters: {}
+    }),
+    {
+      ok: false,
+      code: "COMMAND_NOT_ALLOWED",
+      message: "Command must be one of 1000, 1002, 1003, 1004, 1005, or 1006"
+    }
+  );
+}
+
+for (const command of ["1004", "1005", "1006"] as const) {
+  assert.deepEqual(
+    validateRobotControlMessage({
+      room: createRoom(),
+      senderId: "user-viewer",
+      command,
+      parameters: command === "1005" ? { d: 1, a: 10, av: 30 } : {}
+    }),
+    {
+      ok: false,
+      code: "NOT_CONTROLLER",
+      message: "Only controller can send robot control"
+    }
+  );
+}
+
+assert.deepEqual(
+  validateRobotControlMessage({
+    room: createRoom(),
+    senderId: "user-controller",
+    command: "1004",
+    parameters: {}
+  }),
+  {
+    ok: true,
+    command: "1004",
+    parameters: {}
+  }
+);
+
+assert.deepEqual(
+  validateRobotControlMessage({
+    room: createRoom(),
+    senderId: "user-controller",
+    command: "1004",
+    parameters: { a: 10 }
+  }),
+  {
+    ok: false,
+    code: "INVALID_PARAMETERS",
+    message: "1004 head stop must not include movement parameters"
+  }
+);
+
+assert.deepEqual(
+  validateRobotControlMessage({
+    room: createRoom(),
+    senderId: "user-controller",
+    command: "1005",
+    parameters: { d: 1, a: -15, av: 60 }
+  }),
+  {
+    ok: true,
+    command: "1005",
+    parameters: { d: 1, a: -15, av: 60 }
+  }
+);
+
+assert.deepEqual(
+  validateRobotControlMessage({
+    room: createRoom(),
+    senderId: "user-controller",
+    command: "1005",
+    parameters: { d: 3, a: 15, av: 60 }
+  }),
+  {
+    ok: false,
+    code: "INVALID_PARAMETERS",
+    message: "d must be 1 for vertical head movement or 2 for horizontal head movement"
+  }
+);
+
+assert.deepEqual(
+  validateRobotControlMessage({
+    room: createRoom(),
+    senderId: "user-controller",
+    command: "1005",
+    parameters: { d: 1, a: 120, av: 60 }
+  }),
+  {
+    ok: false,
+    code: "INVALID_PARAMETERS",
+    message: "a must be between -90 and 90"
+  }
+);
+
+assert.deepEqual(
+  validateRobotControlMessage({
+    room: createRoom(),
+    senderId: "user-controller",
+    command: "1005",
+    parameters: { d: 1, a: 15, av: 121 }
+  }),
+  {
+    ok: false,
+    code: "INVALID_PARAMETERS",
+    message: "av must be greater than 0 and no more than 120"
+  }
+);
+
+assert.deepEqual(
+  validateRobotControlMessage({
+    room: createRoom(),
+    senderId: "user-controller",
+    command: "1006",
+    parameters: {}
+  }),
+  {
+    ok: true,
+    command: "1006",
+    parameters: { d: 0 }
+  }
+);
+
+assert.deepEqual(
+  validateRobotControlMessage({
+    room: createRoom(),
+    senderId: "user-controller",
+    command: "1006",
+    parameters: { d: 2 }
+  }),
+  {
+    ok: true,
+    command: "1006",
+    parameters: { d: 2 }
+  }
+);
+
+assert.deepEqual(
+  validateRobotControlMessage({
+    room: createRoom(),
+    senderId: "user-controller",
+    command: "1006",
+    parameters: { d: 4 }
+  }),
+  {
+    ok: false,
+    code: "INVALID_PARAMETERS",
+    message: "d must be 0, 1, or 2"
   }
 );
 

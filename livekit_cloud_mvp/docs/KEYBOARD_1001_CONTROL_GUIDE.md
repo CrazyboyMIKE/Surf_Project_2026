@@ -4,7 +4,7 @@
 
 ## 键盘方向键控制是什么
 
-Web controller 可以手动打开“启用方向键控制”，然后使用方向键发送连续速度控制：
+Web controller 可以手动打开“启用方向键控制”，然后使用方向键或 `W/A/S/D` 发送连续速度控制：
 
 - 按住方向键：持续发送 keepalive。
 - 松开方向键：立即发送 `1000 stop`。
@@ -71,16 +71,49 @@ ROBOT_KEYBOARD_REQUIRE_FOCUS=true
 ## 方向映射
 
 ```text
-ArrowUp                -> forward        -> { lv: +linearSpeed, av: 0 }
-ArrowDown              -> backward       -> { lv: -linearSpeed, av: 0 }
-ArrowLeft              -> left           -> { lv: 0, av: +angularSpeed }
-ArrowRight             -> right          -> { lv: 0, av: -angularSpeed }
+ArrowUp / W            -> forward        -> { lv: +linearSpeed, av: 0 }
+ArrowDown / S          -> backward       -> { lv: -linearSpeed, av: 0 }
+ArrowLeft / A          -> left           -> { lv: 0, av: +angularSpeed }
+ArrowRight / D         -> right          -> { lv: 0, av: -angularSpeed }
 ArrowUp + ArrowLeft    -> forward_left   -> { lv: +linearSpeed, av: +angularSpeed }
 ArrowUp + ArrowRight   -> forward_right  -> { lv: +linearSpeed, av: -angularSpeed }
 ArrowDown + ArrowLeft  -> backward_left  -> { lv: -linearSpeed, av: +angularSpeed }
 ArrowDown + ArrowRight -> backward_right -> { lv: -linearSpeed, av: -angularSpeed }
 Space                  -> stop           -> 1000
 ```
+
+聊天输入框、文本框、下拉框或可编辑区域聚焦时，前端不会拦截 `W/A/S/D`，避免用户打字时触发机器人运动。
+
+## 头部控制
+
+头部控制使用普通 `robot_control` 通道，但只有当前 controller 可以发送。real 模式必须显式开启：
+
+```env
+ROBOT_ENABLE_HEAD_CONTROL=true
+```
+
+默认示例仍为关闭：
+
+```env
+ROBOT_ENABLE_HEAD_CONTROL=false
+```
+
+命令映射：
+
+```text
+1004 -> head stop        -> {"a":"1004"}
+1005 -> head move        -> {"a":"1005","m":{"d":1,"a":15,"av":60}}
+1006 -> head reset       -> {"a":"1006","m":{"d":1}}
+```
+
+`1005` 参数含义：
+
+- `d=1`：垂直方向。
+- `d=2`：水平方向。
+- `a`：角度，当前后端限制为 `-90` 到 `90` deg。
+- `av`：角速度，当前后端限制为大于 `0` 且不超过 `120` deg/s。
+
+Web UI 当前提供“抬头”“低头”“头部停止”“头部复位”。抬头/低头角度符号以常量方式定义，真实机器人上需要校准正负方向。
 
 ## 前端如何使用
 
@@ -106,18 +139,22 @@ viewer 不可用，非当前 controller 不可用。
 - controller release stop。
 - controller transfer stop。
 - robot offline stop。
+- controller 断开、释放、转移时，backend 会尽力发送 `1004 head stop`。
 - 后端校验速度上限。
 - 后端只允许固定 direction，不接受任意 `lv/av` JSON 透传。
 - 普通 `robot_control` 仍然拒绝 `1001`。
+- 普通 `robot_control` 只允许 `1000/1002/1003/1004/1005/1006`，默认拒绝 `1007/1008/1009`。
 
 ## 用户需要自己完成的事项
 
 - 机器人放在安全空旷区域。
 - 旁边有人准备物理急停。
 - 先测试 `1000 stop`。
+- 如果启用头部控制，先测试 `1004 head stop`。
 - 再低速测试 `ArrowUp` 1 秒。
 - 确认松手自动停。
 - 再测试左右和组合方向。
+- 再测试小角度头部抬头/低头，并记录真实方向是否需要反向。
 - 不要第一次就高速度。
 - 记录机器人响应。
 - 如果 `1001` 不稳定，应回退使用 `1002/1003` 步进控制。

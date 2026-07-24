@@ -94,6 +94,7 @@ server.listen(config.port, () => {
   console.log("Viewer media publishing: enabled");
   console.log(`Robot control mode: ${robotControlAdapter.mode}`);
   console.log(`Robot real control: ${config.robotControl.enabled ? "enabled" : "disabled"}`);
+  console.log(`Robot head control: ${config.robotControl.headControlEnabled ? "enabled" : "disabled"}`);
   console.log(
     `Keyboard 1001 control: ${
       config.keyboardControl.enabled && config.keyboardControl.continuous1001Enabled ? "enabled" : "disabled"
