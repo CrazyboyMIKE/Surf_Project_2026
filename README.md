@@ -1,108 +1,136 @@
-# LiveKit Robot Remote Presence MVP
+# SURF Project 2026 - LiveKit Cloud Robot Remote Presence MVP
 
-这是一个机器人远程临场 MVP：Android 机器人端发布摄像头，Web 用户观看机器人视频、多人聊天、申请 controller，并通过后端安全白名单发送 mock 控制命令。音视频全部由 LiveKit 处理，backend 不转发视频帧。
+这是一个机器人远程临场 MVP。当前主线项目位于 `livekit_cloud_mvp/`，采用 **LiveKit Cloud + Node.js Backend + React Web Client + Robot Web Publisher + Android Robot** 的方案。
 
-## Current Status
+项目目标是让多个远程用户进入同一个机器人房间，观看机器人第一视角视频，进行聊天和会议式音视频互动，并让唯一的 active controller 通过 backend 安全校验后控制机器人。
 
-截至当前提交，项目已经完成：
+## Current Main Project
 
-- 第 1 轮：Web + Backend 最小业务闭环。
-- 第 2 轮：真实 LiveKit 视频链路和 `robot-web-publisher` 摄像头模拟器。
-- 第 3 轮：Android 8.1 / API 27+ robot app，发布真实摄像头画面。
-- 第 4 轮：公网部署配置、HTTPS/WSS、CORS、线上测试文档。
-- 第 5 轮：真实环境验收补强，Android 构建、LiveKit、部署 readiness 文档。
-- 第 5.5 轮：方案B，自建 LiveKit Server + Redis + Nginx 云端部署模板和联调准备。
-- 第 6 轮：多人会议能力，controller 可手动开麦/开摄像头，viewer 默认不能发布媒体，Android robot 可订阅 controller 音频。
+当前主要维护目录：
 
-换句话说：**已完成 6 个产品开发轮次 + 1 个方案B部署准备轮次**。当前代码/文档已经具备真实云端最小闭环测试条件，但还没有在真实云服务器、真实域名、可信证书、Android 真机和公网 4G/5G 环境中完成最终验收。
+```text
+livekit_cloud_mvp/
+```
 
-## Implemented Goals
+旧的根目录 `backend/`、`web-client/`、`robot-web-publisher/`、`android-robot/` 记录了早期 MVP 轮次。现在组会、部署、云端测试和后续开发应优先看 `livekit_cloud_mvp/`。
 
-已实现或准备就绪的核心目标：
+推荐先读：
 
-| # | Goal | Status |
-|---:|---|---|
-| 1 | Web 用户加入房间 | done |
-| 2 | 多人加入同一房间 | done |
-| 3 | `viewer` / `controller` 角色区分 | done |
-| 4 | 每个房间最多一个 controller | done |
-| 5 | 同房间文字聊天 | done |
-| 6 | viewer 不能发送 robot control | done |
-| 7 | controller 只能发送 `1002` / `1003` / `1000` | done |
-| 8 | robot control mock 记录/转发，不控制真实硬件 | done |
-| 9 | Backend 生成 LiveKit token，缺配置时保留 mock mode | done |
-| 10 | Web 订阅 robot participant 视频 | done |
-| 11 | `robot-web-publisher` 发布浏览器摄像头 | done |
-| 12 | Android robot app 发布 Android 摄像头 | done, needs true-device acceptance |
-| 13 | 线上 HTTPS/WSS 配置和部署文档 | ready |
-| 14 | 方案B自建 LiveKit Server 部署模板 | ready |
-| 15 | Controller 手动开麦/开摄像头 | done, needs real LiveKit acceptance |
-| 16 | Viewer 默认不能发布麦克风/摄像头 | done |
-| 17 | Android robot 订阅 controller 音频 | built, needs true-device audio acceptance |
+- `livekit_cloud_mvp/README.md`
+- `livekit_cloud_mvp/docs/GROUP_MEETING_SUMMARY_AND_DIAGRAMS.md`
+- `livekit_cloud_mvp/docs/LIVEKIT_CLOUD_ARCHITECTURE.md`
+- `livekit_cloud_mvp/docs/LIVEKIT_CLOUD_DEPLOYMENT_GUIDE.md`
+- `livekit_cloud_mvp/docs/LIVEKIT_CLOUD_ACCEPTANCE_TEST.md`
 
-明确未做或仍需真实环境验证：
+## What This System Does
 
-- 未做真实机器人运动控制。
-- 未调用厂商导航 SDK。
-- 未接 MQTT 真实控制。
-- 未新增账号系统或数据库。
-- 未做录制回放、支付、复杂权限后台。
-- 自建云端 LiveKit 真实部署、Android 真机摄像头公网发布、手机 4G/5G 观看仍需实测。
+### Media
+
+- LiveKit Cloud 负责所有音视频房间和 WebRTC 传输。
+- Backend 只生成 LiveKit token，不转发 raw audio/video frames。
+- Web client 可以观看 robot video，也可以手动开启 microphone/camera。
+- robot-web-publisher 可以用浏览器摄像头/麦克风模拟机器人端。
+- Android robot 通过 backend 获取 token 后发布真实机器人摄像头。
+
+### Room and Role
+
+- Web 用户通过 roomName 加入房间。
+- 角色包括：
+  - `viewer`
+  - `controller`
+  - `robot`
+- 每个房间最多一个 active controller。
+- controller 可以转交控制权给在线 viewer。
+- viewer 可以观看、聊天、开麦/开摄像头，但不能控制机器人。
+
+### Chat
+
+- 公共 Room Chat 通过 backend WebSocket 广播给同房间用户。
+- viewer-to-viewer private chat 只投递给 sender 和 recipient。
+- 私聊内容当前不做数据库持久化。
+
+### Robot Control
+
+机器人控制必须经过 backend：
+
+1. 检查 room 是否存在。
+2. 检查 sender 是否属于该 room。
+3. 检查 sender 是否为当前 controller。
+4. 检查 robot 是否在线。
+5. 检查 command whitelist。
+6. 校验参数范围。
+7. mock 模式记录日志，real 模式通过 PadBot MQTT 适配层发送。
+
+当前控制命令：
+
+| Command | Meaning | Status |
+|---|---|---|
+| `1000` | whole robot stop | enabled |
+| `1001` | continuous chassis movement | keyboard-control only, gated by env |
+| `1002` | chassis move distance | enabled |
+| `1003` | chassis rotate angle | enabled |
+| `1004` | head stop | gated by head-control env |
+| `1005` | head absolute angle control | gated by head-control env |
+| `1006` | head reset | gated by head-control env |
+| `1007-1009` | arm commands | not implemented |
+
+Real robot credentials are backend-only. They must never appear in Web, Android, GitHub, screenshots, or logs.
+
+### Admin and Persistence
+
+- `/admin` 管理后台使用 backend `ADMIN_TOKEN` 保护。
+- SQLite 持久化最近 30 天房间历史。
+- 管理员可以：
+  - 查看在线房间。
+  - 查看 30 天 room records。
+  - 查看 participants/events history。
+  - kick participant。
+  - close room。
+- 数据库不会保存 LiveKit secret、LiveKit token、机器人 key/token、原始音视频帧。
+
+## Current Capability Summary
+
+| Area | Current Status |
+|---|---|
+| LiveKit Cloud video/audio | implemented |
+| Web room join | implemented |
+| Viewer/controller role | implemented |
+| Controller transfer | implemented |
+| Public chat | implemented |
+| Viewer private chat | implemented |
+| Robot web publisher camera | implemented |
+| Robot web publisher microphone | implemented |
+| Web robot audio playback | implemented |
+| Web local mute per participant | implemented |
+| Admin console | implemented |
+| SQLite 30-day history | implemented |
+| PadBot MQTT chassis control | implemented and field-tested |
+| Head control | implemented, needs real-robot angle calibration |
+| Android robot app | present, needs more true-device acceptance |
+| Account system | not implemented |
+| Full production auth/audit | not implemented |
 
 ## Project Structure
 
 ```text
-backend/                    Node.js + TypeScript + Express + WebSocket
-web-client/                 React + TypeScript Web client
-robot-web-publisher/        Browser camera robot simulator
-android-robot/              Android Kotlin robot camera publisher
+livekit_cloud_mvp/
+  backend/                 Node.js + TypeScript + Express + WebSocket
+  web-client/              React + TypeScript Web app
+  robot-web-publisher/     Browser robot camera/mic publisher
+  android-robot/           Android 8.1 robot app/docs
+  deployment/              Nginx examples for LiveKit Cloud deployment
+  docs/                    Architecture, deployment, reports, test plans
+
 deployment/self-hosted-livekit/
-                             Scheme B self-hosted LiveKit deployment templates
-docs/                       Specs, architecture, setup, test plans, reports
+  Legacy Scheme B self-hosted LiveKit templates
 ```
 
-## LiveKit Modes
-
-### Local mock mode
-
-Use this when you do not have LiveKit credentials yet:
-
-```text
-LIVEKIT_URL=mock://livekit
-LIVEKIT_API_KEY=
-LIVEKIT_API_SECRET=
-```
-
-Backend returns `tokenMode: "mock"` and media is not real.
-
-### LiveKit Cloud mode
-
-Put real LiveKit Cloud values only in `backend/.env`:
-
-```text
-LIVEKIT_URL=wss://your-project.livekit.cloud
-LIVEKIT_API_KEY=your-api-key
-LIVEKIT_API_SECRET=your-api-secret
-```
-
-### Scheme B self-hosted mode
-
-Run your own LiveKit Server + Redis + Nginx on a cloud server:
-
-```text
-LIVEKIT_URL=wss://livekit.your-domain.com
-LIVEKIT_API_KEY=your-self-hosted-key
-LIVEKIT_API_SECRET=your-self-hosted-secret
-```
-
-The key/secret must match `deployment/self-hosted-livekit/livekit.yaml`. Do not put the secret in Web, Android, screenshots, logs, or GitHub.
-
-## Local Run
+## Local Development
 
 Backend:
 
 ```bash
-cd backend
+cd livekit_cloud_mvp/backend
 npm install
 npm run dev
 ```
@@ -110,7 +138,7 @@ npm run dev
 Web client:
 
 ```bash
-cd web-client
+cd livekit_cloud_mvp/web-client
 npm install
 npm run dev
 ```
@@ -118,92 +146,100 @@ npm run dev
 Robot web publisher:
 
 ```bash
-cd robot-web-publisher
+cd livekit_cloud_mvp/robot-web-publisher
 npm install
 npm run dev
 ```
 
-Android robot app:
+Android robot:
 
 ```bash
-cd android-robot
+cd livekit_cloud_mvp/android-robot
 ./gradlew assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Open:
+## Production Environment
 
-- Web client: `http://localhost:5173`
-- Robot publisher: `http://localhost:5174`
-
-## Production / Cloud Run
-
-Backend production env:
+Backend example:
 
 ```text
-PORT=3001
+PORT=3002
 NODE_ENV=production
-PUBLIC_BASE_URL=https://api.your-domain.com
-CORS_ORIGIN=https://web.your-domain.com
-LIVEKIT_URL=wss://livekit.your-domain.com
-LIVEKIT_API_KEY=your-livekit-api-key
-LIVEKIT_API_SECRET=your-livekit-api-secret
+PUBLIC_BASE_URL=https://robotapi.example.com
+CORS_ORIGIN=https://robot.example.com,https://robotpub.example.com
+DATABASE_URL=file:./data/livekit_cloud_mvp.sqlite
+ROOM_RECORD_RETENTION_DAYS=30
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=YOUR_LIVEKIT_CLOUD_API_KEY
+LIVEKIT_API_SECRET=YOUR_LIVEKIT_CLOUD_API_SECRET
 LIVEKIT_TOKEN_TTL=1h
-ALLOW_VIEWER_PUBLISH=false
+ALLOW_VIEWER_PUBLISH=true
 MOCK_ROBOT_ONLINE=false
+ADMIN_ENABLED=true
+ADMIN_TOKEN=CHANGE_ME_ADMIN_TOKEN
+ROBOT_CONTROL_MODE=mock
+ROBOT_CONTROL_ENABLED=false
 ```
 
-Web production env:
+Real robot control requires backend-only vendor/MQTT environment variables. Do not commit them.
+
+Web client:
 
 ```text
-VITE_API_BASE_URL=https://api.your-domain.com
-VITE_WS_BASE_URL=wss://api.your-domain.com/ws
+VITE_API_BASE_URL=https://robotapi.example.com
+VITE_WS_BASE_URL=wss://robotapi.example.com/ws
 ```
 
-Android robot online `backendUrl`:
+Robot web publisher:
 
 ```text
-https://api.your-domain.com
+VITE_API_BASE_URL=https://robotapi.example.com
+VITE_WS_BASE_URL=wss://robotapi.example.com/ws
 ```
 
-Do not use `localhost` on Android. Online Android and phone tests should use trusted HTTPS/WSS certificates, not self-signed certificates.
-
-For Scheme B, start from:
-
-- `deployment/self-hosted-livekit/README.md`
-- `deployment/self-hosted-livekit/CLOUD_DEPLOYMENT_RUNBOOK.md`
-- `docs/SELF_HOSTED_LIVEKIT_DEPLOYMENT_GUIDE.md`
-- `docs/SELF_HOSTED_LIVEKIT_ACCEPTANCE_TEST.md`
-- `docs/CLOUD_MINIMAL_LOOP_PREP_REPORT.md`
-
-Required cloud ports for Scheme B:
+Android robot:
 
 ```text
-443/tcp              HTTPS/WSS
-80/tcp               Let's Encrypt HTTP challenge and redirect
-7881/tcp             LiveKit ICE TCP fallback
-50000-60000/udp      LiveKit WebRTC media ports
-7880/tcp             Optional if LiveKit is exposed directly instead of only through Nginx
+backendUrl=https://robotapi.example.com
 ```
 
-Do not expose Redis `6379/tcp` to the public internet.
+Android must not use `localhost`; use a public HTTPS URL or LAN IP during local testing.
+
+## Cloud Deployment Notes
+
+For the LiveKit Cloud project, your cloud server only hosts backend and static Web pages.
+
+Required public ports:
+
+```text
+22/tcp    SSH
+80/tcp    HTTP challenge / redirect
+443/tcp   HTTPS / WSS
+```
+
+Do **not** open LiveKit media ports for the LiveKit Cloud version. LiveKit Cloud handles media transport.
+
+Typical cloud services:
+
+- `robot.example.com`: web-client static site.
+- `robotpub.example.com`: robot-web-publisher static site.
+- `robotapi.example.com`: backend API + WebSocket.
 
 ## Checks
 
 Backend:
 
 ```bash
-cd backend
+cd livekit_cloud_mvp/backend
 npm run lint
 npm run test
 npm run build
-npm run check:livekit-env
 ```
 
 Web client:
 
 ```bash
-cd web-client
+cd livekit_cloud_mvp/web-client
 npm run lint
 npm run test
 npm run build
@@ -212,7 +248,7 @@ npm run build
 Robot web publisher:
 
 ```bash
-cd robot-web-publisher
+cd livekit_cloud_mvp/robot-web-publisher
 npm run lint
 npm run test
 npm run build
@@ -221,33 +257,29 @@ npm run build
 Android robot:
 
 ```bash
-cd android-robot
+cd livekit_cloud_mvp/android-robot
 ./gradlew test
 ./gradlew assembleDebug
 ```
 
-## Manual Acceptance Path
+## Safety Rules
 
-1. Start backend with real LiveKit or self-hosted Scheme B env.
-2. Start `web-client`.
-3. Start `robot-web-publisher` and allow browser camera permission.
-4. Join the same room from two Web users.
-5. Confirm both Web users see robot publisher video.
-6. Confirm chat works between Web users.
-7. Request controller from one Web user.
-8. Confirm viewer cannot control.
-9. Confirm controller can send `1002`, `1003`, and `1000 stop`.
-10. If meeting media is enabled, controller manually turns mic/camera on.
-11. Build/install Android robot app.
-12. Android joins the same room with `backendUrl=https://api.your-domain.com`.
-13. Confirm Web sees Android robot camera.
-14. Confirm Android only displays/logs received control messages and does not move real hardware.
+- Do not commit `.env`, `.env.local`, `.env.production`.
+- Do not print or expose LiveKit API secret.
+- Do not put robot vendor key/token/MQTT password in frontend or Android.
+- Backend must not forward raw audio/video frames.
+- Viewer must never send robot control.
+- `1000 stop` must always remain available.
+- Test real movement in a safe open area with a person ready for physical emergency stop.
 
-## Safety Scope
+## Suggested Meeting Summary
 
-- No real robot movement is implemented.
-- No robot vendor SDK or MQTT control is connected.
-- `robot_control` remains mock logging/WebSocket relay.
-- Backend never forwards raw video or audio frames.
-- Web and Android never contain `LIVEKIT_API_SECRET`.
-- The command whitelist remains `1002`, `1003`, and `1000`.
+The current MVP separates media, business state, and hardware control:
+
+- LiveKit Cloud handles media.
+- Backend handles trust, permissions, room state, token generation, chat, admin, and robot control validation.
+- Web client handles user interaction.
+- Robot publisher or Android robot publishes camera/audio.
+- RobotControlAdapter isolates hardware-specific PadBot MQTT logic.
+
+This separation keeps secrets out of clients and prevents viewers from bypassing backend permission checks.

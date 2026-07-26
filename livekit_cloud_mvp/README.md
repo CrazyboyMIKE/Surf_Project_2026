@@ -1,17 +1,23 @@
 # LiveKit Cloud Robot Remote Presence MVP
 
-This is an isolated LiveKit Cloud version of the robot remote-presence MVP.
+This directory is the actively maintained LiveKit Cloud version of the robot remote-presence MVP.
 
-It does not deploy or configure a self-hosted LiveKit Server. LiveKit Cloud provides all audio/video rooms and WebRTC transport. This project only deploys:
+LiveKit Cloud handles all audio/video rooms and WebRTC transport. Our backend handles room state, roles, LiveKit token generation, chat, admin operations, SQLite room history, and safe robot-control validation/dispatch. The backend does **not** forward raw audio/video frames.
 
-- `backend/`: room state, roles, LiveKit Cloud token generation, chat, controller ownership, and mock robot-control relay.
-- `web-client/`: Web viewing, chat, controller/viewer UI, robot video, and safe control buttons.
-- `robot-web-publisher/`: browser-camera robot simulator for validating the video path before Android hardware.
-- `android-robot/`: Android 8.1 robot app/docs for publishing a real robot camera through backend-issued LiveKit Cloud tokens.
+## Components
+
+```text
+backend/              Express + TypeScript + WebSocket + SQLite
+web-client/           React + TypeScript user/admin Web app
+robot-web-publisher/  Browser robot camera/microphone publisher
+android-robot/        Android 8.1 robot app/docs
+deployment/           Nginx examples for cloud deployment
+docs/                 Architecture, setup, reports, and test plans
+```
 
 ## Current Scope
 
-Implemented in this isolated project:
+Implemented:
 
 - `GET /health`
 - `POST /api/rooms/join`
@@ -19,29 +25,90 @@ Implemented in this isolated project:
 - `POST /api/rooms/control/request`
 - `POST /api/rooms/control/release`
 - WebSocket `/ws`
-- viewer/controller roles
-- chat over backend WebSocket
+- viewer/controller/robot room roles
+- controller request, release, and transfer
+- public room chat
+- viewer-to-viewer private chat
 - LiveKit Cloud token generation in backend
-- robot publisher token with publish permission
-- viewer/controller tokens can publish microphone and camera media
-- robot video subscription in Web
+- Web robot video/audio subscription
+- Web participant media panel
+- Web local mute per viewer/robot audio
+- Web controller/viewer microphone and camera publishing
+- robot-web-publisher camera and optional microphone publishing
+- robot-web-publisher controller video/audio priority display
+- Android robot camera publishing code/docs
 - `/admin` room management console protected by backend admin token
-- SQLite-backed room history for the latest 30 days
+- SQLite-backed 30-day room history
 - admin room history, participant/event detail, kick participant, and close room operations
-- robot-web-publisher camera publishing
-- Android robot camera publishing code copied from the main MVP
-- safe robot control commands through backend validation
+- backend robot-control validation
+- mock robot-control adapter
+- PadBot MQTT real-mode adapter
+- keyboard continuous chassis control through gated `1001`
+- head stop/move/reset through gated `1004` / `1005` / `1006`
 
 Not included:
 
-- self-hosted LiveKit Server
+- self-hosted LiveKit Server in this directory
 - Redis
-- coturn or TURN deployment
-- LiveKit Nginx proxy
+- coturn/TURN deployment
+- LiveKit Nginx reverse proxy
 - custom WebRTC/SFU
 - backend audio/video frame forwarding
 - account system
-- real robot motion control
+- production-grade admin authentication/audit log
+- arm control commands `1007` / `1008` / `1009`
+
+## Media and Control Model
+
+Media path:
+
+```text
+Web / Robot Publisher / Android
+  -> LiveKit Cloud
+  -> audio/video transport
+```
+
+Business path:
+
+```text
+Web / Robot Publisher / Android
+  -> backend HTTPS / WSS
+  -> room state, roles, chat, admin, robot control
+```
+
+Robot control path:
+
+```text
+Controller Web UI
+  -> backend WebSocket
+  -> permission + whitelist + parameter validation
+  -> RobotControlAdapter
+  -> mock log or PadBot MQTT
+  -> physical robot
+```
+
+## Robot Commands
+
+| Command | Meaning | Availability |
+|---|---|---|
+| `1000` | whole robot stop | controller only |
+| `1001` | continuous chassis movement | keyboard-control path only |
+| `1002` | chassis move distance | controller only |
+| `1003` | chassis rotate angle | controller only |
+| `1004` | head stop | controller only, gated by env |
+| `1005` | head absolute angle control | controller only, gated by env |
+| `1006` | head reset | controller only, gated by env |
+| `1007-1009` | arm control | not implemented |
+
+`1005` currently uses non-negative absolute angles. Default Web UI calibration:
+
+```text
+center = 90deg
+tilt up = 120deg
+tilt down = 60deg
+```
+
+If real hardware direction is reversed, swap the up/down constants and retest at low speed.
 
 ## LiveKit Cloud Setup
 
@@ -50,39 +117,41 @@ Create a LiveKit Cloud project and copy its WebSocket URL, API key, and API secr
 Backend example:
 
 ```text
-PORT=3001
+PORT=3002
 NODE_ENV=production
-PUBLIC_BASE_URL=https://api.example.com
-CORS_ORIGIN=https://web.example.com
+PUBLIC_BASE_URL=https://robotapi.example.com
+CORS_ORIGIN=https://robot.example.com,https://robotpub.example.com
 DATABASE_URL=file:./data/livekit_cloud_mvp.sqlite
 ROOM_RECORD_RETENTION_DAYS=30
 LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_API_KEY=YOUR_LIVEKIT_CLOUD_API_KEY
 LIVEKIT_API_SECRET=YOUR_LIVEKIT_CLOUD_API_SECRET
 LIVEKIT_TOKEN_TTL=1h
+ALLOW_VIEWER_PUBLISH=true
 MOCK_ROBOT_ONLINE=false
 ADMIN_ENABLED=false
 ADMIN_TOKEN=CHANGE_ME_ADMIN_TOKEN
+ROBOT_CONTROL_MODE=mock
+ROBOT_CONTROL_ENABLED=false
+ROBOT_ENABLE_HEAD_CONTROL=false
+ROBOT_ENABLE_KEYBOARD_CONTROL=false
+ROBOT_ENABLE_CONTINUOUS_1001=false
 ```
 
 Web and robot publisher example:
 
 ```text
-VITE_API_BASE_URL=https://api.example.com
-VITE_WS_BASE_URL=wss://api.example.com/ws
+VITE_API_BASE_URL=https://robotapi.example.com
+VITE_WS_BASE_URL=wss://robotapi.example.com/ws
 ```
 
 Android only receives:
 
 ```text
-backendUrl=https://api.example.com
+backendUrl=https://robotapi.example.com
 ```
 
-Web, robot-web-publisher, and Android never need `LIVEKIT_API_SECRET`.
-
-Viewer and controller users can both manually turn microphone/camera on in Web after joining with a LiveKit Cloud token. Robot movement/control permissions are still separate: only the active controller can send `1002`, `1003`, or `1000`.
-
-Admin console is available at `/admin` when backend `ADMIN_ENABLED=true` and a strong `ADMIN_TOKEN` is configured. It can inspect active rooms, query 30-day SQLite room records, kick online participants, and close rooms. It must not display tokens or secrets.
+Web, robot-web-publisher, and Android never need `LIVEKIT_API_SECRET` or robot vendor credentials.
 
 ## Local Development
 
@@ -119,7 +188,7 @@ cd android-robot
 
 ## Cloud Deployment
 
-For the Cloud version, the cloud server only needs backend and Web hosting.
+For the LiveKit Cloud version, the cloud server only needs backend and Web hosting.
 
 Open:
 
@@ -131,12 +200,21 @@ Open:
 
 Do not add LiveKit media-server port rules for this project. LiveKit Cloud handles media transport.
 
+Typical domains:
+
+```text
+robot.example.com       web-client
+robotpub.example.com    robot-web-publisher
+robotapi.example.com    backend API + WebSocket
+```
+
 Start from:
 
 - `docs/LIVEKIT_CLOUD_REQUIREMENTS.md`
 - `docs/LIVEKIT_CLOUD_DEPLOYMENT_GUIDE.md`
 - `docs/LIVEKIT_CLOUD_ACCEPTANCE_TEST.md`
 - `docs/LIVEKIT_CLOUD_DEPLOYMENT_STEP_LOG_TEMPLATE.md`
+- `docs/GROUP_MEETING_SUMMARY_AND_DIAGRAMS.md`
 
 ## Checks
 
@@ -176,7 +254,10 @@ Android robot:
 
 - Backend must not return `LIVEKIT_API_SECRET`.
 - Backend must not print LiveKit key/secret/token values.
-- Web and Android must not contain LiveKit Cloud secret.
-- Controller control commands are restricted to `1002`, `1003`, and `1000`.
-- `1000 stop` is a required acceptance test.
-- Real robot movement is not implemented in this project.
+- Web, robot-web-publisher, and Android must not contain LiveKit Cloud secret.
+- Web, robot-web-publisher, and Android must not contain robot vendor key/token/MQTT password.
+- Backend must not forward raw audio/video frames.
+- Viewer cannot send robot control.
+- `1000 stop` must always remain available.
+- Continuous `1001` must stay behind explicit backend env switches.
+- Real robot tests must happen in a safe open area with a person ready for physical emergency stop.
