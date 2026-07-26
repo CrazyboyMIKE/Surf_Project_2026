@@ -154,12 +154,12 @@ assert.deepEqual(
     room: createRoom(),
     senderId: "user-controller",
     command: "1005",
-    parameters: { d: 1, a: -15, av: 60 }
+    parameters: { d: 1, a: 120, av: 60 }
   }),
   {
     ok: true,
     command: "1005",
-    parameters: { d: 1, a: -15, av: 60 }
+    parameters: { d: 1, a: 120, av: 60 }
   }
 );
 
@@ -182,12 +182,26 @@ assert.deepEqual(
     room: createRoom(),
     senderId: "user-controller",
     command: "1005",
-    parameters: { d: 1, a: -181, av: 60 }
+    parameters: { d: 1, a: -1, av: 60 }
   }),
   {
     ok: false,
     code: "INVALID_PARAMETERS",
-    message: "a must be between -180 and 180"
+    message: "a must be between 0 and 180"
+  }
+);
+
+assert.deepEqual(
+  validateRobotControlMessage({
+    room: createRoom(),
+    senderId: "user-controller",
+    command: "1005",
+    parameters: { d: 1, a: 181, av: 60 }
+  }),
+  {
+    ok: false,
+    code: "INVALID_PARAMETERS",
+    message: "a must be between 0 and 180"
   }
 );
 

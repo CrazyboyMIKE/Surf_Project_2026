@@ -12,8 +12,9 @@ import { KeyboardControlPanel } from "./KeyboardControlPanel";
 
 const HEAD_VERTICAL_DIRECTION = 1;
 const HEAD_TILT_SPEED_DEG_PER_SEC = 60;
-const HEAD_TILT_UP_ANGLE_DEG = -15;
-const HEAD_TILT_DOWN_ANGLE_DEG = 15;
+const HEAD_TILT_CENTER_ANGLE_DEG = 90;
+const HEAD_TILT_UP_ANGLE_DEG = 120;
+const HEAD_TILT_DOWN_ANGLE_DEG = 60;
 
 type ControlPanelProps = {
   role: WebRole | null;
@@ -141,12 +142,12 @@ export function ControlPanel({
           <button type="button" disabled={disabled} onClick={() => sendHeadTilt(HEAD_TILT_UP_ANGLE_DEG)}>
             抬头
             <span>{HEAD_TILT_UP_ANGLE_DEG}deg</span>
-            <small>1005 d=1</small>
+            <small>1005 d=1 absolute</small>
           </button>
           <button type="button" disabled={disabled} onClick={() => sendHeadTilt(HEAD_TILT_DOWN_ANGLE_DEG)}>
             低头
             <span>{HEAD_TILT_DOWN_ANGLE_DEG}deg</span>
-            <small>1005 d=1</small>
+            <small>1005 d=1 absolute</small>
           </button>
           <button type="button" className="head-stop-button" disabled={disabled} onClick={sendHeadStop}>
             头部停止
@@ -160,7 +161,9 @@ export function ControlPanel({
           </button>
         </div>
 
-        <p className="calibration-note">头部控制按小角度步进发送；若真实方向相反，只需交换抬头/低头角度常量。</p>
+        <p className="calibration-note">
+          头部控制按厂商协议使用绝对角度发送，默认中位 {HEAD_TILT_CENTER_ANGLE_DEG}deg；若真实方向相反，只需交换抬头/低头角度常量。
+        </p>
       </div>
 
       <KeyboardControlPanel

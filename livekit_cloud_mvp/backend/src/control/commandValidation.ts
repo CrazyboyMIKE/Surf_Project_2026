@@ -208,11 +208,11 @@ export function normalizeControlParameters(
     }
 
     const a = readFiniteNumber(parameters.a);
-    if (a === undefined || Math.abs(a) > MAX_HEAD_ANGLE_DEG) {
+    if (a === undefined || a < 0 || a > MAX_HEAD_ANGLE_DEG) {
       return {
         ok: false,
         code: "INVALID_PARAMETERS",
-        message: `a must be between -${MAX_HEAD_ANGLE_DEG} and ${MAX_HEAD_ANGLE_DEG}`
+        message: `a must be between 0 and ${MAX_HEAD_ANGLE_DEG}`
       };
     }
 

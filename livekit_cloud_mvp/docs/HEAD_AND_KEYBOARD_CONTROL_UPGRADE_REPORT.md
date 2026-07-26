@@ -96,16 +96,17 @@ PadBot MQTT payload：
 
 viewer 即使绕过前端按钮直接发 WebSocket，也会被 backend 拒绝。
 
-## 抬头 / 低头方向符号
+## 抬头 / 低头角度校准
 
 当前 Web UI 常量：
 
 ```text
-HEAD_TILT_UP_ANGLE_DEG = 15
-HEAD_TILT_DOWN_ANGLE_DEG = -15
+HEAD_TILT_CENTER_ANGLE_DEG = 90
+HEAD_TILT_UP_ANGLE_DEG = 120
+HEAD_TILT_DOWN_ANGLE_DEG = 60
 ```
 
-真实机器人上如果发现方向相反，只需要调整这两个常量的正负号，并再次低速小角度测试。
+`1005` 按厂商协议使用非负绝对角度，backend 会拒绝负数。真实机器人上如果发现抬头/低头方向相反，只需要交换 `HEAD_TILT_UP_ANGLE_DEG` 和 `HEAD_TILT_DOWN_ANGLE_DEG`，并再次低速测试。
 
 ## 真实机器人测试前必须做
 
@@ -114,8 +115,8 @@ HEAD_TILT_DOWN_ANGLE_DEG = -15
 3. 先测试 `1000 stop`。
 4. 再测试 `1004 head stop`。
 5. 低速短按测试底盘方向。
-6. 小角度测试抬头/低头。
-7. 如果方向相反，先改符号，不要继续高速度测试。
+6. 用非负绝对角度测试抬头/低头。
+7. 如果方向相反，先交换抬头/低头角度，不要继续高速度测试。
 8. 全程不要把真实 key/token 写入代码或前端。
 
 ## 未做内容
