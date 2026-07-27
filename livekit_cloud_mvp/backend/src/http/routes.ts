@@ -160,7 +160,7 @@ export function createApiRouter(dependencies: RouterDependencies): Router {
 
     const room = roomStore.getRoom(roomName);
     const participant = room?.participants.get(participantId);
-    if (!room || !participant || participant.role === "robot") {
+    if (!room || !participant) {
       sendError(res, 404, "PARTICIPANT_NOT_FOUND", "Participant is not in this room");
       return;
     }
@@ -198,13 +198,18 @@ export function createApiRouter(dependencies: RouterDependencies): Router {
 
     const robotId = readTrimmedString(body, "robotId", MAX_NAME_LENGTH);
     const roomName = readTrimmedString(body, "roomName", MAX_ROOM_LENGTH);
+    const previousParticipantId = readTrimmedString(body, "previousParticipantId", MAX_NAME_LENGTH);
+    const clientSessionId = readTrimmedString(body, "clientSessionId", MAX_SESSION_ID_LENGTH);
 
     if (!robotId || !roomName) {
       sendError(res, 400, "INVALID_REQUEST", "robotId and roomName are required");
       return;
     }
 
-    const result = roomStore.joinRobot(roomName, robotId);
+    const result = roomStore.joinRobot(roomName, robotId, {
+      previousParticipantId,
+      clientSessionId
+    });
     const token = await liveKitTokenService.generateToken({
       roomName,
       identity: result.participant.id,
@@ -218,6 +223,8 @@ export function createApiRouter(dependencies: RouterDependencies): Router {
       robotId,
       roomName,
       participantId: result.participant.id,
+      clientSessionId: result.participant.clientSessionId,
+      reusedParticipant: result.reusedParticipant,
       role: result.participant.role,
       online: true,
       liveKitUrl: token.liveKitUrl,

@@ -78,6 +78,14 @@ function getParticipantName(participant: RemoteParticipantMediaInfo, roomPartici
   return roomParticipants.find((candidate) => candidate.id === participant.identity)?.name ?? participant.name ?? participant.identity;
 }
 
+function canUsePrivateChatRole(role: Role | "unknown" | null): boolean {
+  return role === "controller" || role === "viewer";
+}
+
+function canShowLocalMuteState(role: Role | "unknown"): boolean {
+  return role === "controller" || role === "viewer" || role === "robot";
+}
+
 function AudioLocalMuteControl({
   currentRole,
   participantRole,
@@ -93,7 +101,9 @@ function AudioLocalMuteControl({
   locallyMuted: boolean;
   onToggleLocalAudioMute: (participantId: string) => void;
 }) {
-  const canMuteLocally = currentRole === "viewer" && (participantRole === "viewer" || participantRole === "robot");
+  const canMuteLocally =
+    (currentRole === "controller" || currentRole === "viewer") &&
+    (participantRole === "controller" || participantRole === "viewer" || participantRole === "robot");
   if (!canMuteLocally) {
     return null;
   }
@@ -194,14 +204,11 @@ export function ParticipantsPanel({
                 <span>{participant.role}</span>
               </div>
               <RemoteVideo track={participant.videoTrack} />
-              <RemoteAudio
-                track={participant.audioTrack}
-                muted={participant.role === "controller" ? false : Boolean(locallyMutedAudio[participant.identity])}
-              />
+              <RemoteAudio track={participant.audioTrack} muted={Boolean(locallyMutedAudio[participant.identity])} />
               <div className="participant-media-state">
                 <span>Audio {participant.audioEnabled ? "on" : "off"}</span>
                 <span>Video {participant.videoEnabled ? "on" : "off"}</span>
-                {participant.role === "viewer" ? (
+                {canShowLocalMuteState(participant.role) ? (
                   <span>{locallyMutedAudio[participant.identity] ? "Muted for you" : "Unmuted for you"}</span>
                 ) : null}
               </div>
@@ -214,8 +221,8 @@ export function ParticipantsPanel({
                   locallyMuted={Boolean(locallyMutedAudio[participant.identity])}
                   onToggleLocalAudioMute={onToggleLocalAudioMute}
                 />
-                {currentRole === "viewer" &&
-                participant.role === "viewer" &&
+                {canUsePrivateChatRole(currentRole) &&
+                canUsePrivateChatRole(participant.role) &&
                 participant.connected !== false &&
                 participant.identity !== currentParticipantId ? (
                   <button type="button" className="private-chat-button" onClick={() => onStartPrivateChat(participant.identity)}>

@@ -88,6 +88,10 @@ function contextMatches(context: SocketContext | undefined, roomName: string, pa
   return context?.roomName === roomName && context.participantId === participantId;
 }
 
+function canUsePrivateChat(role: string): boolean {
+  return role === "controller" || role === "viewer";
+}
+
 function hasOnlyKeys(message: WebSocketMessage, allowedKeys: string[]): boolean {
   return Object.keys(message).every((key) => allowedKeys.includes(key));
 }
@@ -469,22 +473,22 @@ export function attachWebSocketServer(
         }
 
         if (!recipient.connected) {
-          sendPrivateChatError(socket, roomName, "TARGET_OFFLINE", "Recipient viewer is offline");
+          sendPrivateChatError(socket, roomName, "TARGET_OFFLINE", "Recipient participant is offline");
           return;
         }
 
         if (sender.id === recipient.id) {
-          sendPrivateChatError(socket, roomName, "INVALID_REQUEST", "Private chat recipient must be another viewer");
+          sendPrivateChatError(socket, roomName, "INVALID_REQUEST", "Private chat recipient must be another web participant");
           return;
         }
 
-        if (sender.role !== "viewer") {
-          sendPrivateChatError(socket, roomName, "FORBIDDEN", "Only viewers can send private chat");
+        if (!canUsePrivateChat(sender.role)) {
+          sendPrivateChatError(socket, roomName, "FORBIDDEN", "Only web participants can send private chat");
           return;
         }
 
-        if (recipient.role !== "viewer") {
-          sendPrivateChatError(socket, roomName, "TARGET_NOT_VIEWER", "Private chat recipient must be an online viewer");
+        if (!canUsePrivateChat(recipient.role)) {
+          sendPrivateChatError(socket, roomName, "TARGET_NOT_WEB_PARTICIPANT", "Private chat recipient must be an online web participant");
           return;
         }
 

@@ -172,13 +172,16 @@ try {
       roomName,
       senderId: viewerA.id,
       recipientId: controller.id,
-      message: "no controller"
+      message: "hello controller"
     })
   );
-  assert.equal(
-    (await socketA.waitForMessage((message) => message.type === "private_chat_error" && message.message === "Private chat recipient must be an online viewer"))
-      .code,
-    "TARGET_NOT_VIEWER"
+  const deliveredViewerToController = await socketController.waitForMessage(
+    (message) => message.type === "private_chat_delivered" && message.message === "hello controller"
+  );
+  assert.equal(deliveredViewerToController.senderId, viewerA.id);
+  assert.equal(deliveredViewerToController.recipientId, controller.id);
+  await socketB.assertNoMessage(
+    (message) => message.type === "private_chat_delivered" && message.message === "hello controller"
   );
 
   socketController.socket.send(
@@ -187,12 +190,34 @@ try {
       roomName,
       senderId: controller.id,
       recipientId: viewerA.id,
-      message: "controller blocked"
+      message: "hello from controller"
+    })
+  );
+  const deliveredControllerToViewer = await socketA.waitForMessage(
+    (message) => message.type === "private_chat_delivered" && message.message === "hello from controller"
+  );
+  assert.equal(deliveredControllerToViewer.senderId, controller.id);
+  assert.equal(deliveredControllerToViewer.recipientId, viewerA.id);
+  await socketC.assertNoMessage(
+    (message) => message.type === "private_chat_delivered" && message.message === "hello from controller"
+  );
+
+  socketA.socket.send(
+    JSON.stringify({
+      type: "private_chat",
+      roomName,
+      senderId: viewerA.id,
+      recipientId: robot.id,
+      message: "robot recipient blocked"
     })
   );
   assert.equal(
-    (await socketController.waitForMessage((message) => message.type === "private_chat_error" && message.message === "Only viewers can send private chat")).code,
-    "FORBIDDEN"
+    (
+      await socketA.waitForMessage(
+        (message) => message.type === "private_chat_error" && message.message === "Private chat recipient must be an online web participant"
+      )
+    ).code,
+    "TARGET_NOT_WEB_PARTICIPANT"
   );
 
   socketRobot.socket.send(
@@ -205,7 +230,7 @@ try {
     })
   );
   assert.equal(
-    (await socketRobot.waitForMessage((message) => message.type === "private_chat_error" && message.message === "Only viewers can send private chat")).code,
+    (await socketRobot.waitForMessage((message) => message.type === "private_chat_error" && message.message === "Only web participants can send private chat")).code,
     "FORBIDDEN"
   );
 
@@ -219,7 +244,7 @@ try {
     })
   );
   assert.equal(
-    (await socketA.waitForMessage((message) => message.type === "private_chat_error" && message.message === "Private chat recipient must be another viewer")).code,
+    (await socketA.waitForMessage((message) => message.type === "private_chat_error" && message.message === "Private chat recipient must be another web participant")).code,
     "INVALID_REQUEST"
   );
 
@@ -247,7 +272,7 @@ try {
     })
   );
   assert.equal(
-    (await socketA.waitForMessage((message) => message.type === "private_chat_error" && message.message === "Recipient viewer is offline")).code,
+    (await socketA.waitForMessage((message) => message.type === "private_chat_error" && message.message === "Recipient participant is offline")).code,
     "TARGET_OFFLINE"
   );
 

@@ -26,6 +26,7 @@ export type JoinWebParticipantResult = {
 export type JoinRobotResult = {
   room: RoomState;
   participant: Participant;
+  reusedParticipant: boolean;
 };
 
 export type ControlRequestResult =
@@ -254,11 +255,20 @@ export class RoomStore {
     };
   }
 
-  joinRobot(roomName: string, robotId: string): JoinRobotResult {
+  joinRobot(
+    roomName: string,
+    robotId: string,
+    options: { previousParticipantId?: string; clientSessionId?: string } = {}
+  ): JoinRobotResult {
     const room = this.getOrCreateRoom(roomName);
     const now = Date.now();
     const participantId = `robot-${robotId}`;
-    const participant: Participant = {
+    const previousParticipant = options.previousParticipantId ? room.participants.get(options.previousParticipantId) : undefined;
+    const reusableParticipant =
+      previousParticipant?.role === "robot" && previousParticipant.id === participantId && previousParticipant.name === robotId
+        ? previousParticipant
+        : room.participants.get(participantId);
+    const participant: Participant = reusableParticipant ?? {
       id: participantId,
       name: robotId,
       role: "robot",
@@ -266,6 +276,12 @@ export class RoomStore {
       joinedAt: now,
       lastSeenAt: now
     };
+
+    participant.name = robotId;
+    participant.clientSessionId = options.clientSessionId ?? participant.clientSessionId;
+    participant.connected = true;
+    participant.lastSeenAt = now;
+    participant.disconnectedAt = undefined;
 
     room.robotId = robotId;
     room.robotOnline = true;
@@ -275,7 +291,8 @@ export class RoomStore {
 
     return {
       room,
-      participant
+      participant,
+      reusedParticipant: Boolean(reusableParticipant)
     };
   }
 

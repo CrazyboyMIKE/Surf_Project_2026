@@ -112,6 +112,17 @@ input {
   padding: 10px 12px;
 }
 
+.checkbox-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: #314247;
+}
+
+.checkbox-row input {
+  width: auto;
+}
+
 input:focus,
 button:focus-visible {
   outline: 3px solid rgba(33, 117, 125, 0.24);
@@ -228,8 +239,29 @@ button:focus-visible {
 
 .thumbnail-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: minmax(170px, 240px) minmax(0, 1fr);
+  align-items: stretch;
   gap: 10px;
+  min-width: 0;
+}
+
+.viewer-thumbnail-scroll {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: clamp(170px, 24vw, 240px);
+  gap: 10px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  padding: 0 2px 8px;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
+
+.viewer-thumbnail-scroll .remote-video-tile,
+.viewer-thumbnail-scroll .viewer-overflow-tile {
+  width: 100%;
 }
 
 .local-camera-card {
@@ -264,7 +296,8 @@ button:focus-visible {
 
 .local-preview {
   position: relative;
-  aspect-ratio: 16 / 9;
+  width: 100%;
+  aspect-ratio: var(--preview-aspect-ratio, 16 / 9);
   min-height: clamp(280px, 54vh, 620px);
 }
 
@@ -316,8 +349,13 @@ button:focus-visible {
 }
 
 .local-preview.compact-video-tile {
-  height: clamp(132px, 18vw, 184px);
-  min-height: 132px;
+  width: auto;
+  height: clamp(142px, 20vw, 220px);
+  min-width: min(170px, 100%);
+  max-width: 100%;
+  min-height: 142px;
+  aspect-ratio: var(--preview-aspect-ratio, 16 / 9);
+  justify-self: start;
 }
 
 .remote-video-tile video {
@@ -424,7 +462,8 @@ button:focus-visible {
   background: #dce8e5;
 }
 
-.controller-audio-panel {
+.controller-audio-panel,
+.remote-audio-panel {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -438,8 +477,17 @@ button:focus-visible {
   font-size: 0.92rem;
 }
 
-.controller-audio-panel strong {
+.controller-audio-panel strong,
+.remote-audio-panel strong {
   color: #172026;
+}
+
+.remote-audio-panel {
+  margin-top: 14px;
+}
+
+.remote-audio-panel audio {
+  display: none;
 }
 
 .audio-button {
@@ -448,7 +496,7 @@ button:focus-visible {
 }
 
 .viewer-overflow-tile {
-  min-height: 118px;
+  min-height: 132px;
   aspect-ratio: 16 / 9;
   padding: 14px;
   text-align: center;
@@ -472,6 +520,18 @@ button:focus-visible {
   .publisher-layout,
   .status-grid {
     grid-template-columns: 1fr;
+  }
+
+  .thumbnail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .local-preview.compact-video-tile {
+    width: min(100%, 280px);
+  }
+
+  .viewer-thumbnail-scroll {
+    grid-auto-columns: minmax(170px, 72vw);
   }
 
   .room-topbar {

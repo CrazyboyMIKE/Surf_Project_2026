@@ -133,6 +133,34 @@ try {
   assert.equal(correctSessionLeave.status, 200);
   assert.equal(correctSessionLeave.body.roomDeleted, true);
   assert.equal(server.roomStore.getRoom("robot-room-001"), undefined);
+
+  const robotJoin = await requestJson(server.baseUrl, "/api/robots/join", {
+    method: "POST",
+    body: JSON.stringify({
+      roomName: "robot-room-001",
+      robotId: "robot-001",
+      clientSessionId: "robot-client-session-a"
+    })
+  });
+  assert.equal(robotJoin.status, 201);
+  assert.equal(robotJoin.body.clientSessionId, "robot-client-session-a");
+  assert.equal(robotJoin.body.reusedParticipant, false);
+  const robotParticipantId = robotJoin.body.participantId as string;
+  server.roomStore.markParticipantDisconnected("robot-room-001", robotParticipantId);
+
+  const robotRestore = await requestJson(server.baseUrl, "/api/robots/join", {
+    method: "POST",
+    body: JSON.stringify({
+      roomName: "robot-room-001",
+      robotId: "robot-001",
+      previousParticipantId: robotParticipantId,
+      clientSessionId: "robot-client-session-a"
+    })
+  });
+  assert.equal(robotRestore.status, 201);
+  assert.equal(robotRestore.body.participantId, robotParticipantId);
+  assert.equal(robotRestore.body.clientSessionId, "robot-client-session-a");
+  assert.equal(robotRestore.body.reusedParticipant, true);
 } finally {
   await server.close();
 }

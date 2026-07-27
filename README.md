@@ -46,7 +46,7 @@ livekit_cloud_mvp/
 ### Chat
 
 - 公共 Room Chat 通过 backend WebSocket 广播给同房间用户。
-- viewer-to-viewer private chat 只投递给 sender 和 recipient。
+- controller/viewer private chat 只投递给 sender 和 recipient。
 - 私聊内容当前不做数据库持久化。
 
 ### Robot Control
@@ -97,7 +97,7 @@ Real robot credentials are backend-only. They must never appear in Web, Android,
 | Viewer/controller role | implemented |
 | Controller transfer | implemented |
 | Public chat | implemented |
-| Viewer private chat | implemented |
+| Controller/viewer private chat | implemented |
 | Robot web publisher camera | implemented |
 | Robot web publisher microphone | implemented |
 | Web robot audio playback | implemented |

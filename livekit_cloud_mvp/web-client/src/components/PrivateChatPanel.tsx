@@ -22,6 +22,10 @@ function getParticipantName(participant: ParticipantSummary): string {
   return participant.name || participant.id;
 }
 
+function canUsePrivateChatRole(role: WebRole | "robot" | null): boolean {
+  return role === "controller" || role === "viewer";
+}
+
 export function PrivateChatPanel({
   currentParticipantId,
   currentRole,
@@ -35,19 +39,19 @@ export function PrivateChatPanel({
   onSend
 }: PrivateChatPanelProps) {
   const [draft, setDraft] = useState("");
-  const viewerTargets = useMemo(
+  const privateChatTargets = useMemo(
     () =>
       participants
-        .filter((participant) => participant.role === "viewer" && participant.connected && participant.id !== currentParticipantId)
+        .filter((participant) => canUsePrivateChatRole(participant.role) && participant.connected && participant.id !== currentParticipantId)
         .sort((left, right) => getParticipantName(left).localeCompare(getParticipantName(right))),
     [currentParticipantId, participants]
   );
-  const selectedParticipant = viewerTargets.find((participant) => participant.id === selectedParticipantId) ?? null;
+  const selectedParticipant = privateChatTargets.find((participant) => participant.id === selectedParticipantId) ?? null;
   const visibleMessages = selectedParticipantId
     ? messages.filter((message) => getConversationPeerId(message, currentParticipantId) === selectedParticipantId)
     : [];
   const latestError = errors[errors.length - 1];
-  const canUsePrivateChat = currentRole === "viewer";
+  const canUsePrivateChat = canUsePrivateChatRole(currentRole);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -64,18 +68,18 @@ export function PrivateChatPanel({
     <section className="tool-panel private-chat-panel" aria-labelledby="private-chat-title">
       <div className="panel-heading">
         <h2 id="private-chat-title">Private Chat</h2>
-        <span>{canUsePrivateChat ? "viewer to viewer" : "viewers only"}</span>
+        <span>{canUsePrivateChat ? "web participants" : "web users only"}</span>
       </div>
 
-      {!canUsePrivateChat ? <p className="empty-state">Private chat is only available between viewers.</p> : null}
+      {!canUsePrivateChat ? <p className="empty-state">Private chat is available between controller and viewer users.</p> : null}
 
       {canUsePrivateChat ? (
         <div className="private-chat-layout">
           <div className="private-chat-targets" aria-label="Private chat targets">
-            {viewerTargets.length === 0 ? (
-              <p className="empty-state">No online viewers available</p>
+            {privateChatTargets.length === 0 ? (
+              <p className="empty-state">No online web participants available</p>
             ) : (
-              viewerTargets.map((participant) => (
+              privateChatTargets.map((participant) => (
                 <button
                   type="button"
                   className={participant.id === selectedParticipantId ? "private-target active" : "private-target"}
@@ -91,12 +95,12 @@ export function PrivateChatPanel({
 
           <div className="private-chat-thread">
             <div className="private-chat-thread-title">
-              {selectedParticipant ? `Private chat with ${getParticipantName(selectedParticipant)}` : "Select an online viewer"}
+              {selectedParticipant ? `Private chat with ${getParticipantName(selectedParticipant)}` : "Select an online participant"}
             </div>
 
             <div className="private-chat-log" aria-live="polite">
               {!selectedParticipant ? (
-                <p className="empty-state">Choose a viewer to start a private chat.</p>
+                <p className="empty-state">Choose a participant to start a private chat.</p>
               ) : visibleMessages.length === 0 ? (
                 <p className="empty-state">No private messages yet</p>
               ) : (

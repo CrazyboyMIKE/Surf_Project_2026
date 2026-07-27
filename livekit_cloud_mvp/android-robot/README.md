@@ -2,7 +2,7 @@
 
 Android 8.1 / API 27+ robot camera publisher for the LiveKit Cloud MVP.
 
-This directory contains the Android app copied from the main MVP and Cloud-only setup docs. The app gets a robot token from backend and publishes the Android camera to LiveKit Cloud.
+This directory contains the Android app copied from the main MVP and Cloud-only setup docs. The app gets a robot token from backend and publishes the Android camera to LiveKit Cloud. To publish robot microphone audio, enable the `Publish microphone audio` checkbox before joining; microphone permission is requested only after that user action.
 
 ## What It Does
 
@@ -10,6 +10,7 @@ This directory contains the Android app copied from the main MVP and Cloud-only 
 - Receives `liveKitUrl`, token, participant id, role, and media permissions.
 - Connects to LiveKit Cloud with the backend-issued token.
 - Publishes Android camera video.
+- Optionally publishes Android microphone audio when `Publish microphone audio` is checked.
 - Opens backend WebSocket `/ws` as the robot participant.
 - Displays received `robot_control` messages.
 - Uses a mock robot-control adapter only.

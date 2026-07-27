@@ -28,7 +28,7 @@ Implemented:
 - viewer/controller/robot room roles
 - controller request, release, and transfer
 - public room chat
-- viewer-to-viewer private chat
+- controller/viewer private chat
 - LiveKit Cloud token generation in backend
 - Web robot video/audio subscription
 - Web participant media panel

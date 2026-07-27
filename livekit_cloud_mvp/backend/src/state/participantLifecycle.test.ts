@@ -48,6 +48,28 @@ function createRoomWithControllerViewerRobot() {
 }
 
 {
+  const store = new RoomStore({ mockRobotOnline: false });
+  const firstJoin = store.joinRobot("robot-room-001", "robot-001", {
+    clientSessionId: "robot-client-session-a"
+  });
+  store.markParticipantConnected("robot-room-001", firstJoin.participant.id);
+  store.markParticipantDisconnected("robot-room-001", firstJoin.participant.id);
+
+  const restoredJoin = store.joinRobot("robot-room-001", "robot-001", {
+    previousParticipantId: firstJoin.participant.id,
+    clientSessionId: "robot-client-session-a"
+  });
+
+  assert.equal(restoredJoin.reusedParticipant, true);
+  assert.equal(restoredJoin.participant.id, firstJoin.participant.id);
+  assert.equal(restoredJoin.participant.connected, true);
+  assert.equal(restoredJoin.participant.disconnectedAt, undefined);
+  assert.equal(restoredJoin.participant.clientSessionId, "robot-client-session-a");
+  assert.equal(store.getRoom("robot-room-001")?.participants.size, 1);
+  assert.equal(store.getRoom("robot-room-001")?.robotOnline, true);
+}
+
+{
   const { store, controller, viewer } = createRoomWithControllerViewerRobot();
   store.markParticipantDisconnected("robot-room-001", controller.id);
   const result = store.removeParticipant("robot-room-001", controller.id);

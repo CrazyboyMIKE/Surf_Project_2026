@@ -1,7 +1,9 @@
-import React, { FormEvent, useEffect, useRef, useState } from "react";
+import React, { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import {
+  createLocalAudioTrack,
   createLocalVideoTrack,
+  LocalAudioTrack,
   LocalVideoTrack,
   RemoteAudioTrack,
   RemoteVideoTrack,
@@ -14,6 +16,16 @@ import "./styles.css";
 
 type Role = "robot" | "controller" | "viewer";
 type RobotCommand = "1000" | "1001" | "1002" | "1003" | "1004" | "1005" | "1006";
+type RobotMicrophoneState =
+  | "idle"
+  | "not-published"
+  | "requesting"
+  | "publishing"
+  | "muted/off"
+  | "permission-denied"
+  | "device-not-found"
+  | "unsupported"
+  | "publish-failed";
 type KeyboardDirection =
   | "forward"
   | "backward"
@@ -28,6 +40,8 @@ type JoinRobotResponse = {
   robotId: string;
   roomName: string;
   participantId: string;
+  clientSessionId?: string;
+  reusedParticipant?: boolean;
   role: "robot";
   online: boolean;
   liveKitUrl: string;
@@ -85,6 +99,7 @@ type ServerErrorMessage = {
 
 type RoomSession = JoinRobotResponse & {
   robotName: string;
+  publishMicrophone: boolean;
 };
 
 type RemoteVideoInfo = {
@@ -117,6 +132,8 @@ function resolveApiBaseUrl(): string {
 
 const API_BASE_URL = resolveApiBaseUrl();
 const WS_URL = resolveWebSocketUrl(API_BASE_URL);
+const ROBOT_SESSION_STORAGE_KEY = "livekit-cloud-mvp.robot-session";
+const ROBOT_CLIENT_SESSION_STORAGE_KEY = "livekit-cloud-mvp.robot-client-session-id";
 
 function validateRuntimeConfig() {
   if (!/^https?:\/\//.test(API_BASE_URL)) {
@@ -126,6 +143,63 @@ function validateRuntimeConfig() {
   if (!/^wss?:\/\//.test(WS_URL)) {
     throw new Error("WebSocket address configuration error: VITE_WS_BASE_URL must start with ws:// or wss://.");
   }
+}
+
+function readStoredRobotSession(): RoomSession | null {
+  try {
+    const raw = sessionStorage.getItem(ROBOT_SESSION_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as Partial<RoomSession>;
+    if (
+      typeof parsed.roomName !== "string" ||
+      typeof parsed.robotName !== "string" ||
+      typeof parsed.robotId !== "string" ||
+      typeof parsed.participantId !== "string" ||
+      typeof parsed.liveKitUrl !== "string" ||
+      typeof parsed.token !== "string" ||
+      parsed.role !== "robot"
+    ) {
+      return null;
+    }
+
+    return {
+      ...parsed,
+      online: Boolean(parsed.online),
+      tokenMode: parsed.tokenMode === "livekit" ? "livekit" : "mock",
+      publishMicrophone: Boolean(parsed.publishMicrophone)
+    } as RoomSession;
+  } catch {
+    return null;
+  }
+}
+
+function saveStoredRobotSession(session: RoomSession): void {
+  sessionStorage.setItem(ROBOT_SESSION_STORAGE_KEY, JSON.stringify(session));
+  if (session.clientSessionId) {
+    sessionStorage.setItem(ROBOT_CLIENT_SESSION_STORAGE_KEY, session.clientSessionId);
+  }
+}
+
+function clearStoredRobotSession(): void {
+  sessionStorage.removeItem(ROBOT_SESSION_STORAGE_KEY);
+}
+
+function clearRobotClientSessionId(): void {
+  sessionStorage.removeItem(ROBOT_CLIENT_SESSION_STORAGE_KEY);
+}
+
+function getOrCreateRobotClientSessionId(): string {
+  const existing = sessionStorage.getItem(ROBOT_CLIENT_SESSION_STORAGE_KEY);
+  if (existing) {
+    return existing;
+  }
+
+  const next = crypto.randomUUID();
+  sessionStorage.setItem(ROBOT_CLIENT_SESSION_STORAGE_KEY, next);
+  return next;
 }
 
 function describeUnknownError(error: unknown): string {
@@ -148,6 +222,36 @@ function describeCameraError(error: unknown): string {
   }
 
   return `Camera failed to start: ${describeUnknownError(error)}`;
+}
+
+function classifyMicrophoneError(error: unknown): { state: RobotMicrophoneState; message: string } {
+  if (error instanceof DOMException) {
+    if (error.name === "NotAllowedError" || error.name === "SecurityError" || error.name === "PermissionDeniedError") {
+      return {
+        state: "permission-denied",
+        message: "Microphone permission denied. Allow microphone access in the browser site settings, then retry."
+      };
+    }
+
+    if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
+      return {
+        state: "device-not-found",
+        message: "No microphone was detected. Connect a microphone or select another input device, then retry."
+      };
+    }
+
+    if (error.name === "NotReadableError" || error.name === "TrackStartError") {
+      return {
+        state: "publish-failed",
+        message: "Microphone is busy or unavailable. Close other audio apps and retry."
+      };
+    }
+  }
+
+  return {
+    state: "publish-failed",
+    message: `Microphone publish failed: ${describeUnknownError(error)}`
+  };
 }
 
 function describeLiveKitPublishError(error: unknown): string {
@@ -188,7 +292,11 @@ function isServerErrorMessage(message: unknown): message is ServerErrorMessage {
   );
 }
 
-async function joinRobot(roomName: string, robotId: string): Promise<JoinRobotResponse> {
+async function joinRobot(
+  roomName: string,
+  robotId: string,
+  options: { previousParticipantId?: string; clientSessionId?: string } = {}
+): Promise<JoinRobotResponse> {
   let response: Response;
 
   try {
@@ -197,7 +305,12 @@ async function joinRobot(roomName: string, robotId: string): Promise<JoinRobotRe
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ roomName, robotId })
+      body: JSON.stringify({
+        roomName,
+        robotId,
+        previousParticipantId: options.previousParticipantId,
+        clientSessionId: options.clientSessionId
+      })
     });
   } catch (error) {
     throw new Error(
@@ -218,6 +331,16 @@ async function joinRobot(roomName: string, robotId: string): Promise<JoinRobotRe
   }
 
   return data;
+}
+
+async function leaveRobot(roomName: string, participantId: string, clientSessionId: string): Promise<void> {
+  await fetch(`${API_BASE_URL}/api/rooms/leave`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ roomName, participantId, clientSessionId })
+  });
 }
 
 function parseParticipantRole(participant: RemoteParticipant): Role | undefined {
@@ -288,6 +411,21 @@ function requestElementFullscreen(element: HTMLElement | null): string | null {
   return null;
 }
 
+function readTrackAspectRatio(track: LocalVideoTrack, videoElement?: HTMLVideoElement | null): string {
+  const videoWidth = videoElement?.videoWidth ?? 0;
+  const videoHeight = videoElement?.videoHeight ?? 0;
+  if (videoWidth > 0 && videoHeight > 0) {
+    return `${videoWidth} / ${videoHeight}`;
+  }
+
+  const settings = track.mediaStreamTrack.getSettings();
+  if (settings.width && settings.height) {
+    return `${settings.width} / ${settings.height}`;
+  }
+
+  return "16 / 9";
+}
+
 function RemoteVideoTile({
   participant,
   compact = false,
@@ -348,6 +486,7 @@ function LocalPreview({
   const tileRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [previewWarning, setPreviewWarning] = useState("");
+  const [previewAspectRatio, setPreviewAspectRatio] = useState("16 / 9");
 
   useEffect(() => {
     const videoElement = videoRef.current;
@@ -358,6 +497,7 @@ function LocalPreview({
     let disposed = false;
     const mediaStream = new MediaStream([track.mediaStreamTrack]);
     setPreviewWarning("");
+    setPreviewAspectRatio(readTrackAspectRatio(track, videoElement));
     videoElement.muted = true;
     videoElement.defaultMuted = true;
     videoElement.autoplay = true;
@@ -367,10 +507,18 @@ function LocalPreview({
     videoElement.setAttribute("webkit-playsinline", "true");
     videoElement.srcObject = mediaStream;
 
+    const updatePreviewAspectRatio = () => {
+      if (!disposed) {
+        setPreviewAspectRatio(readTrackAspectRatio(track, videoElement));
+      }
+    };
+
     const playPreview = () => {
       if (disposed) {
         return;
       }
+
+      updatePreviewAspectRatio();
 
       if (videoElement.srcObject !== mediaStream) {
         videoElement.srcObject = mediaStream;
@@ -408,6 +556,7 @@ function LocalPreview({
       videoElement.addEventListener("loadedmetadata", playPreview);
     }
 
+    videoElement.addEventListener("loadeddata", updatePreviewAspectRatio);
     videoElement.addEventListener("canplay", playPreview);
     videoElement.addEventListener("playing", nudgePreviewPaint);
     document.addEventListener("visibilitychange", playPreview);
@@ -426,6 +575,7 @@ function LocalPreview({
       disposed = true;
       window.clearTimeout(retryTimer);
       videoElement.removeEventListener("loadedmetadata", playPreview);
+      videoElement.removeEventListener("loadeddata", updatePreviewAspectRatio);
       videoElement.removeEventListener("canplay", playPreview);
       videoElement.removeEventListener("playing", nudgePreviewPaint);
       document.removeEventListener("visibilitychange", playPreview);
@@ -436,8 +586,12 @@ function LocalPreview({
     };
   }, [track]);
 
+  const previewStyle = {
+    "--preview-aspect-ratio": previewAspectRatio
+  } as React.CSSProperties & Record<"--preview-aspect-ratio", string>;
+
   return (
-    <div className={compact ? "local-preview compact-video-tile" : "local-preview"} ref={tileRef}>
+    <div className={compact ? "local-preview compact-video-tile" : "local-preview"} ref={tileRef} style={previewStyle}>
       {track ? <video ref={videoRef} autoPlay muted playsInline /> : <div className="preview-placeholder">Robot camera preview</div>}
       {previewWarning ? <span className="preview-warning">{previewWarning}</span> : null}
       <span className="role-badge">robot</span>
@@ -459,59 +613,104 @@ function LocalPreview({
   );
 }
 
-function ControllerAudioPlayer({ controller }: { controller: RemoteVideoInfo | null }) {
+function RemoteParticipantAudio({
+  participant,
+  playbackAttempt,
+  onBlocked,
+  onPlaying
+}: {
+  participant: RemoteVideoInfo;
+  playbackAttempt: number;
+  onBlocked: (participantId: string) => void;
+  onPlaying: (participantId: string) => void;
+}) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [audioState, setAudioState] = useState("waiting for controller audio");
 
   useEffect(() => {
     const audioElement = audioRef.current;
-    if (!audioElement || !controller?.audioTrack) {
-      setAudioState(controller ? "controller microphone off" : "waiting for controller audio");
+    if (!audioElement || !participant.audioTrack) {
       return;
     }
 
-    controller.audioTrack.attach(audioElement);
+    participant.audioTrack.attach(audioElement);
     audioElement.muted = false;
-    audioElement.volume = 1;
-    setAudioState("controller audio ready");
+    audioElement.volume = participant.role === "controller" ? 1 : 0.9;
 
     void audioElement.play().then(
-      () => setAudioState("controller audio playing"),
-      () => setAudioState("click enable controller audio")
+      () => onPlaying(participant.identity),
+      () => onBlocked(participant.identity)
     );
 
     return () => {
-      controller.audioTrack?.detach(audioElement);
+      participant.audioTrack?.detach(audioElement);
     };
-  }, [controller]);
+  }, [onBlocked, onPlaying, participant, playbackAttempt]);
 
-  async function enableAudio() {
-    const audioElement = audioRef.current;
-    if (!audioElement || !controller?.audioTrack) {
-      setAudioState("controller microphone off");
-      return;
-    }
+  return <audio ref={audioRef} autoPlay playsInline />;
+}
 
-    try {
-      await audioElement.play();
-      setAudioState("controller audio playing");
-    } catch {
-      setAudioState("browser blocked audio playback");
-    }
-  }
+function RemoteAudioMixer({ participants }: { participants: RemoteVideoInfo[] }) {
+  const [playbackAttempt, setPlaybackAttempt] = useState(0);
+  const [blockedById, setBlockedById] = useState<Record<string, boolean>>({});
+  const audioParticipants = [...participants]
+    .filter((participant) => participant.audioTrack)
+    .sort((left, right) => {
+      if (left.role === "controller" && right.role !== "controller") {
+        return -1;
+      }
+
+      if (left.role !== "controller" && right.role === "controller") {
+        return 1;
+      }
+
+      return left.name.localeCompare(right.name);
+    });
+
+  const activeAudioIds = audioParticipants.map((participant) => participant.identity).join("|");
+  const handleBlocked = useCallback((participantId: string) => {
+    setBlockedById((current) => ({ ...current, [participantId]: true }));
+  }, []);
+  const handlePlaying = useCallback((participantId: string) => {
+    setBlockedById((current) => ({ ...current, [participantId]: false }));
+  }, []);
+
+  useEffect(() => {
+    const activeIds = new Set(audioParticipants.map((participant) => participant.identity));
+    setBlockedById((current) =>
+      Object.fromEntries(Object.entries(current).filter(([participantId]) => activeIds.has(participantId)))
+    );
+  }, [activeAudioIds]);
+
+  const blockedParticipants = audioParticipants.filter((participant) => blockedById[participant.identity]);
+  const controllerAudioCount = audioParticipants.filter((participant) => participant.role === "controller").length;
+  const viewerAudioCount = audioParticipants.filter((participant) => participant.role === "viewer").length;
+  const audioStatus =
+    audioParticipants.length === 0
+      ? "waiting for Web participant microphones"
+      : blockedParticipants.length > 0
+        ? `playback blocked for ${blockedParticipants.map((participant) => participant.name).join(", ")}`
+        : `playing ${controllerAudioCount} controller and ${viewerAudioCount} viewer audio tracks`;
 
   return (
-    <div className="controller-audio-panel">
-      <audio ref={audioRef} autoPlay playsInline />
+    <section className="remote-audio-panel" aria-label="Remote participant audio playback">
+      {audioParticipants.map((participant) => (
+        <RemoteParticipantAudio
+          key={participant.identity}
+          participant={participant}
+          playbackAttempt={playbackAttempt}
+          onBlocked={handleBlocked}
+          onPlaying={handlePlaying}
+        />
+      ))}
       <span>
-        Controller audio <strong>{audioState}</strong>
+        Room audio <strong>{audioStatus}</strong>
       </span>
-      {controller?.audioTrack && audioState !== "controller audio playing" ? (
-        <button type="button" className="audio-button" onClick={enableAudio}>
-          Enable controller audio
+      {audioParticipants.length > 0 && blockedParticipants.length > 0 ? (
+        <button type="button" className="audio-button" onClick={() => setPlaybackAttempt((current) => current + 1)}>
+          Enable participant audio
         </button>
       ) : null}
-    </div>
+    </section>
   );
 }
 
@@ -572,7 +771,6 @@ function PrimaryControllerStage({
         ) : null}
       </div>
 
-      <ControllerAudioPlayer controller={controller} />
     </section>
   );
 }
@@ -580,18 +778,22 @@ function PrimaryControllerStage({
 function EntryView({
   robotName,
   roomName,
+  publishMicrophone,
   error,
   pending,
   onRobotNameChange,
   onRoomNameChange,
+  onPublishMicrophoneChange,
   onEnter
 }: {
   robotName: string;
   roomName: string;
+  publishMicrophone: boolean;
   error: string;
   pending: boolean;
   onRobotNameChange: (value: string) => void;
   onRoomNameChange: (value: string) => void;
+  onPublishMicrophoneChange: (value: boolean) => void;
   onEnter: (mode: "create" | "join") => void;
 }) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -622,6 +824,14 @@ function EntryView({
             Room name
             <input value={roomName} onChange={(event) => onRoomNameChange(event.target.value)} required maxLength={80} />
           </label>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={publishMicrophone}
+              onChange={(event) => onPublishMicrophoneChange(event.target.checked)}
+            />
+            Publish microphone audio
+          </label>
 
           <div className="entry-actions">
             <button type="button" disabled={pending} onClick={() => onEnter("create")}>
@@ -645,6 +855,7 @@ function RobotRoomView({
   webSocketState,
   liveKitState,
   publishState,
+  microphoneState,
   tokenMode,
   localTrack,
   remoteVideos,
@@ -658,6 +869,7 @@ function RobotRoomView({
   webSocketState: string;
   liveKitState: string;
   publishState: string;
+  microphoneState: RobotMicrophoneState;
   tokenMode: "mock" | "livekit" | "none";
   localTrack: LocalVideoTrack | null;
   remoteVideos: RemoteVideoInfo[];
@@ -669,8 +881,6 @@ function RobotRoomView({
   const controllerVideos = remoteVideos.filter((participant) => participant.role === "controller");
   const viewerVideos = remoteVideos.filter((participant) => participant.role === "viewer");
   const currentController = controllerVideos[0] ?? null;
-  const visibleViewerVideos = viewerVideos.length <= 4 ? viewerVideos : viewerVideos.slice(0, 4);
-  const hiddenViewerCount = Math.max(0, viewerVideos.length - visibleViewerVideos.length);
   const [fullscreenError, setFullscreenError] = useState("");
 
   return (
@@ -704,6 +914,9 @@ function RobotRoomView({
             Publish <strong>{publishState}</strong>
           </span>
           <span>
+            Microphone <strong>{microphoneState}</strong>
+          </span>
+          <span>
             Token <strong>{tokenMode}</strong>
           </span>
           <span>
@@ -732,38 +945,40 @@ function RobotRoomView({
           </div>
           <div className="thumbnail-grid">
             <LocalPreview track={localTrack} robotName={session.robotName} compact onFullscreenError={setFullscreenError} />
-            {visibleViewerVideos.map((participant) => (
-              <RemoteVideoTile participant={participant} key={participant.identity} compact onFullscreenError={setFullscreenError} />
-            ))}
-            {hiddenViewerCount > 0 ? (
-              <div className="viewer-overflow-tile">
-                <strong>+{hiddenViewerCount}</strong>
-                <span>more viewers</span>
-              </div>
-            ) : null}
-            {viewerVideos.length === 0 ? (
-              <div className="viewer-overflow-tile muted-overflow">
-                <span>No viewer video yet</span>
-              </div>
-            ) : null}
+            <div className="viewer-thumbnail-scroll" aria-label="Viewer video thumbnails">
+              {viewerVideos.length === 0 ? (
+                <div className="viewer-overflow-tile muted-overflow">
+                  <span>No viewer video yet</span>
+                </div>
+              ) : (
+                viewerVideos.map((participant) => (
+                  <RemoteVideoTile participant={participant} key={participant.identity} compact onFullscreenError={setFullscreenError} />
+                ))
+              )}
+            </div>
           </div>
         </section>
 
         <PrimaryControllerStage controller={currentController} onFullscreenError={setFullscreenError} />
       </section>
+
+      <RemoteAudioMixer participants={remoteVideos} />
     </main>
   );
 }
 
 function App() {
-  const [view, setView] = useState<"entry" | "room">("entry");
-  const [roomName, setRoomName] = useState("robot-room-001");
-  const [robotName, setRobotName] = useState("robot-001");
-  const [session, setSession] = useState<RoomSession | null>(null);
+  const storedSession = readStoredRobotSession();
+  const [view, setView] = useState<"entry" | "room">(() => (storedSession ? "room" : "entry"));
+  const [roomName, setRoomName] = useState(() => storedSession?.roomName ?? "robot-room-001");
+  const [robotName, setRobotName] = useState(() => storedSession?.robotName ?? "robot-001");
+  const [session, setSession] = useState<RoomSession | null>(() => storedSession);
   const [backendState, setBackendState] = useState("idle");
   const [webSocketState, setWebSocketState] = useState("idle");
   const [liveKitState, setLiveKitState] = useState("idle");
   const [publishState, setPublishState] = useState("idle");
+  const [publishMicrophone, setPublishMicrophone] = useState(() => Boolean(storedSession?.publishMicrophone));
+  const [microphoneState, setMicrophoneState] = useState<RobotMicrophoneState>("idle");
   const [tokenMode, setTokenMode] = useState<"mock" | "livekit" | "none">("none");
   const [localTrack, setLocalTrack] = useState<LocalVideoTrack | null>(null);
   const [remoteVideos, setRemoteVideos] = useState<RemoteVideoInfo[]>([]);
@@ -775,8 +990,10 @@ function App() {
   const roomRef = useRef<Room | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const localTrackRef = useRef<LocalVideoTrack | null>(null);
+  const localAudioTrackRef = useRef<LocalAudioTrack | null>(null);
   const participantsByIdRef = useRef<Map<string, ParticipantPresence>>(new Map());
   const sessionRef = useRef<RoomSession | null>(null);
+  const restoringSessionRef = useRef(false);
 
   function updateRemoteVideos() {
     const room = roomRef.current;
@@ -793,6 +1010,14 @@ function App() {
     socketRef.current?.close();
     socketRef.current = null;
 
+    const currentRoom = roomRef.current;
+    if (localAudioTrackRef.current) {
+      const audioTrack = localAudioTrackRef.current;
+      localAudioTrackRef.current = null;
+      void currentRoom?.localParticipant.unpublishTrack(audioTrack, true).catch(() => undefined);
+      audioTrack.stop();
+    }
+
     void roomRef.current?.disconnect();
     roomRef.current = null;
 
@@ -807,10 +1032,17 @@ function App() {
     setWebSocketState("closed");
     setLiveKitState("disconnected");
     setPublishState("stopped");
+    setMicrophoneState("idle");
   }
 
-  function leaveRoom() {
+  async function leaveRoom() {
+    const currentSession = sessionRef.current ?? session;
+    if (currentSession?.clientSessionId) {
+      await leaveRobot(currentSession.roomName, currentSession.participantId, currentSession.clientSessionId).catch(() => undefined);
+    }
     resetConnections();
+    clearStoredRobotSession();
+    clearRobotClientSessionId();
     setSession(null);
     setView("entry");
     setError("");
@@ -823,6 +1055,8 @@ function App() {
 
   function forceExit(message: string) {
     resetConnections();
+    clearStoredRobotSession();
+    clearRobotClientSessionId();
     setSession(null);
     setView("entry");
     setBackendState("idle");
@@ -833,9 +1067,45 @@ function App() {
     setError(message);
   }
 
-  async function enterRoom(_mode: "create" | "join") {
-    const trimmedRoomName = roomName.trim();
-    const trimmedRobotName = robotName.trim();
+  async function publishRobotMicrophone(room: Room, robotId: string, shouldPublishMicrophone: boolean) {
+    if (!shouldPublishMicrophone) {
+      setMicrophoneState("not-published");
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setMicrophoneState("unsupported");
+      setError("Browser does not support microphone API. Use a modern browser and open the page through HTTPS or localhost.");
+      return;
+    }
+
+    setMicrophoneState("requesting");
+    let audioTrack: LocalAudioTrack | null = null;
+    try {
+      audioTrack = await createLocalAudioTrack();
+      await room.localParticipant.publishTrack(audioTrack, {
+        source: Track.Source.Microphone,
+        name: `${robotId}-microphone`
+      });
+      localAudioTrackRef.current = audioTrack;
+      setMicrophoneState("publishing");
+    } catch (error) {
+      audioTrack?.stop();
+      if (localAudioTrackRef.current === audioTrack) {
+        localAudioTrackRef.current = null;
+      }
+      const microphoneError = classifyMicrophoneError(error);
+      setMicrophoneState(microphoneError.state);
+      setError(microphoneError.message);
+    }
+  }
+
+  async function enterRoom(_mode: "create" | "join", options: { restoreSession?: RoomSession } = {}) {
+    const restoredSession = options.restoreSession;
+    const trimmedRoomName = (restoredSession?.roomName ?? roomName).trim();
+    const trimmedRobotName = (restoredSession?.robotName ?? robotName).trim();
+    const savedPublishMicrophone = restoredSession?.publishMicrophone ?? publishMicrophone;
+    const shouldPublishMicrophone = restoredSession ? false : savedPublishMicrophone;
     if (!trimmedRobotName) {
       setError("用户名不能为空");
       return;
@@ -848,17 +1118,30 @@ function App() {
     resetConnections();
     setError("");
     setPending(true);
+    setRoomName(trimmedRoomName);
+    setRobotName(trimmedRobotName);
+    setPublishMicrophone(savedPublishMicrophone);
     setBackendState("joining");
     setWebSocketState("idle");
     setLiveKitState("idle");
     setPublishState("idle");
+    setMicrophoneState(shouldPublishMicrophone ? "requesting" : "not-published");
 
     try {
       validateRuntimeConfig();
-      const joinResponse = await joinRobot(trimmedRoomName, trimmedRobotName);
-      const nextSession = { ...joinResponse, robotName: trimmedRobotName };
+      const clientSessionId = restoredSession?.clientSessionId ?? getOrCreateRobotClientSessionId();
+      const joinResponse = await joinRobot(trimmedRoomName, trimmedRobotName, {
+        previousParticipantId: restoredSession?.participantId,
+        clientSessionId
+      });
+      const nextSession = {
+        ...joinResponse,
+        robotName: trimmedRobotName,
+        publishMicrophone: savedPublishMicrophone
+      };
       setSession(nextSession);
       sessionRef.current = nextSession;
+      saveStoredRobotSession(nextSession);
       setView("room");
       setBackendState(joinResponse.online ? "robot online" : "joined");
       setTokenMode(joinResponse.tokenMode);
@@ -919,6 +1202,7 @@ function App() {
       if (joinResponse.tokenMode === "mock" || joinResponse.liveKitUrl.startsWith("mock://")) {
         setLiveKitState("mock token");
         setPublishState("configure LiveKit to publish video");
+        setMicrophoneState("not-published");
         return;
       }
 
@@ -979,14 +1263,37 @@ function App() {
         throw new Error(describeLiveKitPublishError(error));
       }
       setPublishState("publishing");
+      await publishRobotMicrophone(room, joinResponse.robotId, shouldPublishMicrophone);
       updateRemoteVideos();
     } catch (error) {
+      if (restoredSession) {
+        const fallbackSession = sessionRef.current ?? restoredSession;
+        sessionRef.current = fallbackSession;
+        setSession(fallbackSession);
+        saveStoredRobotSession(fallbackSession);
+        setView("room");
+        setBackendState((current) => (current === "joining" ? "restore failed" : current));
+        setWebSocketState((current) => (current === "idle" ? "closed" : current));
+        setLiveKitState((current) => (current === "idle" ? "disconnected" : current));
+      }
       setError(error instanceof Error ? error.message : "Robot publisher failed");
       setPublishState("error");
     } finally {
       setPending(false);
     }
   }
+
+  useEffect(() => {
+    const stored = readStoredRobotSession();
+    if (!stored || restoringSessionRef.current) {
+      return;
+    }
+
+    restoringSessionRef.current = true;
+    void enterRoom("join", { restoreSession: stored }).finally(() => {
+      restoringSessionRef.current = false;
+    });
+  }, []);
 
   useEffect(() => resetConnections, []);
 
@@ -995,10 +1302,12 @@ function App() {
       <EntryView
         robotName={robotName}
         roomName={roomName}
+        publishMicrophone={publishMicrophone}
         error={error}
         pending={pending}
         onRobotNameChange={setRobotName}
         onRoomNameChange={setRoomName}
+        onPublishMicrophoneChange={setPublishMicrophone}
         onEnter={enterRoom}
       />
     );
@@ -1011,6 +1320,7 @@ function App() {
       webSocketState={webSocketState}
       liveKitState={liveKitState}
       publishState={publishState}
+      microphoneState={microphoneState}
       tokenMode={tokenMode}
       localTrack={localTrack}
       remoteVideos={remoteVideos}

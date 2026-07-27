@@ -315,7 +315,9 @@ function RoomApp() {
       selectedPrivateChatParticipantId &&
       !roomSocket.participants.some(
         (participant) =>
-          participant.id === selectedPrivateChatParticipantId && participant.role === "viewer" && participant.connected
+          participant.id === selectedPrivateChatParticipantId &&
+          (participant.role === "controller" || participant.role === "viewer") &&
+          participant.connected
       )
     ) {
       setSelectedPrivateChatParticipantId(null);
