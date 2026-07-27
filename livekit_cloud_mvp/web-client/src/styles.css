@@ -11,15 +11,21 @@
   box-sizing: border-box;
 }
 
+html {
+  overflow-x: hidden;
+}
+
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 button,
 input,
 select {
+  min-width: 0;
   font: inherit;
 }
 
@@ -151,18 +157,27 @@ button:focus-visible {
 }
 
 .app-shell {
-  width: min(1180px, 100%);
+  width: min(1440px, 100%);
   margin: 0 auto;
-  padding: 20px;
+  padding: clamp(14px, 2vw, 24px);
+  overflow-x: hidden;
 }
 
 .status-bar {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(360px, 2fr) auto;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.6fr) minmax(220px, auto);
   gap: 18px;
   align-items: center;
   border-bottom: 1px solid #c6d3d0;
   padding: 8px 0 18px;
+}
+
+.status-bar > * {
+  min-width: 0;
+}
+
+.status-bar h1 {
+  overflow-wrap: anywhere;
 }
 
 .status-grid {
@@ -174,6 +189,7 @@ button:focus-visible {
 }
 
 .status-grid span {
+  min-width: 0;
   border: 1px solid #c6d3d0;
   border-radius: 6px;
   background: #f8fbfa;
@@ -182,6 +198,7 @@ button:focus-visible {
 
 .status-grid strong {
   display: block;
+  overflow-wrap: anywhere;
   color: #172026;
 }
 
@@ -192,8 +209,14 @@ button:focus-visible {
   justify-content: flex-end;
 }
 
+.status-actions .secondary-button {
+  flex: 0 1 148px;
+  white-space: normal;
+}
+
 .notice {
   margin: 16px 0 0;
+  overflow-wrap: anywhere;
 }
 
 .workspace-grid {
@@ -203,10 +226,11 @@ button:focus-visible {
     "chat participants"
     "control participants"
     "media participants";
-  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.62fr);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, clamp(300px, 28vw, 380px));
   gap: 18px;
   align-items: start;
   margin-top: 18px;
+  min-width: 0;
 }
 
 .robot-area {
@@ -238,6 +262,7 @@ button:focus-visible {
 
 .video-section,
 .tool-panel {
+  min-width: 0;
   border: 1px solid #c6d3d0;
   border-radius: 8px;
   background: #ffffff;
@@ -245,7 +270,9 @@ button:focus-visible {
 
 .video-placeholder {
   display: grid;
-  min-height: clamp(280px, 52vh, 560px);
+  min-height: clamp(240px, 42vw, 560px);
+  max-height: min(64vh, 640px);
+  aspect-ratio: 16 / 9;
   place-items: center;
   border-radius: 8px 8px 0 0;
   background:
@@ -257,7 +284,9 @@ button:focus-visible {
 
 .video-live {
   position: relative;
-  min-height: clamp(280px, 52vh, 560px);
+  min-height: clamp(240px, 42vw, 560px);
+  max-height: min(64vh, 640px);
+  aspect-ratio: 16 / 9;
   overflow: hidden;
   border-radius: 8px 8px 0 0;
   background: #10191c;
@@ -266,7 +295,7 @@ button:focus-visible {
 .robot-video {
   display: block;
   width: 100%;
-  height: clamp(280px, 52vh, 560px);
+  height: 100%;
   background: #10191c;
   object-fit: contain;
 }
@@ -302,6 +331,9 @@ button:focus-visible {
 }
 
 .video-copy {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 16px;
   text-align: center;
 }
 
@@ -318,7 +350,7 @@ button:focus-visible {
 .event-strip {
   display: grid;
   gap: 6px;
-  max-height: 96px;
+  max-height: clamp(72px, 12vh, 112px);
   overflow: auto;
   padding: 12px 14px;
 }
@@ -335,15 +367,21 @@ button:focus-visible {
 
 .panel-heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 14px;
 }
 
+.panel-heading > * {
+  min-width: 0;
+}
+
 .panel-heading span {
   color: #587073;
   font-size: 0.88rem;
+  overflow-wrap: anywhere;
 }
 
 .control-pad {
@@ -355,6 +393,7 @@ button:focus-visible {
 .control-pad button {
   display: grid;
   min-height: 76px;
+  min-width: 0;
   place-items: center;
   border: 1px solid #aac0bc;
   border-radius: 6px;
@@ -365,6 +404,7 @@ button:focus-visible {
 }
 
 .control-pad button span {
+  overflow-wrap: anywhere;
   font-size: 0.8rem;
   font-weight: 800;
 }
@@ -420,6 +460,7 @@ button:focus-visible {
 .head-control-grid button {
   display: grid;
   min-height: 58px;
+  min-width: 0;
   place-items: center;
   border: 1px solid #aac0bc;
   border-radius: 6px;
@@ -511,6 +552,7 @@ button:focus-visible {
 
 .keyboard-cheatsheet-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
@@ -533,6 +575,7 @@ button:focus-visible {
 
 .keyboard-cheatsheet-grid span {
   display: grid;
+  min-width: 0;
   gap: 4px;
   border: 1px solid #dbe6e4;
   border-radius: 6px;
@@ -585,6 +628,7 @@ button:focus-visible {
 }
 
 .keyboard-status-grid span {
+  min-width: 0;
   border: 1px solid #d5dfdd;
   border-radius: 6px;
   background: #f8fbfa;
@@ -593,6 +637,7 @@ button:focus-visible {
 
 .keyboard-status-grid strong {
   display: block;
+  overflow-wrap: anywhere;
   color: #172026;
 }
 
@@ -624,6 +669,7 @@ button:focus-visible {
 
 .transfer-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
   justify-content: space-between;
@@ -688,6 +734,7 @@ button:focus-visible {
 .participant-video {
   display: grid;
   min-height: 150px;
+  aspect-ratio: 16 / 9;
   overflow: hidden;
   place-items: center;
   border-radius: 6px;
@@ -699,7 +746,7 @@ button:focus-visible {
 .participant-video video {
   display: block;
   width: 100%;
-  height: 180px;
+  height: 100%;
   object-fit: contain;
 }
 
@@ -707,7 +754,7 @@ button:focus-visible {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
   gap: 12px;
-  max-height: clamp(420px, 68vh, 720px);
+  max-height: min(74vh, 780px);
   overflow: hidden;
 }
 
@@ -799,7 +846,7 @@ button:focus-visible {
 }
 
 .participants-panel .participant-video {
-  min-height: 96px;
+  min-height: 0;
 }
 
 .participants-panel .participant-audio-only {
@@ -807,21 +854,27 @@ button:focus-visible {
 }
 
 .participants-panel .participant-video video {
-  height: 112px;
+  height: 100%;
 }
 
 .participant-controller .participant-video {
-  min-height: 160px;
+  min-height: 0;
+  aspect-ratio: 16 / 10;
 }
 
 .participant-controller .participant-video video {
-  height: 190px;
+  height: 100%;
 }
 
 .participant-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.participant-actions > * {
+  flex: 1 1 118px;
+  white-space: normal;
 }
 
 .audio-local-mute-button,
@@ -872,7 +925,7 @@ button:focus-visible {
 .chat-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  height: clamp(220px, 26vh, 320px);
+  height: clamp(220px, 28vh, 320px);
   min-height: 0;
 }
 
@@ -902,6 +955,7 @@ button:focus-visible {
 }
 
 .chat-message strong {
+  overflow-wrap: anywhere;
   color: #1d545d;
 }
 
@@ -920,7 +974,9 @@ button:focus-visible {
 .private-chat-panel {
   display: grid;
   gap: 12px;
+  max-height: clamp(260px, 34vh, 380px);
   min-height: 0;
+  overflow: hidden;
 }
 
 .private-chat-layout {
@@ -959,6 +1015,7 @@ button:focus-visible {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
   min-height: 0;
+  overflow: hidden;
 }
 
 .private-chat-thread-title {
@@ -983,6 +1040,7 @@ button:focus-visible {
 
 .private-message {
   max-width: 86%;
+  min-width: 0;
   border-radius: 6px;
   background: #ffffff;
   padding: 8px 10px;
@@ -1017,12 +1075,13 @@ button:focus-visible {
 .admin-shell {
   width: min(1380px, 100%);
   margin: 0 auto;
-  padding: 20px;
+  padding: clamp(14px, 2vw, 24px);
+  overflow-x: hidden;
 }
 
 .admin-topbar {
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) minmax(280px, 420px) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 420px) minmax(220px, auto);
   gap: 18px;
   align-items: end;
   border-bottom: 1px solid #c6d3d0;
@@ -1038,6 +1097,7 @@ button:focus-visible {
 .admin-token-panel {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .checkbox-row {
@@ -1065,7 +1125,7 @@ button:focus-visible {
 
 .admin-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(420px, 0.9fr);
+  grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr);
   gap: 18px;
   margin-top: 18px;
 }
@@ -1080,6 +1140,7 @@ button:focus-visible {
 
 .admin-table-wrap {
   overflow-x: auto;
+  max-width: 100%;
 }
 
 .compact-history {
@@ -1088,6 +1149,7 @@ button:focus-visible {
 }
 
 .admin-table {
+  min-width: 680px;
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
@@ -1112,6 +1174,7 @@ button:focus-visible {
   display: block;
   color: #64787a;
   font-size: 0.82rem;
+  overflow-wrap: anywhere;
 }
 
 .selected-row {
@@ -1212,7 +1275,21 @@ button:focus-visible {
   font-weight: 800;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
+  .workspace-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(270px, 330px);
+  }
+
+  .status-bar {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr) minmax(190px, auto);
+  }
+
+  .status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1040px) {
   .status-bar,
   .admin-topbar,
   .admin-grid {
@@ -1230,15 +1307,45 @@ button:focus-visible {
   }
 
   .participants-panel {
-    max-height: 440px;
+    max-height: clamp(360px, 52vh, 560px);
   }
 
-  .status-grid {
+  .participants-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .status-actions {
     justify-content: flex-start;
+  }
+
+  .status-actions .secondary-button,
+  .admin-actions .secondary-button,
+  .admin-actions .primary-button {
+    flex: 1 1 160px;
+  }
+}
+
+@media (max-width: 720px) {
+  .participants-list {
+    grid-template-columns: 1fr;
+  }
+
+  .video-placeholder,
+  .video-live {
+    min-height: 0;
+    aspect-ratio: 4 / 3;
+  }
+
+  .chat-panel {
+    height: clamp(220px, 34vh, 300px);
+  }
+
+  .private-chat-panel {
+    max-height: 420px;
+  }
+
+  .admin-table {
+    min-width: 600px;
   }
 }
 
@@ -1252,13 +1359,29 @@ button:focus-visible {
     padding: 22px;
   }
 
+  .join-actions {
+    grid-template-columns: 1fr;
+  }
+
   .status-grid,
   .control-pad,
   .head-control-grid,
   .keyboard-cheatsheet-grid,
+  .keyboard-settings,
+  .keyboard-status-grid,
   .media-status-grid,
   .admin-detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .status-actions .secondary-button,
+  .media-actions .secondary-button,
+  .admin-actions .secondary-button,
+  .admin-actions .primary-button,
+  .admin-button-row .secondary-button,
+  .admin-button-row .danger-button,
+  .transfer-button {
+    flex: 1 1 100%;
   }
 
   .control-pad button,
@@ -1277,5 +1400,13 @@ button:focus-visible {
   .private-chat-layout,
   .private-chat-form {
     grid-template-columns: 1fr;
+  }
+
+  .participant-actions > * {
+    flex-basis: 100%;
+  }
+
+  .admin-table {
+    min-width: 520px;
   }
 }
