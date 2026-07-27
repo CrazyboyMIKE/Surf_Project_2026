@@ -285,6 +285,22 @@ button:focus-visible {
   white-space: nowrap;
 }
 
+.video-role-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  max-width: calc(100% - 24px);
+  overflow: hidden;
+  border-radius: 999px;
+  color: #1d545d;
+  background: rgba(228, 239, 237, 0.92);
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .video-copy {
   text-align: center;
 }
@@ -809,6 +825,7 @@ button:focus-visible {
 }
 
 .audio-local-mute-button,
+.stage-select-button,
 .private-chat-button,
 .private-target,
 .private-chat-form button {
@@ -826,6 +843,7 @@ button:focus-visible {
 }
 
 .audio-local-mute-button:disabled,
+.stage-select-button:disabled,
 .private-chat-button:disabled,
 .private-target:disabled,
 .private-chat-form button:disabled {

@@ -201,6 +201,13 @@ button:focus-visible {
   padding: 14px;
 }
 
+.microphone-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
 .status-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -237,31 +244,51 @@ button:focus-visible {
   gap: 12px;
 }
 
-.thumbnail-grid {
-  display: grid;
-  grid-template-columns: minmax(170px, 240px) minmax(0, 1fr);
-  align-items: stretch;
-  gap: 10px;
-  min-width: 0;
-}
-
-.viewer-thumbnail-scroll {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: clamp(170px, 24vw, 240px);
-  gap: 10px;
+.video-card-grid {
+  display: flex;
+  gap: 12px;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  overscroll-behavior-x: contain;
-  padding: 0 2px 8px;
+  padding: 2px 4px 8px 2px;
   scrollbar-gutter: stable;
-  -webkit-overflow-scrolling: touch;
 }
 
-.viewer-thumbnail-scroll .remote-video-tile,
-.viewer-thumbnail-scroll .viewer-overflow-tile {
-  width: 100%;
+.meeting-video-card {
+  display: grid;
+  flex: 0 0 clamp(220px, 28vw, 340px);
+  min-width: 0;
+  gap: 10px;
+  border: 1px solid #c6d3d0;
+  border-radius: 8px;
+  background: #fbfdfc;
+  padding: 10px;
+}
+
+.video-card-header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.video-card-header strong {
+  overflow: hidden;
+  color: #172026;
+  font-size: 0.94rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.video-card-header span {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  color: #1d545d;
+  background: #e6efed;
+  padding: 4px 9px;
+  font-size: 0.78rem;
+  font-weight: 850;
 }
 
 .local-camera-card {
@@ -303,8 +330,7 @@ button:focus-visible {
 
 .local-preview video {
   display: block;
-  position: absolute;
-  inset: 0;
+  position: relative;
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -343,17 +369,18 @@ button:focus-visible {
 }
 
 .compact-video-tile {
-  height: clamp(132px, 18vw, 184px);
-  min-height: 132px;
+  width: 100%;
+  height: auto;
+  min-height: 0;
   aspect-ratio: 16 / 9;
 }
 
 .local-preview.compact-video-tile {
-  width: auto;
-  height: clamp(142px, 20vw, 220px);
-  min-width: min(170px, 100%);
-  max-width: 100%;
-  min-height: 142px;
+  width: 100%;
+  height: auto;
+  min-width: 0;
+  max-width: none;
+  min-height: 0;
   aspect-ratio: var(--preview-aspect-ratio, 16 / 9);
   justify-self: start;
 }
@@ -367,6 +394,7 @@ button:focus-visible {
 
 .compact-video-tile video,
 .remote-video-tile.compact-video-tile video {
+  width: 100%;
   height: 100%;
   background: #10191c;
   backface-visibility: hidden;
@@ -522,16 +550,8 @@ button:focus-visible {
     grid-template-columns: 1fr;
   }
 
-  .thumbnail-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .local-preview.compact-video-tile {
-    width: min(100%, 280px);
-  }
-
-  .viewer-thumbnail-scroll {
-    grid-auto-columns: minmax(170px, 72vw);
+  .video-card-grid {
+    overflow-x: auto;
   }
 
   .room-topbar {

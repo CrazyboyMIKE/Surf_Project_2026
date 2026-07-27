@@ -135,6 +135,46 @@ const WS_URL = resolveWebSocketUrl(API_BASE_URL);
 const ROBOT_SESSION_STORAGE_KEY = "livekit-cloud-mvp.robot-session";
 const ROBOT_CLIENT_SESSION_STORAGE_KEY = "livekit-cloud-mvp.robot-client-session-id";
 
+function readPersistentValue(key: string): string | null {
+  try {
+    return localStorage.getItem(key) ?? sessionStorage.getItem(key);
+  } catch {
+    try {
+      return sessionStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function writePersistentValue(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Session storage keeps the page refresh path working when localStorage is unavailable.
+  }
+
+  try {
+    sessionStorage.setItem(key, value);
+  } catch {
+    // Storage can be unavailable in locked-down browsers; the room still works until refresh.
+  }
+}
+
+function removePersistentValue(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Ignore storage cleanup failures.
+  }
+
+  try {
+    sessionStorage.removeItem(key);
+  } catch {
+    // Ignore storage cleanup failures.
+  }
+}
+
 function validateRuntimeConfig() {
   if (!/^https?:\/\//.test(API_BASE_URL)) {
     throw new Error("API address configuration error: VITE_API_BASE_URL must start with http:// or https://.");
@@ -147,7 +187,7 @@ function validateRuntimeConfig() {
 
 function readStoredRobotSession(): RoomSession | null {
   try {
-    const raw = sessionStorage.getItem(ROBOT_SESSION_STORAGE_KEY);
+    const raw = readPersistentValue(ROBOT_SESSION_STORAGE_KEY);
     if (!raw) {
       return null;
     }
@@ -177,28 +217,28 @@ function readStoredRobotSession(): RoomSession | null {
 }
 
 function saveStoredRobotSession(session: RoomSession): void {
-  sessionStorage.setItem(ROBOT_SESSION_STORAGE_KEY, JSON.stringify(session));
+  writePersistentValue(ROBOT_SESSION_STORAGE_KEY, JSON.stringify(session));
   if (session.clientSessionId) {
-    sessionStorage.setItem(ROBOT_CLIENT_SESSION_STORAGE_KEY, session.clientSessionId);
+    writePersistentValue(ROBOT_CLIENT_SESSION_STORAGE_KEY, session.clientSessionId);
   }
 }
 
 function clearStoredRobotSession(): void {
-  sessionStorage.removeItem(ROBOT_SESSION_STORAGE_KEY);
+  removePersistentValue(ROBOT_SESSION_STORAGE_KEY);
 }
 
 function clearRobotClientSessionId(): void {
-  sessionStorage.removeItem(ROBOT_CLIENT_SESSION_STORAGE_KEY);
+  removePersistentValue(ROBOT_CLIENT_SESSION_STORAGE_KEY);
 }
 
 function getOrCreateRobotClientSessionId(): string {
-  const existing = sessionStorage.getItem(ROBOT_CLIENT_SESSION_STORAGE_KEY);
+  const existing = readPersistentValue(ROBOT_CLIENT_SESSION_STORAGE_KEY);
   if (existing) {
     return existing;
   }
 
   const next = crypto.randomUUID();
-  sessionStorage.setItem(ROBOT_CLIENT_SESSION_STORAGE_KEY, next);
+  writePersistentValue(ROBOT_CLIENT_SESSION_STORAGE_KEY, next);
   return next;
 }
 
@@ -862,6 +902,8 @@ function RobotRoomView({
   error,
   keyboardStatus,
   lastRobotControl,
+  onStartMicrophone,
+  onStopMicrophone,
   onLeave
 }: {
   session: RoomSession;
@@ -876,6 +918,8 @@ function RobotRoomView({
   error: string;
   keyboardStatus: KeyboardControlStatusMessage | null;
   lastRobotControl: RobotControlMessage | null;
+  onStartMicrophone: () => void;
+  onStopMicrophone: () => void;
   onLeave: () => void;
 }) {
   const controllerVideos = remoteVideos.filter((participant) => participant.role === "controller");
@@ -935,6 +979,19 @@ function RobotRoomView({
             Stop reason <strong>{keyboardStatus?.stopReason ?? lastRobotControl?.parameters?.stopReason ?? "-"}</strong>
           </span>
         </div>
+        <div className="microphone-actions" aria-label="Robot microphone controls">
+          <button type="button" disabled={liveKitState !== "connected" || microphoneState === "publishing"} onClick={onStartMicrophone}>
+            Publish microphone
+          </button>
+          <button
+            type="button"
+            className="ghost-button"
+            disabled={microphoneState !== "publishing" && microphoneState !== "requesting"}
+            onClick={onStopMicrophone}
+          >
+            Stop microphone
+          </button>
+        </div>
       </section>
 
       <section className="meeting-layout" aria-label="Robot meeting layout">
@@ -943,19 +1000,36 @@ function RobotRoomView({
             <h2 id="thumbnail-title">Robot and viewer videos</h2>
             <span>{viewerVideos.length} viewers</span>
           </div>
-          <div className="thumbnail-grid">
-            <LocalPreview track={localTrack} robotName={session.robotName} compact onFullscreenError={setFullscreenError} />
-            <div className="viewer-thumbnail-scroll" aria-label="Viewer video thumbnails">
-              {viewerVideos.length === 0 ? (
+          <div className="video-card-grid" aria-label="Robot and viewer video cards">
+            <article className="meeting-video-card robot-video-card">
+              <div className="video-card-header">
+                <strong>{session.robotName}</strong>
+                <span>robot</span>
+              </div>
+              <LocalPreview track={localTrack} robotName={session.robotName} compact onFullscreenError={setFullscreenError} />
+            </article>
+
+            {viewerVideos.length === 0 ? (
+              <article className="meeting-video-card empty-meeting-card">
+                <div className="video-card-header">
+                  <strong>Viewers</strong>
+                  <span>empty</span>
+                </div>
                 <div className="viewer-overflow-tile muted-overflow">
                   <span>No viewer video yet</span>
                 </div>
-              ) : (
-                viewerVideos.map((participant) => (
-                  <RemoteVideoTile participant={participant} key={participant.identity} compact onFullscreenError={setFullscreenError} />
-                ))
-              )}
-            </div>
+              </article>
+            ) : (
+              viewerVideos.map((participant) => (
+                <article className="meeting-video-card" key={participant.identity}>
+                  <div className="video-card-header">
+                    <strong>{participant.name}</strong>
+                    <span>{participant.role}</span>
+                  </div>
+                  <RemoteVideoTile participant={participant} compact onFullscreenError={setFullscreenError} />
+                </article>
+              ))
+            )}
           </div>
         </section>
 
@@ -1035,6 +1109,33 @@ function App() {
     setMicrophoneState("idle");
   }
 
+  function updateStoredMicrophonePreference(nextPublishMicrophone: boolean) {
+    setPublishMicrophone(nextPublishMicrophone);
+    const currentSession = sessionRef.current ?? session;
+    if (!currentSession) {
+      return;
+    }
+
+    const nextSession = {
+      ...currentSession,
+      publishMicrophone: nextPublishMicrophone
+    };
+    sessionRef.current = nextSession;
+    setSession(nextSession);
+    saveStoredRobotSession(nextSession);
+  }
+
+  async function stopRobotMicrophone() {
+    const audioTrack = localAudioTrackRef.current;
+    localAudioTrackRef.current = null;
+    if (audioTrack && roomRef.current) {
+      await roomRef.current.localParticipant.unpublishTrack(audioTrack, true).catch(() => undefined);
+    }
+    audioTrack?.stop();
+    setMicrophoneState("not-published");
+    updateStoredMicrophonePreference(false);
+  }
+
   async function leaveRoom() {
     const currentSession = sessionRef.current ?? session;
     if (currentSession?.clientSessionId) {
@@ -1073,6 +1174,12 @@ function App() {
       return;
     }
 
+    if (localAudioTrackRef.current) {
+      setMicrophoneState("publishing");
+      updateStoredMicrophonePreference(true);
+      return;
+    }
+
     if (!navigator.mediaDevices?.getUserMedia) {
       setMicrophoneState("unsupported");
       setError("Browser does not support microphone API. Use a modern browser and open the page through HTTPS or localhost.");
@@ -1089,6 +1196,7 @@ function App() {
       });
       localAudioTrackRef.current = audioTrack;
       setMicrophoneState("publishing");
+      updateStoredMicrophonePreference(true);
     } catch (error) {
       audioTrack?.stop();
       if (localAudioTrackRef.current === audioTrack) {
@@ -1100,12 +1208,24 @@ function App() {
     }
   }
 
+  async function startRobotMicrophone() {
+    const room = roomRef.current;
+    const currentSession = sessionRef.current ?? session;
+    if (!room || !currentSession || liveKitState !== "connected") {
+      setError("LiveKit must be connected before publishing the robot microphone.");
+      return;
+    }
+
+    setError("");
+    await publishRobotMicrophone(room, currentSession.robotId, true);
+  }
+
   async function enterRoom(_mode: "create" | "join", options: { restoreSession?: RoomSession } = {}) {
     const restoredSession = options.restoreSession;
     const trimmedRoomName = (restoredSession?.roomName ?? roomName).trim();
     const trimmedRobotName = (restoredSession?.robotName ?? robotName).trim();
     const savedPublishMicrophone = restoredSession?.publishMicrophone ?? publishMicrophone;
-    const shouldPublishMicrophone = restoredSession ? false : savedPublishMicrophone;
+    const shouldPublishMicrophone = savedPublishMicrophone;
     if (!trimmedRobotName) {
       setError("用户名不能为空");
       return;
@@ -1327,6 +1447,8 @@ function App() {
       error={error}
       keyboardStatus={keyboardStatus}
       lastRobotControl={lastRobotControl}
+      onStartMicrophone={startRobotMicrophone}
+      onStopMicrophone={stopRobotMicrophone}
       onLeave={leaveRoom}
     />
   );

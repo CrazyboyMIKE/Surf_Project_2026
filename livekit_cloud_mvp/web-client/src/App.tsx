@@ -107,6 +107,7 @@ function RoomApp() {
   const [actionPending, setActionPending] = useState(false);
   const [notice, setNotice] = useState("");
   const [locallyMutedAudio, setLocallyMutedAudio] = useState<Record<string, boolean>>({});
+  const [selectedStageParticipantId, setSelectedStageParticipantId] = useState<string | null>(null);
   const [selectedPrivateChatParticipantId, setSelectedPrivateChatParticipantId] = useState<string | null>(null);
   const [privateUnreadCounts, setPrivateUnreadCounts] = useState<Record<string, number>>({});
   const recoveringSessionRef = useRef(false);
@@ -278,6 +279,7 @@ function RoomApp() {
 
   useEffect(() => {
     setLocallyMutedAudio({});
+    setSelectedStageParticipantId(null);
     setSelectedPrivateChatParticipantId(null);
     setPrivateUnreadCounts({});
     seenPrivateMessageIdsRef.current.clear();
@@ -340,17 +342,52 @@ function RoomApp() {
     void recoverSession("LiveKit token refreshed");
   }, [liveKitRoom.lastError, recoverSession]);
 
-  if (!session) {
-    return <JoinRoomForm onJoin={handleJoin} notice={notice} />;
-  }
-
-  const effectiveRole = roomSocket.role ?? session.role;
   const activeNotice = roomSocket.lastError || liveKitRoom.lastError || notice;
+  const robotParticipantId =
+    liveKitRoom.robotVideoTrack?.participantIdentity ??
+    liveKitRoom.robotAudioTrack?.participantIdentity ??
+    roomSocket.participants.find((participant) => participant.role === "robot" && participant.connected)?.id;
   const robotAudioParticipantId =
     liveKitRoom.robotAudioTrack?.participantIdentity ??
     roomSocket.participants.find((participant) => participant.role === "robot" && participant.connected)?.id;
   const robotAudioMuted = robotAudioParticipantId ? Boolean(locallyMutedAudio[robotAudioParticipantId]) : false;
   const privateChatErrors = roomSocket.privateChatErrors;
+  const selectedRemoteParticipant = liveKitRoom.remoteParticipants.find(
+    (participant) => participant.identity === selectedStageParticipantId
+  );
+  const selectedRemoteVideoTrack =
+    selectedRemoteParticipant?.videoTrack && selectedStageParticipantId !== robotParticipantId
+      ? {
+          participantIdentity: selectedRemoteParticipant.identity,
+          participantName: selectedRemoteParticipant.name ?? selectedRemoteParticipant.identity,
+          track: selectedRemoteParticipant.videoTrack
+        }
+      : null;
+  const selectedStageVideoTrack = selectedRemoteVideoTrack ?? liveKitRoom.robotVideoTrack;
+  const selectedStageRole = selectedRemoteVideoTrack ? selectedRemoteParticipant?.role ?? "viewer" : "robot";
+
+  useEffect(() => {
+    if (!selectedStageParticipantId) {
+      return;
+    }
+
+    if (selectedStageParticipantId === robotParticipantId && liveKitRoom.robotVideoTrack) {
+      return;
+    }
+
+    const selectedStillHasVideo = liveKitRoom.remoteParticipants.some(
+      (participant) => participant.identity === selectedStageParticipantId && participant.videoTrack
+    );
+    if (!selectedStillHasVideo) {
+      setSelectedStageParticipantId(null);
+    }
+  }, [liveKitRoom.remoteParticipants, liveKitRoom.robotVideoTrack, robotParticipantId, selectedStageParticipantId]);
+
+  if (!session) {
+    return <JoinRoomForm onJoin={handleJoin} notice={notice} />;
+  }
+
+  const effectiveRole = roomSocket.role ?? session.role;
 
   return (
     <main className="app-shell">
@@ -377,7 +414,8 @@ function RoomApp() {
           <RobotVideo
             liveKitState={liveKitRoom.connectionState}
             robotOnline={roomSocket.robotOnline}
-            robotVideoTrack={liveKitRoom.robotVideoTrack}
+            robotVideoTrack={selectedStageVideoTrack}
+            stageParticipantRole={selectedStageRole}
             robotAudioTrack={liveKitRoom.robotAudioTrack}
             robotAudioMuted={robotAudioMuted}
             canPlaybackAudio={liveKitRoom.canPlaybackAudio}
@@ -392,11 +430,14 @@ function RoomApp() {
             roomParticipants={roomSocket.participants}
             currentParticipantId={session.participantId}
             currentRole={effectiveRole}
+            selectedStageParticipantId={selectedStageParticipantId ?? robotParticipantId ?? null}
+            robotVideoTrack={liveKitRoom.robotVideoTrack}
             robotAudioTrack={liveKitRoom.robotAudioTrack}
             canPlaybackAudio={liveKitRoom.canPlaybackAudio}
             locallyMutedAudio={locallyMutedAudio}
             privateUnreadCounts={privateUnreadCounts}
             onEnableAudio={liveKitRoom.enableAudioPlayback}
+            onSelectStageParticipant={setSelectedStageParticipantId}
             onToggleLocalAudioMute={handleToggleLocalAudioMute}
             onStartPrivateChat={handleSelectPrivateChatParticipant}
           />

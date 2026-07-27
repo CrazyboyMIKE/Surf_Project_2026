@@ -1,18 +1,21 @@
 import { useEffect, useRef } from "react";
 import type { RemoteAudioTrack, RemoteVideoTrack } from "livekit-client";
 import type { ParticipantSummary, Role, WebRole } from "../types";
-import type { RemoteParticipantMediaInfo, RobotAudioTrackInfo } from "../useLiveKitRoom";
+import type { RemoteParticipantMediaInfo, RobotAudioTrackInfo, RobotVideoTrackInfo } from "../useLiveKitRoom";
 
 type ParticipantsPanelProps = {
   participants: RemoteParticipantMediaInfo[];
   roomParticipants: ParticipantSummary[];
   currentParticipantId: string;
   currentRole: WebRole | null;
+  selectedStageParticipantId: string | null;
+  robotVideoTrack: RobotVideoTrackInfo | null;
   robotAudioTrack: RobotAudioTrackInfo | null;
   canPlaybackAudio: boolean;
   locallyMutedAudio: Record<string, boolean>;
   privateUnreadCounts: Record<string, number>;
   onEnableAudio: () => void;
+  onSelectStageParticipant: (participantId: string) => void;
   onToggleLocalAudioMute: (participantId: string) => void;
   onStartPrivateChat: (participantId: string) => void;
 };
@@ -126,11 +129,14 @@ export function ParticipantsPanel({
   roomParticipants,
   currentParticipantId,
   currentRole,
+  selectedStageParticipantId,
+  robotVideoTrack,
   robotAudioTrack,
   canPlaybackAudio,
   locallyMutedAudio,
   privateUnreadCounts,
   onEnableAudio,
+  onSelectStageParticipant,
   onToggleLocalAudioMute,
   onStartPrivateChat
 }: ParticipantsPanelProps) {
@@ -152,9 +158,10 @@ export function ParticipantsPanel({
     return (left.name ?? left.identity).localeCompare(right.name ?? right.identity);
   });
   const robotParticipant = roomParticipants.find((participant) => participant.role === "robot" && participant.connected);
-  const robotIdentity = robotAudioTrack?.participantIdentity ?? robotParticipant?.id;
-  const robotName = robotAudioTrack?.participantName ?? robotParticipant?.name ?? robotIdentity;
+  const robotIdentity = robotVideoTrack?.participantIdentity ?? robotAudioTrack?.participantIdentity ?? robotParticipant?.id;
+  const robotName = robotVideoTrack?.participantName ?? robotAudioTrack?.participantName ?? robotParticipant?.name ?? robotIdentity;
   const hasRobotAudio = Boolean(robotAudioTrack);
+  const hasRobotVideo = Boolean(robotVideoTrack);
 
   return (
     <section className="tool-panel participants-panel" aria-labelledby="participants-title">
@@ -176,12 +183,22 @@ export function ParticipantsPanel({
               <strong>{robotName}</strong>
               <span>robot</span>
             </div>
-            <div className="participant-video participant-audio-only">
-              <span>{hasRobotAudio ? "Robot microphone" : "Robot has no audio track"}</span>
-            </div>
+            <RemoteVideo track={robotVideoTrack?.track ?? null} />
             <div className="participant-media-state">
               <span>Audio {hasRobotAudio ? "on" : "off"}</span>
+              <span>Video {hasRobotVideo ? "on" : "off"}</span>
               <span>{locallyMutedAudio[robotIdentity] ? "Muted for you" : "Unmuted for you"}</span>
+            </div>
+            <div className="participant-actions">
+              <button
+                type="button"
+                className="stage-select-button"
+                disabled={!hasRobotVideo || selectedStageParticipantId === robotIdentity}
+                title={hasRobotVideo ? "Show this participant on the main screen" : "No video track to show"}
+                onClick={() => onSelectStageParticipant(robotIdentity)}
+              >
+                {selectedStageParticipantId === robotIdentity ? "On main" : hasRobotVideo ? "Show main" : "No video"}
+              </button>
             </div>
             <AudioLocalMuteControl
               currentRole={currentRole}
@@ -213,6 +230,15 @@ export function ParticipantsPanel({
                 ) : null}
               </div>
               <div className="participant-actions">
+                <button
+                  type="button"
+                  className="stage-select-button"
+                  disabled={!participant.videoTrack || selectedStageParticipantId === participant.identity}
+                  title={participant.videoTrack ? "Show this participant on the main screen" : "No video track to show"}
+                  onClick={() => onSelectStageParticipant(participant.identity)}
+                >
+                  {selectedStageParticipantId === participant.identity ? "On main" : participant.videoTrack ? "Show main" : "No video"}
+                </button>
                 <AudioLocalMuteControl
                   currentRole={currentRole}
                   participantRole={participant.role}

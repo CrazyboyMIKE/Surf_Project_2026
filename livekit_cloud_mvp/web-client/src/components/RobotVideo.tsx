@@ -6,6 +6,7 @@ type RobotVideoProps = {
   liveKitState: LiveKitConnectionState;
   robotOnline: boolean;
   robotVideoTrack: RobotVideoTrackInfo | null;
+  stageParticipantRole: string;
   robotAudioTrack: RobotAudioTrackInfo | null;
   robotAudioMuted: boolean;
   canPlaybackAudio: boolean;
@@ -147,6 +148,7 @@ export function RobotVideo({
   liveKitState,
   robotOnline,
   robotVideoTrack,
+  stageParticipantRole,
   robotAudioTrack,
   robotAudioMuted,
   canPlaybackAudio,
@@ -173,6 +175,7 @@ export function RobotVideo({
       {robotVideoTrack ? (
         <div className="video-live">
           <video ref={videoRef} autoPlay playsInline muted className="robot-video" />
+          <div className="video-role-badge">{stageParticipantRole}</div>
           <div className="video-badge">{robotVideoTrack.participantName ?? robotVideoTrack.participantIdentity}</div>
         </div>
       ) : (
