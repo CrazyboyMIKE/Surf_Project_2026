@@ -24,7 +24,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   min-width: 0;
   font: inherit;
 }
@@ -226,21 +227,27 @@ button:focus-visible {
     "chat participants"
     "control participants"
     "media participants";
-  grid-template-columns: minmax(0, 1fr) minmax(280px, clamp(300px, 28vw, 380px));
+  grid-template-columns: minmax(0, 1fr) minmax(280px, min(340px, 28vw));
   gap: 18px;
   align-items: start;
   margin-top: 18px;
   min-width: 0;
 }
 
+.workspace-grid > * {
+  min-width: 0;
+}
+
 .robot-area {
   grid-area: video;
   min-width: 0;
+  overflow: hidden;
 }
 
 .participants-sidebar {
   grid-area: participants;
   min-width: 0;
+  max-width: 100%;
 }
 
 .chat-area {
@@ -268,10 +275,15 @@ button:focus-visible {
   background: #ffffff;
 }
 
+.video-section {
+  overflow: hidden;
+}
+
 .video-placeholder {
   display: grid;
-  min-height: clamp(240px, 42vw, 560px);
-  max-height: min(64vh, 640px);
+  width: 100%;
+  max-width: 100%;
+  min-height: 0;
   aspect-ratio: 16 / 9;
   place-items: center;
   border-radius: 8px 8px 0 0;
@@ -284,8 +296,9 @@ button:focus-visible {
 
 .video-live {
   position: relative;
-  min-height: clamp(240px, 42vw, 560px);
-  max-height: min(64vh, 640px);
+  width: 100%;
+  max-width: 100%;
+  min-height: 0;
   aspect-ratio: 16 / 9;
   overflow: hidden;
   border-radius: 8px 8px 0 0;
@@ -1277,7 +1290,7 @@ button:focus-visible {
 
 @media (max-width: 1180px) {
   .workspace-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(270px, 330px);
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
   }
 
   .status-bar {
