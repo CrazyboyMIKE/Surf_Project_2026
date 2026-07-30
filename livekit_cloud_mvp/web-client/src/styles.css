@@ -781,23 +781,6 @@ button:focus-visible {
   justify-self: start;
 }
 
-.robot-audio-panel {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-  justify-content: space-between;
-  border-top: 1px solid #d5dfdd;
-  background: #fbfdfc;
-  padding: 10px 12px;
-  color: #4b5f62;
-  font-size: 0.9rem;
-}
-
-.robot-audio-panel strong {
-  color: #172026;
-}
-
 .participants-list {
   display: grid;
   grid-template-columns: 1fr;

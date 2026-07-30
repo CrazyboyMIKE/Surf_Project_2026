@@ -118,18 +118,18 @@ function findRobotAudioTrack(room: Room): RobotAudioTrackInfo | null {
 
 function collectRemoteParticipants(room: Room): RemoteParticipantMediaInfo[] {
   return Array.from(room.remoteParticipants.values())
-    .filter((participant) => !isRobotParticipant(participant))
     .map((participant) => {
       const audioPublication = Array.from(participant.audioTrackPublications.values()).find((publication) => publication.track);
       const videoPublication = Array.from(participant.videoTrackPublications.values()).find((publication) => publication.track);
       const audioTrack = audioPublication?.track instanceof RemoteAudioTrack ? audioPublication.track : null;
       const videoTrack = videoPublication?.track instanceof RemoteVideoTrack ? videoPublication.track : null;
       const hasAudioTrack = Boolean(audioTrack);
+      const role = isRobotParticipant(participant) ? "robot" : readParticipantRole(participant);
 
       return {
         identity: participant.identity,
         name: participant.name,
-        role: readParticipantRole(participant),
+        role,
         audioEnabled: Boolean(audioPublication?.isEnabled && audioPublication.track),
         videoEnabled: Boolean(videoPublication?.isEnabled && videoPublication.track),
         audioTrack,

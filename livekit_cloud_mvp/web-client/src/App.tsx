@@ -11,7 +11,7 @@ import { RobotVideo } from "./components/RobotVideo";
 import { StatusBar } from "./components/StatusBar";
 import { useLiveKitRoom } from "./useLiveKitRoom";
 import { useRoomSocket } from "./useRoomSocket";
-import type { JoinRoomRequest, JoinRoomResponse, KeyboardControlConfig, WebRole } from "./types";
+import type { JoinRoomRequest, JoinRoomResponse, KeyboardControlConfig, Role, WebRole } from "./types";
 
 const FALLBACK_KEYBOARD_CONTROL_CONFIG: KeyboardControlConfig = {
   enabled: false,
@@ -29,6 +29,7 @@ const FALLBACK_KEYBOARD_CONTROL_CONFIG: KeyboardControlConfig = {
 
 const SESSION_STORAGE_KEY = "livekit-cloud-mvp.room-session";
 const CLIENT_SESSION_STORAGE_KEY = "livekit-cloud-mvp.client-session-id";
+const ROBOT_STAGE_PARTICIPANT_ID = "__robot_stage__";
 
 function readStoredSession(): JoinRoomResponse | null {
   try {
@@ -380,48 +381,51 @@ function RoomApp() {
   }, [liveKitRoom.lastError, recoverSession]);
 
   const activeNotice = roomSocket.lastError || liveKitRoom.lastError || notice;
+  const robotRoomParticipant = roomSocket.participants.find((participant) => participant.role === "robot");
   const robotParticipantId =
     liveKitRoom.robotVideoTrack?.participantIdentity ??
     liveKitRoom.robotAudioTrack?.participantIdentity ??
-    roomSocket.participants.find((participant) => participant.role === "robot" && participant.connected)?.id;
-  const robotAudioParticipantId =
-    liveKitRoom.robotAudioTrack?.participantIdentity ??
-    roomSocket.participants.find((participant) => participant.role === "robot" && participant.connected)?.id;
-  const robotAudioMuted = robotAudioParticipantId ? Boolean(locallyMutedAudio[robotAudioParticipantId]) : false;
+    robotRoomParticipant?.id;
   const privateChatErrors = roomSocket.privateChatErrors;
-  const selectedRemoteParticipant = liveKitRoom.remoteParticipants.find(
-    (participant) => participant.identity === selectedStageParticipantId
-  );
-  const selectedRemoteVideoTrack =
-    selectedRemoteParticipant?.videoTrack && selectedStageParticipantId !== robotParticipantId
-      ? {
-          participantIdentity: selectedRemoteParticipant.identity,
-          participantName: selectedRemoteParticipant.name ?? selectedRemoteParticipant.identity,
-          track: selectedRemoteParticipant.videoTrack,
-          hasAudioTrack: selectedRemoteParticipant.hasAudioTrack,
-          isSpeaking: selectedRemoteParticipant.isSpeaking,
-          audioLevel: selectedRemoteParticipant.audioLevel
-        }
-      : null;
-  const selectedStageVideoTrack = selectedRemoteVideoTrack ?? liveKitRoom.robotVideoTrack;
-  const selectedStageRole = selectedRemoteVideoTrack ? selectedRemoteParticipant?.role ?? "viewer" : "robot";
+  const selectedStageId = selectedStageParticipantId ?? ROBOT_STAGE_PARTICIPANT_ID;
+  const robotStageSelected =
+    selectedStageId === ROBOT_STAGE_PARTICIPANT_ID || (robotParticipantId !== undefined && selectedStageId === robotParticipantId);
+  const selectedMediaParticipant = robotStageSelected
+    ? null
+    : liveKitRoom.remoteParticipants.find((participant) => participant.identity === selectedStageId);
+  const selectedRoomParticipant = robotStageSelected
+    ? robotRoomParticipant
+    : roomSocket.participants.find((participant) => participant.id === selectedStageId);
+  const selectedRemoteVideoTrack = selectedMediaParticipant?.videoTrack
+    ? {
+        participantIdentity: selectedMediaParticipant.identity,
+        participantName: selectedMediaParticipant.name ?? selectedMediaParticipant.identity,
+        track: selectedMediaParticipant.videoTrack,
+        hasAudioTrack: selectedMediaParticipant.hasAudioTrack,
+        isSpeaking: selectedMediaParticipant.isSpeaking,
+        audioLevel: selectedMediaParticipant.audioLevel
+      }
+    : null;
+  const selectedStageVideoTrack = robotStageSelected ? liveKitRoom.robotVideoTrack : selectedRemoteVideoTrack;
+  const selectedStageRole: Role | "unknown" = robotStageSelected
+    ? "robot"
+    : selectedMediaParticipant?.role !== "unknown" && selectedMediaParticipant?.role
+      ? selectedMediaParticipant.role
+      : (selectedRoomParticipant?.role ?? "unknown");
+  const selectedStageParticipantName = robotStageSelected
+    ? (liveKitRoom.robotVideoTrack?.participantName ?? liveKitRoom.robotAudioTrack?.participantName ?? robotRoomParticipant?.name ?? "Robot")
+    : (selectedRoomParticipant?.name ?? selectedMediaParticipant?.name ?? selectedStageId);
+  const selectedStageParticipantIdentity = robotStageSelected ? (robotParticipantId ?? ROBOT_STAGE_PARTICIPANT_ID) : selectedStageId;
 
   useEffect(() => {
-    if (!selectedStageParticipantId) {
-      return;
+    if (
+      selectedStageParticipantId &&
+      selectedStageParticipantId !== ROBOT_STAGE_PARTICIPANT_ID &&
+      selectedStageParticipantId === robotParticipantId
+    ) {
+      setSelectedStageParticipantId(ROBOT_STAGE_PARTICIPANT_ID);
     }
-
-    if (selectedStageParticipantId === robotParticipantId && liveKitRoom.robotVideoTrack) {
-      return;
-    }
-
-    const selectedStillHasVideo = liveKitRoom.remoteParticipants.some(
-      (participant) => participant.identity === selectedStageParticipantId && participant.videoTrack
-    );
-    if (!selectedStillHasVideo) {
-      setSelectedStageParticipantId(null);
-    }
-  }, [liveKitRoom.remoteParticipants, liveKitRoom.robotVideoTrack, robotParticipantId, selectedStageParticipantId]);
+  }, [robotParticipantId, selectedStageParticipantId]);
 
   if (!session) {
     return <JoinRoomForm onJoin={handleJoin} notice={notice} />;
@@ -462,13 +466,11 @@ function RoomApp() {
           <RobotVideo
             liveKitState={liveKitRoom.connectionState}
             robotOnline={roomSocket.robotOnline}
-            robotVideoTrack={selectedStageVideoTrack}
+            stageVideoTrack={selectedStageVideoTrack}
             stageParticipantRole={selectedStageRole}
-            robotAudioTrack={liveKitRoom.robotAudioTrack}
-            robotAudioMuted={robotAudioMuted}
-            canPlaybackAudio={liveKitRoom.canPlaybackAudio}
+            stageParticipantName={selectedStageParticipantName}
+            stageParticipantIdentity={selectedStageParticipantIdentity}
             robotEvents={roomSocket.robotEvents}
-            onEnableAudio={liveKitRoom.enableAudioPlayback}
           />
         </div>
 
@@ -478,7 +480,9 @@ function RoomApp() {
             roomParticipants={roomSocket.participants}
             currentParticipantId={session.participantId}
             currentRole={effectiveRole}
-            selectedStageParticipantId={selectedStageParticipantId ?? robotParticipantId ?? null}
+            selectedStageParticipantId={selectedStageId}
+            robotStageParticipantId={ROBOT_STAGE_PARTICIPANT_ID}
+            robotOnline={roomSocket.robotOnline}
             robotVideoTrack={liveKitRoom.robotVideoTrack}
             robotAudioTrack={liveKitRoom.robotAudioTrack}
             canPlaybackAudio={liveKitRoom.canPlaybackAudio}

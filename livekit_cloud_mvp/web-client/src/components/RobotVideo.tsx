@@ -1,17 +1,15 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
-import type { RobotControlEvent } from "../types";
-import type { LiveKitConnectionState, RobotAudioTrackInfo, RobotVideoTrackInfo } from "../useLiveKitRoom";
+import { useEffect, useRef, type CSSProperties } from "react";
+import type { RobotControlEvent, Role } from "../types";
+import type { LiveKitConnectionState, RobotVideoTrackInfo } from "../useLiveKitRoom";
 
 type RobotVideoProps = {
   liveKitState: LiveKitConnectionState;
   robotOnline: boolean;
-  robotVideoTrack: RobotVideoTrackInfo | null;
-  stageParticipantRole: string;
-  robotAudioTrack: RobotAudioTrackInfo | null;
-  robotAudioMuted: boolean;
-  canPlaybackAudio: boolean;
+  stageVideoTrack: RobotVideoTrackInfo | null;
+  stageParticipantRole: Role | "unknown";
+  stageParticipantName: string;
+  stageParticipantIdentity: string;
   robotEvents: RobotControlEvent[];
-  onEnableAudio: () => Promise<void>;
 };
 
 function describeEvent(event: RobotControlEvent): string {
@@ -30,9 +28,22 @@ function describeEvent(event: RobotControlEvent): string {
   return "1000 stop";
 }
 
-function getPlaceholderText(liveKitState: LiveKitConnectionState, robotOnline: boolean): string {
+function getPlaceholderText(
+  liveKitState: LiveKitConnectionState,
+  robotOnline: boolean,
+  stageParticipantRole: Role | "unknown",
+  stageParticipantName: string
+): string {
+  if (stageParticipantRole !== "robot") {
+    if (liveKitState === "connecting" || liveKitState === "reconnecting") {
+      return `Connecting to ${stageParticipantName} video`;
+    }
+
+    return `${stageParticipantName} camera unavailable`;
+  }
+
   if (!robotOnline) {
-    return "Robot offline";
+    return "Robot camera unavailable";
   }
 
   if (liveKitState === "mock") {
@@ -48,18 +59,6 @@ function getPlaceholderText(liveKitState: LiveKitConnectionState, robotOnline: b
   }
 
   return "Robot video will appear here";
-}
-
-function getRobotAudioUnavailableText(liveKitState: LiveKitConnectionState, robotOnline: boolean): string {
-  if (!robotOnline) {
-    return "robot offline";
-  }
-
-  if (liveKitState !== "connected") {
-    return `LiveKit ${liveKitState}`;
-  }
-
-  return "robot has no microphone track";
 }
 
 function getSpeakingStyle(audioLevel: number): CSSProperties & Record<"--speaking-level", string> {
@@ -94,136 +93,53 @@ function SpeakingBadge({
   );
 }
 
-function RobotAudioPlayer({
-  liveKitState,
-  robotOnline,
-  robotAudioTrack,
-  robotAudioMuted,
-  canPlaybackAudio,
-  onEnableAudio
-}: {
-  liveKitState: LiveKitConnectionState;
-  robotOnline: boolean;
-  robotAudioTrack: RobotAudioTrackInfo | null;
-  robotAudioMuted: boolean;
-  canPlaybackAudio: boolean;
-  onEnableAudio: () => Promise<void>;
-}) {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [audioState, setAudioState] = useState("waiting");
-
-  useEffect(() => {
-    const audioElement = audioRef.current;
-    if (!audioElement || !robotAudioTrack) {
-      setAudioState(getRobotAudioUnavailableText(liveKitState, robotOnline));
-      return;
-    }
-
-    robotAudioTrack.track.attach(audioElement);
-    audioElement.muted = robotAudioMuted;
-    audioElement.volume = 1;
-    setAudioState(robotAudioMuted ? "muted for you" : "subscribed");
-
-    void audioElement.play().then(
-      () => setAudioState(robotAudioMuted ? "muted for you" : "playing"),
-      () => setAudioState("audio playback blocked")
-    );
-
-    return () => {
-      robotAudioTrack.track.detach(audioElement);
-    };
-  }, [canPlaybackAudio, liveKitState, robotAudioMuted, robotAudioTrack, robotOnline]);
-
-  async function enableRobotAudio() {
-    const audioElement = audioRef.current;
-    if (!audioElement || !robotAudioTrack) {
-      setAudioState(getRobotAudioUnavailableText(liveKitState, robotOnline));
-      return;
-    }
-
-    try {
-      await onEnableAudio();
-      audioElement.muted = robotAudioMuted;
-      await audioElement.play();
-      setAudioState(robotAudioMuted ? "muted for you" : "playing");
-    } catch {
-      setAudioState("audio playback blocked");
-    }
-  }
-
-  const shouldShowEnableButton = Boolean(robotAudioTrack) && (!canPlaybackAudio || audioState === "audio playback blocked");
-
-  return (
-    <div className="robot-audio-panel">
-      <audio ref={audioRef} autoPlay playsInline />
-      <span>
-        Robot audio <strong>{audioState}</strong>
-      </span>
-      {shouldShowEnableButton ? (
-        <button type="button" className="secondary-button audio-unlock" onClick={enableRobotAudio}>
-          Enable robot audio
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
 export function RobotVideo({
   liveKitState,
   robotOnline,
-  robotVideoTrack,
+  stageVideoTrack,
   stageParticipantRole,
-  robotAudioTrack,
-  robotAudioMuted,
-  canPlaybackAudio,
-  robotEvents,
-  onEnableAudio
+  stageParticipantName,
+  stageParticipantIdentity,
+  robotEvents
 }: RobotVideoProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
     const videoElement = videoRef.current;
-    if (!robotVideoTrack || !videoElement) {
+    if (!stageVideoTrack || !videoElement) {
       return;
     }
 
-    robotVideoTrack.track.attach(videoElement);
+    stageVideoTrack.track.attach(videoElement);
 
     return () => {
-      robotVideoTrack.track.detach(videoElement);
+      stageVideoTrack.track.detach(videoElement);
     };
-  }, [robotVideoTrack]);
+  }, [stageVideoTrack]);
 
   return (
-    <section className="video-section" aria-label="Robot video">
-      {robotVideoTrack ? (
-        <div className={`video-live${robotVideoTrack.hasAudioTrack && robotVideoTrack.isSpeaking ? " is-speaking" : ""}`}>
+    <section className="video-section" aria-label="Main video">
+      {stageVideoTrack ? (
+        <div className={`video-live${stageVideoTrack.hasAudioTrack && stageVideoTrack.isSpeaking ? " is-speaking" : ""}`}>
           <video ref={videoRef} autoPlay playsInline muted className="robot-video" />
           <div className="video-role-badge">{stageParticipantRole}</div>
           <SpeakingBadge
-            hasAudioTrack={robotVideoTrack.hasAudioTrack}
-            isSpeaking={robotVideoTrack.isSpeaking}
-            audioLevel={robotVideoTrack.audioLevel}
+            hasAudioTrack={stageVideoTrack.hasAudioTrack}
+            isSpeaking={stageVideoTrack.isSpeaking}
+            audioLevel={stageVideoTrack.audioLevel}
           />
-          <div className="video-badge">{robotVideoTrack.participantName ?? robotVideoTrack.participantIdentity}</div>
+          <div className="video-badge">{stageVideoTrack.participantName ?? stageVideoTrack.participantIdentity}</div>
         </div>
       ) : (
         <div className="video-placeholder">
           <div className="video-copy">
-            <p>{getPlaceholderText(liveKitState, robotOnline)}</p>
-            <span>{liveKitState === "mock" ? "Configure LiveKit to enable real video" : `LiveKit ${liveKitState}`}</span>
+            <p>{getPlaceholderText(liveKitState, robotOnline, stageParticipantRole, stageParticipantName)}</p>
+            <span>
+              {stageParticipantRole} · {stageParticipantIdentity}
+            </span>
           </div>
         </div>
       )}
-
-      <RobotAudioPlayer
-        liveKitState={liveKitState}
-        robotOnline={robotOnline}
-        robotAudioTrack={robotAudioTrack}
-        robotAudioMuted={robotAudioMuted}
-        canPlaybackAudio={canPlaybackAudio}
-        onEnableAudio={onEnableAudio}
-      />
 
       <div className="event-strip" aria-label="Mock robot control log">
         {robotEvents.length === 0 ? (

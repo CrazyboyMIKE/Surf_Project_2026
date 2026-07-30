@@ -9,6 +9,8 @@ type ParticipantsPanelProps = {
   currentParticipantId: string;
   currentRole: WebRole | null;
   selectedStageParticipantId: string | null;
+  robotStageParticipantId: string;
+  robotOnline: boolean;
   robotVideoTrack: RobotVideoTrackInfo | null;
   robotAudioTrack: RobotAudioTrackInfo | null;
   canPlaybackAudio: boolean;
@@ -89,12 +91,14 @@ function RemoteVideo({
   track,
   hasAudioTrack,
   isSpeaking,
-  audioLevel
+  audioLevel,
+  placeholder = "No camera"
 }: {
   track: RemoteVideoTrack | null;
   hasAudioTrack: boolean;
   isSpeaking: boolean;
   audioLevel: number;
+  placeholder?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -113,7 +117,7 @@ function RemoteVideo({
 
   return (
     <div className={`participant-video${hasAudioTrack && isSpeaking ? " is-speaking" : ""}`}>
-      {track ? <video ref={videoRef} autoPlay playsInline /> : <span>No camera</span>}
+      {track ? <video ref={videoRef} autoPlay playsInline /> : <span>{placeholder}</span>}
       <SpeakingBadge hasAudioTrack={hasAudioTrack} isSpeaking={isSpeaking} audioLevel={audioLevel} />
     </div>
   );
@@ -134,6 +138,10 @@ function canUsePrivateChatRole(role: Role | "unknown" | null): boolean {
 
 function canShowLocalMuteState(role: Role | "unknown"): boolean {
   return role === "controller" || role === "viewer" || role === "robot";
+}
+
+function isRobotRole(role: Role | "unknown"): boolean {
+  return role === "robot";
 }
 
 function AudioLocalMuteControl({
@@ -229,6 +237,8 @@ export function ParticipantsPanel({
   currentParticipantId,
   currentRole,
   selectedStageParticipantId,
+  robotStageParticipantId,
+  robotOnline,
   robotVideoTrack,
   robotAudioTrack,
   canPlaybackAudio,
@@ -249,7 +259,17 @@ export function ParticipantsPanel({
     name: getParticipantName(participant, roomParticipants),
     connected: roomParticipants.find((candidate) => candidate.id === participant.identity)?.connected
   }));
-  const orderedParticipants = [...displayParticipants].sort((left, right) => {
+  const robotMediaParticipant = displayParticipants.find((participant) => isRobotRole(participant.role));
+  const webParticipants = displayParticipants.filter((participant) => !isRobotRole(participant.role));
+  const orderedParticipants = [...webParticipants].sort((left, right) => {
+    if (left.identity === speaker.currentSpeaker?.id && right.identity !== speaker.currentSpeaker.id) {
+      return -1;
+    }
+
+    if (left.identity !== speaker.currentSpeaker?.id && right.identity === speaker.currentSpeaker?.id) {
+      return 1;
+    }
+
     if (left.role === "controller" && right.role !== "controller") {
       return -1;
     }
@@ -260,19 +280,38 @@ export function ParticipantsPanel({
 
     return (left.name ?? left.identity).localeCompare(right.name ?? right.identity);
   });
-  const robotParticipant = roomParticipants.find((participant) => participant.role === "robot" && participant.connected);
-  const robotIdentity = robotVideoTrack?.participantIdentity ?? robotAudioTrack?.participantIdentity ?? robotParticipant?.id;
-  const robotName = robotVideoTrack?.participantName ?? robotAudioTrack?.participantName ?? robotParticipant?.name ?? robotIdentity;
-  const hasRobotAudio = Boolean(robotAudioTrack);
-  const hasRobotVideo = Boolean(robotVideoTrack);
-  const robotIsSpeaking = hasRobotAudio && Boolean(robotAudioTrack?.isSpeaking ?? robotVideoTrack?.isSpeaking);
-  const robotAudioLevel = robotAudioTrack?.audioLevel ?? robotVideoTrack?.audioLevel ?? 0;
+  const robotParticipant = roomParticipants.find((participant) => participant.role === "robot");
+  const robotIdentity =
+    robotMediaParticipant?.identity ??
+    robotVideoTrack?.participantIdentity ??
+    robotAudioTrack?.participantIdentity ??
+    robotParticipant?.id ??
+    robotStageParticipantId;
+  const robotName =
+    robotMediaParticipant?.name ??
+    robotVideoTrack?.participantName ??
+    robotAudioTrack?.participantName ??
+    robotParticipant?.name ??
+    "Robot";
+  const robotVideo = robotMediaParticipant?.videoTrack ?? robotVideoTrack?.track ?? null;
+  const robotAudio = robotMediaParticipant?.audioTrack ?? robotAudioTrack?.track ?? null;
+  const hasRobotAudio = Boolean(robotAudio);
+  const hasRobotVideo = Boolean(robotVideo);
+  const robotIsSpeaking =
+    hasRobotAudio && Boolean(robotMediaParticipant?.isSpeaking ?? robotAudioTrack?.isSpeaking ?? robotVideoTrack?.isSpeaking);
+  const robotAudioLevel = robotMediaParticipant?.audioLevel ?? robotAudioTrack?.audioLevel ?? robotVideoTrack?.audioLevel ?? 0;
+  const robotSelected = selectedStageParticipantId === robotStageParticipantId || selectedStageParticipantId === robotIdentity;
+  const robotMuteParticipantId = robotAudioTrack?.participantIdentity ?? robotMediaParticipant?.identity ?? robotIdentity;
+  const participantCount = orderedParticipants.length + 1;
+  const robotVideoPlaceholder = robotOnline ? "Waiting for robot video" : "Robot camera unavailable";
 
   return (
     <section className="tool-panel participants-panel" aria-labelledby="participants-title">
       <div className="panel-heading">
         <h2 id="participants-title">Participants</h2>
-        <span>{participants.length} remote users</span>
+        <span>
+          {participantCount} {participantCount === 1 ? "participant" : "participants"}
+        </span>
       </div>
 
       {!canPlaybackAudio ? (
@@ -291,46 +330,46 @@ export function ParticipantsPanel({
       />
 
       <div className="participants-list">
-        {robotIdentity ? (
-          <article className={`participant-tile participant-robot${robotIsSpeaking ? " is-speaking" : ""}`} key={robotIdentity}>
-            <div className="participant-header">
-              <strong>{robotName}</strong>
-              <span>robot</span>
-            </div>
-            <RemoteVideo
-              track={robotVideoTrack?.track ?? null}
-              hasAudioTrack={hasRobotAudio}
-              isSpeaking={robotIsSpeaking}
-              audioLevel={robotAudioLevel}
-            />
-            <div className="participant-media-state">
-              <span>Audio {hasRobotAudio ? "on" : "off"}</span>
-              <span>Video {hasRobotVideo ? "on" : "off"}</span>
-              <span>{locallyMutedAudio[robotIdentity] ? "Muted for you" : "Unmuted for you"}</span>
-            </div>
-            <div className="participant-actions">
-              <button
-                type="button"
-                className="stage-select-button"
-                disabled={!hasRobotVideo || selectedStageParticipantId === robotIdentity}
-                title={hasRobotVideo ? "Show this participant on the main screen" : "No video track to show"}
-                onClick={() => onSelectStageParticipant(robotIdentity)}
-              >
-                {selectedStageParticipantId === robotIdentity ? "On main" : hasRobotVideo ? "Show main" : "No video"}
-              </button>
-            </div>
+        <article className={`participant-tile participant-robot${robotIsSpeaking ? " is-speaking" : ""}`} key={robotIdentity}>
+          <div className="participant-header">
+            <strong>{robotName}</strong>
+            <span>robot</span>
+          </div>
+          <RemoteVideo
+            track={robotVideo}
+            hasAudioTrack={hasRobotAudio}
+            isSpeaking={robotIsSpeaking}
+            audioLevel={robotAudioLevel}
+            placeholder={robotVideoPlaceholder}
+          />
+          <RemoteAudio track={robotAudio} muted={Boolean(locallyMutedAudio[robotMuteParticipantId])} />
+          <div className="participant-media-state">
+            <span>Audio {hasRobotAudio ? "on" : "off"}</span>
+            <span>Video {hasRobotVideo ? "on" : "off"}</span>
+            <span>{locallyMutedAudio[robotMuteParticipantId] ? "Muted for you" : "Unmuted for you"}</span>
+          </div>
+          <div className="participant-actions">
+            <button
+              type="button"
+              className="stage-select-button"
+              disabled={robotSelected}
+              title={hasRobotVideo ? "Show robot camera on the main screen" : "Show robot camera placeholder on the main screen"}
+              onClick={() => onSelectStageParticipant(robotStageParticipantId)}
+            >
+              {robotSelected ? "On main" : "Show main"}
+            </button>
             <AudioLocalMuteControl
               currentRole={currentRole}
               participantRole="robot"
-              participantId={robotIdentity}
+              participantId={robotMuteParticipantId}
               hasAudio={hasRobotAudio}
-              locallyMuted={Boolean(locallyMutedAudio[robotIdentity])}
+              locallyMuted={Boolean(locallyMutedAudio[robotMuteParticipantId])}
               onToggleLocalAudioMute={onToggleLocalAudioMute}
             />
-          </article>
-        ) : null}
+          </div>
+        </article>
 
-        {orderedParticipants.length === 0 && !robotIdentity ? (
+        {orderedParticipants.length === 0 ? (
           <p className="empty-state">No remote Web participants yet</p>
         ) : (
           orderedParticipants.map((participant) => (
