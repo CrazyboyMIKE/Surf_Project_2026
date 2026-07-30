@@ -44,7 +44,6 @@ Implemented:
 - mock robot-control adapter
 - PadBot MQTT real-mode adapter
 - keyboard continuous chassis control through gated `1001`
-- head stop/move/reset through gated `1004` / `1005` / `1006`
 
 Not included:
 
@@ -95,20 +94,8 @@ Controller Web UI
 | `1001` | continuous chassis movement | keyboard-control path only |
 | `1002` | chassis move distance | controller only |
 | `1003` | chassis rotate angle | controller only |
-| `1004` | head stop | controller only, gated by env |
-| `1005` | head absolute angle control | controller only, gated by env |
-| `1006` | head reset | controller only, gated by env |
+| `1004-1006` | head control | removed, rejected by normal robot_control |
 | `1007-1009` | arm control | not implemented |
-
-`1005` currently uses non-negative absolute angles. Default Web UI calibration:
-
-```text
-center = 90deg
-tilt up = 120deg
-tilt down = 60deg
-```
-
-If real hardware direction is reversed, swap the up/down constants and retest at low speed.
 
 ## LiveKit Cloud Setup
 
@@ -133,7 +120,6 @@ ADMIN_ENABLED=false
 ADMIN_TOKEN=CHANGE_ME_ADMIN_TOKEN
 ROBOT_CONTROL_MODE=mock
 ROBOT_CONTROL_ENABLED=false
-ROBOT_ENABLE_HEAD_CONTROL=false
 ROBOT_ENABLE_KEYBOARD_CONTROL=false
 ROBOT_ENABLE_CONTINUOUS_1001=false
 ```

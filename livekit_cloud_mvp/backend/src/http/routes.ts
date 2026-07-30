@@ -76,7 +76,8 @@ function appendRoomSnapshot(response: Record<string, unknown>, snapshot: RoomSna
     ...response,
     robotOnline: snapshot.robotOnline,
     currentControllerId: snapshot.currentControllerId,
-    currentControllerName: snapshot.currentControllerName
+    currentControllerName: snapshot.currentControllerName,
+    controlRequests: snapshot.controlRequests
   };
 }
 
@@ -261,22 +262,31 @@ export function createApiRouter(dependencies: RouterDependencies): Router {
     }
 
     broadcastRoleUpdate(roomName);
-    const token = await liveKitTokenService.generateToken({
-      roomName,
-      identity: result.participant.id,
-      name: result.participant.name,
-      role: result.participant.role
-    });
+    const token = result.granted
+      ? await liveKitTokenService.generateToken({
+          roomName,
+          identity: result.participant.id,
+          name: result.participant.name,
+          role: result.participant.role
+        })
+      : undefined;
 
-    res.json({
-      ok: true,
-      role: result.participant.role,
-      message: result.message,
-      liveKitUrl: token.liveKitUrl,
-      token: token.token,
-      tokenMode: token.isMock ? "mock" : "livekit",
-      mediaPermissions: token.mediaPermissions
-    });
+    res.json(
+      appendRoomSnapshot(
+        {
+          ok: true,
+          role: result.participant.role,
+          controlGranted: result.granted,
+          controlRequestQueued: result.queued,
+          message: result.message,
+          liveKitUrl: token?.liveKitUrl,
+          token: token?.token,
+          tokenMode: token ? (token.isMock ? "mock" : "livekit") : undefined,
+          mediaPermissions: token?.mediaPermissions
+        },
+        roomStore.getRoomSnapshot(roomName)
+      )
+    );
   }));
 
   router.post("/api/rooms/control/release", asyncRoute(async (req, res) => {
@@ -313,15 +323,20 @@ export function createApiRouter(dependencies: RouterDependencies): Router {
         })
       : undefined;
 
-    res.json({
-      ok: true,
-      role: participant?.role,
-      message: result.message,
-      liveKitUrl: token?.liveKitUrl,
-      token: token?.token,
-      tokenMode: token ? (token.isMock ? "mock" : "livekit") : undefined,
-      mediaPermissions: token?.mediaPermissions
-    });
+    res.json(
+      appendRoomSnapshot(
+        {
+          ok: true,
+          role: participant?.role,
+          message: result.message,
+          liveKitUrl: token?.liveKitUrl,
+          token: token?.token,
+          tokenMode: token ? (token.isMock ? "mock" : "livekit") : undefined,
+          mediaPermissions: token?.mediaPermissions
+        },
+        roomStore.getRoomSnapshot(roomName)
+      )
+    );
   }));
 
   router.post("/api/rooms/control/transfer", asyncRoute(async (req, res) => {
@@ -360,7 +375,8 @@ export function createApiRouter(dependencies: RouterDependencies): Router {
       previousControllerName: result.previousController.name,
       currentControllerId: result.newController.id,
       currentControllerName: result.newController.name,
-      participants: roomStore.getRoomSnapshot(roomName)?.participants ?? []
+      participants: roomStore.getRoomSnapshot(roomName)?.participants ?? [],
+      controlRequests: roomStore.getRoomSnapshot(roomName)?.controlRequests
     });
   }));
 

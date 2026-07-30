@@ -253,20 +253,6 @@ export function buildPadBotControlPayload(
     };
   }
 
-  if (command === "1005") {
-    inner.m = {
-      d: parameters.d ?? 1,
-      a: parameters.a ?? 0,
-      av: Math.round(parameters.av ?? config.vendor.angularSpeed)
-    };
-  }
-
-  if (command === "1006") {
-    inner.m = {
-      d: parameters.d ?? 0
-    };
-  }
-
   return compactJson({
     id: messageId,
     t: "83",

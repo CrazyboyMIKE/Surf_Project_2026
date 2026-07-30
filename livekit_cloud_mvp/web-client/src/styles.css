@@ -305,6 +305,14 @@ button:focus-visible {
   background: #10191c;
 }
 
+.video-live.is-speaking,
+.local-preview.is-speaking,
+.participant-video.is-speaking {
+  outline: 2px solid rgba(68, 167, 153, 0.94);
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 3px rgba(92, 188, 176, 0.18);
+}
+
 .robot-video {
   display: block;
   width: 100%;
@@ -341,6 +349,66 @@ button:focus-visible {
   font-weight: 850;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.speaking-badge {
+  display: inline-grid;
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid rgba(220, 232, 229, 0.7);
+  border-radius: 999px;
+  color: #ffffff;
+  background: rgba(23, 32, 38, 0.74);
+  opacity: 0.34;
+  pointer-events: none;
+  transition:
+    opacity 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.speaking-badge.active {
+  background: rgba(33, 117, 125, 0.94);
+  opacity: 1;
+  box-shadow:
+    0 0 0 3px rgba(226, 245, 241, 0.28),
+    0 0 18px rgba(68, 167, 153, var(--speaking-level));
+}
+
+.speaking-icon {
+  position: relative;
+  width: 16px;
+  height: 14px;
+}
+
+.speaking-icon::before,
+.speaking-icon::after {
+  position: absolute;
+  content: "";
+}
+
+.speaking-icon::before {
+  left: 1px;
+  top: 4px;
+  width: 5px;
+  height: 6px;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+.speaking-icon::after {
+  left: 6px;
+  top: 1px;
+  width: 8px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-left: 0;
+  border-radius: 0 12px 12px 0;
 }
 
 .video-copy {
@@ -456,71 +524,8 @@ button:focus-visible {
   background: #edf2f1;
 }
 
-.head-control-panel {
-  display: grid;
-  gap: 10px;
-  margin-top: 16px;
-  border-top: 1px solid #d5dfdd;
-  padding-top: 14px;
-}
-
-.head-control-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(120px, 1fr));
-  gap: 10px;
-}
-
-.head-control-grid button {
-  display: grid;
-  min-height: 58px;
-  min-width: 0;
-  place-items: center;
-  border: 1px solid #aac0bc;
-  border-radius: 6px;
-  color: #172026;
-  background: #eef7f4;
-  font-weight: 900;
-}
-
-.head-control-grid button span {
-  color: #587073;
-  font-size: 0.78rem;
-  font-weight: 800;
-}
-
-.head-control-grid button small {
-  color: #587073;
-  font-size: 0.68rem;
-  font-weight: 750;
-}
-
-.head-control-grid .head-stop-button {
-  color: #ffffff;
-  background: #8f3d2e;
-}
-
-.head-control-grid .head-stop-button small,
-.head-control-grid .head-stop-button span {
-  color: #ffe8df;
-}
-
-.head-control-grid button:disabled {
-  border-color: #d5dfdd;
+.control-pad button:disabled small {
   color: #8a9897;
-  background: #edf2f1;
-}
-
-.control-pad button:disabled small,
-.head-control-grid button:disabled small,
-.head-control-grid button:disabled span {
-  color: #8a9897;
-}
-
-.calibration-note {
-  margin: 0;
-  color: #596d70;
-  font-size: 0.84rem;
-  font-weight: 750;
 }
 
 .keyboard-control-panel {
@@ -745,6 +750,7 @@ button:focus-visible {
 
 .local-preview,
 .participant-video {
+  position: relative;
   display: grid;
   min-height: 150px;
   aspect-ratio: 16 / 9;
@@ -765,7 +771,7 @@ button:focus-visible {
 
 .participants-panel {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 12px;
   max-height: min(74vh, 780px);
   overflow: hidden;
@@ -801,6 +807,83 @@ button:focus-visible {
   padding-right: 2px;
 }
 
+.speaker-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid #c6d3d0;
+  border-radius: 6px;
+  background: #f8fbfa;
+  padding: 10px;
+}
+
+.speaker-panel-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.speaker-panel-header > div {
+  min-width: 0;
+}
+
+.speaker-panel-header h3 {
+  margin: 0;
+}
+
+.speaker-panel-header span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: #587073;
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.speaker-action-button {
+  flex: 0 1 132px;
+  min-height: 34px;
+  border-radius: 6px;
+  color: #ffffff;
+  background: #1d545d;
+  padding: 0 10px;
+  font-size: 0.82rem;
+  font-weight: 850;
+  white-space: normal;
+}
+
+.speaker-action-button:disabled {
+  color: #748482;
+  background: #d7e0de;
+}
+
+.speaker-queue {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.speaker-queue span {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #d5dfdd;
+  border-radius: 999px;
+  background: #ffffff;
+  padding: 4px 8px;
+  color: #4b5f62;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .participant-tile {
   display: grid;
   gap: 8px;
@@ -809,6 +892,11 @@ button:focus-visible {
   border-radius: 8px;
   background: #fbfdfc;
   padding: 10px;
+}
+
+.participant-tile.is-speaking {
+  border-color: #71bdb2;
+  background: #f2fbf8;
 }
 
 .participant-controller {
@@ -1378,7 +1466,6 @@ button:focus-visible {
 
   .status-grid,
   .control-pad,
-  .head-control-grid,
   .keyboard-cheatsheet-grid,
   .keyboard-settings,
   .keyboard-status-grid,

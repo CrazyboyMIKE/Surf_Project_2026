@@ -101,7 +101,6 @@ server.listen(config.port, () => {
   console.log("Viewer media publishing: enabled");
   console.log(`Robot control mode: ${robotControlAdapter.mode}`);
   console.log(`Robot real control: ${config.robotControl.enabled ? "enabled" : "disabled"}`);
-  console.log(`Robot head control: ${config.robotControl.headControlEnabled ? "enabled" : "disabled"}`);
   console.log(`Room history database: ${config.databaseUrl}`);
   console.log(`Room record retention days: ${config.roomRecordRetentionDays}`);
   console.log(

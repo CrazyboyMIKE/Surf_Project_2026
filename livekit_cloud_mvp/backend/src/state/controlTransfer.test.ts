@@ -2,28 +2,76 @@ import assert from "node:assert/strict";
 import { validateRobotControlMessage } from "../control/commandValidation.js";
 import { RoomStore } from "./roomStore.js";
 
-function createRoomWithControllerViewer() {
+function createRoomWithControllerViewers() {
   const store = new RoomStore({ mockRobotOnline: true });
   const controller = store.joinWebParticipant("robot-room-001", "Alice", "controller").participant;
-  const viewer = store.joinWebParticipant("robot-room-001", "Bob", "viewer").participant;
+  const viewerA = store.joinWebParticipant("robot-room-001", "Bob", "viewer").participant;
+  const viewerB = store.joinWebParticipant("robot-room-001", "Carol", "viewer").participant;
   const robot = store.joinRobot("robot-room-001", "robot-001").participant;
 
-  store.markParticipantConnected("robot-room-001", controller.id);
-  store.markParticipantConnected("robot-room-001", viewer.id);
+  for (const participant of [controller, viewerA, viewerB, robot]) {
+    store.markParticipantConnected("robot-room-001", participant.id);
+  }
 
-  return { store, controller, viewer, robot };
+  return { store, controller, viewerA, viewerB, robot };
+}
+
+function controlQueueIds(store: RoomStore): string[] {
+  return store.getRoomSnapshot("robot-room-001")?.controlRequests.queue.map((participant) => participant.id) ?? [];
 }
 
 {
-  const { store, controller, viewer } = createRoomWithControllerViewer();
-  const result = store.transferControl("robot-room-001", controller.id, viewer.id);
+  const store = new RoomStore({ mockRobotOnline: true });
+  const viewer = store.joinWebParticipant("robot-room-001", "First Viewer", "viewer").participant;
+  store.markParticipantConnected("robot-room-001", viewer.id);
+
+  const result = store.requestControl("robot-room-001", viewer.id);
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.granted, true);
+    assert.equal(result.queued, false);
+    assert.equal(result.participant.role, "controller");
+  }
+  assert.equal(store.getRoomSnapshot("robot-room-001")?.currentControllerId, viewer.id);
+  assert.deepEqual(controlQueueIds(store), []);
+}
+
+{
+  const { store, viewerA, robot } = createRoomWithControllerViewers();
+
+  const request = store.requestControl("robot-room-001", viewerA.id);
+  assert.equal(request.ok, true);
+  if (request.ok) {
+    assert.equal(request.granted, false);
+    assert.equal(request.queued, true);
+    assert.equal(request.participant.role, "viewer");
+  }
+  assert.deepEqual(controlQueueIds(store), [viewerA.id]);
+
+  const duplicateRequest = store.requestControl("robot-room-001", viewerA.id);
+  assert.equal(duplicateRequest.ok, true);
+  assert.deepEqual(controlQueueIds(store), [viewerA.id]);
+
+  const robotRequest = store.requestControl("robot-room-001", robot.id);
+  assert.equal(robotRequest.ok, false);
+  assert.equal(robotRequest.code, "FORBIDDEN");
+}
+
+{
+  const { store, controller, viewerA, viewerB } = createRoomWithControllerViewers();
+  store.requestControl("robot-room-001", viewerA.id);
+  store.requestControl("robot-room-001", viewerB.id);
+
+  const result = store.transferControl("robot-room-001", controller.id, viewerA.id);
 
   assert.equal(result.ok, true);
   const snapshot = store.getRoomSnapshot("robot-room-001");
-  assert.equal(snapshot?.currentControllerId, viewer.id);
+  assert.equal(snapshot?.currentControllerId, viewerA.id);
+  assert.deepEqual(controlQueueIds(store), [viewerB.id]);
 
   const previousController = snapshot?.participants.find((participant) => participant.id === controller.id);
-  const newController = snapshot?.participants.find((participant) => participant.id === viewer.id);
+  const newController = snapshot?.participants.find((participant) => participant.id === viewerA.id);
   assert.equal(previousController?.role, "viewer");
   assert.equal(newController?.role, "controller");
 
@@ -31,7 +79,7 @@ function createRoomWithControllerViewer() {
   assert.equal(
     validateRobotControlMessage({
       room,
-      senderId: viewer.id,
+      senderId: viewerA.id,
       command: "1002",
       parameters: { distanceCm: 20 }
     }).ok,
@@ -45,8 +93,22 @@ function createRoomWithControllerViewer() {
 }
 
 {
-  const { store, controller, viewer } = createRoomWithControllerViewer();
-  const result = store.transferControl("robot-room-001", viewer.id, controller.id);
+  const { store, controller, viewerA } = createRoomWithControllerViewers();
+  const result = store.transferControl("robot-room-001", controller.id, viewerA.id);
+
+  assert.deepEqual(result, {
+    ok: false,
+    room: store.getRoom("robot-room-001"),
+    status: 409,
+    code: "CONTROL_REQUEST_NOT_FOUND",
+    message: "Target participant must request control before approval"
+  });
+}
+
+{
+  const { store, controller, viewerA, viewerB } = createRoomWithControllerViewers();
+  store.requestControl("robot-room-001", viewerB.id);
+  const result = store.transferControl("robot-room-001", viewerA.id, viewerB.id);
 
   assert.deepEqual(result, {
     ok: false,
@@ -55,10 +117,25 @@ function createRoomWithControllerViewer() {
     code: "NOT_CONTROLLER",
     message: "Only the active controller can transfer control"
   });
+  assert.equal(store.getRoomSnapshot("robot-room-001")?.currentControllerId, controller.id);
 }
 
 {
-  const { store, controller, robot } = createRoomWithControllerViewer();
+  const { store, viewerA, robot } = createRoomWithControllerViewers();
+  store.requestControl("robot-room-001", viewerA.id);
+  const result = store.transferControl("robot-room-001", robot.id, viewerA.id);
+
+  assert.deepEqual(result, {
+    ok: false,
+    room: store.getRoom("robot-room-001"),
+    status: 403,
+    code: "FORBIDDEN",
+    message: "Robot cannot approve control requests"
+  });
+}
+
+{
+  const { store, controller, robot } = createRoomWithControllerViewers();
   const result = store.transferControl("robot-room-001", controller.id, robot.id);
 
   assert.deepEqual(result, {
@@ -71,10 +148,13 @@ function createRoomWithControllerViewer() {
 }
 
 {
-  const { store, controller, viewer } = createRoomWithControllerViewer();
-  store.markParticipantDisconnected("robot-room-001", viewer.id);
-  const result = store.transferControl("robot-room-001", controller.id, viewer.id);
+  const { store, controller, viewerA } = createRoomWithControllerViewers();
+  store.requestControl("robot-room-001", viewerA.id);
+  store.markParticipantDisconnected("robot-room-001", viewerA.id);
 
+  assert.deepEqual(controlQueueIds(store), []);
+
+  const result = store.transferControl("robot-room-001", controller.id, viewerA.id);
   assert.deepEqual(result, {
     ok: false,
     room: store.getRoom("robot-room-001"),
@@ -85,32 +165,64 @@ function createRoomWithControllerViewer() {
 }
 
 {
-  const { store, controller } = createRoomWithControllerViewer();
-  const result = store.transferControl("robot-room-001", controller.id, "user-does-not-exist");
+  const { store, controller, viewerA, viewerB } = createRoomWithControllerViewers();
+  store.requestControl("robot-room-001", viewerA.id);
+  store.requestControl("robot-room-001", viewerB.id);
 
-  assert.deepEqual(result, {
-    ok: false,
-    room: store.getRoom("robot-room-001"),
-    status: 404,
-    code: "PARTICIPANT_NOT_FOUND",
-    message: "Target participant is not in this room"
-  });
+  const release = store.releaseControl("robot-room-001", controller.id);
+  assert.equal(release.ok, true);
+  assert.equal(store.getRoomSnapshot("robot-room-001")?.currentControllerId, undefined);
+  assert.deepEqual(controlQueueIds(store), [viewerA.id, viewerB.id]);
+
+  const renewedRequest = store.requestControl("robot-room-001", viewerA.id);
+  assert.equal(renewedRequest.ok, true);
+  if (renewedRequest.ok) {
+    assert.equal(renewedRequest.granted, true);
+    assert.equal(renewedRequest.queued, false);
+  }
+  assert.equal(store.getRoomSnapshot("robot-room-001")?.currentControllerId, viewerA.id);
+  assert.deepEqual(controlQueueIds(store), [viewerB.id]);
 }
 
 {
-  const { store, controller, viewer } = createRoomWithControllerViewer();
-  const result = store.transferControl("robot-room-001", controller.id, viewer.id);
+  const { store, controller, viewerA } = createRoomWithControllerViewers();
+  store.requestControl("robot-room-001", viewerA.id);
+  store.markParticipantDisconnected("robot-room-001", controller.id);
+
+  const snapshot = store.getRoomSnapshot("robot-room-001");
+  assert.equal(snapshot?.currentControllerId, undefined);
+  assert.equal(snapshot?.participants.find((participant) => participant.id === controller.id)?.role, "viewer");
+  assert.deepEqual(controlQueueIds(store), [viewerA.id]);
+  assert.deepEqual(
+    validateRobotControlMessage({
+      room: store.getRoom("robot-room-001"),
+      senderId: viewerA.id,
+      command: "1002",
+      parameters: { distanceCm: 20 }
+    }),
+    {
+      ok: false,
+      code: "NOT_CONTROLLER",
+      message: "Only controller can send robot control"
+    }
+  );
+}
+
+{
+  const { store, controller, viewerA } = createRoomWithControllerViewers();
+  store.requestControl("robot-room-001", viewerA.id);
+  const result = store.transferControl("robot-room-001", controller.id, viewerA.id);
   assert.equal(result.ok, true);
   const room = store.getRoom("robot-room-001");
 
-  for (const command of ["1000", "1002", "1003", "1004", "1006"] as const) {
-    assert.equal(validateRobotControlMessage({ room, senderId: viewer.id, command, parameters: {} }).ok, true);
+  for (const command of ["1000", "1002", "1003"] as const) {
+    assert.equal(validateRobotControlMessage({ room, senderId: viewerA.id, command, parameters: {} }).ok, true);
   }
 
-  assert.deepEqual(validateRobotControlMessage({ room, senderId: viewer.id, command: "1001", parameters: {} }), {
+  assert.deepEqual(validateRobotControlMessage({ room, senderId: viewerA.id, command: "1001", parameters: {} }), {
     ok: false,
     code: "COMMAND_NOT_ALLOWED",
-    message: "Command must be one of 1000, 1002, 1003, 1004, 1005, or 1006"
+    message: "Command must be one of 1000, 1002, or 1003"
   });
 }
 

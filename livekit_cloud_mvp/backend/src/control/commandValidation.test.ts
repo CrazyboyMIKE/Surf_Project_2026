@@ -7,6 +7,8 @@ function createRoom(): RoomState {
     roomName: "robot-room-001",
     robotOnline: true,
     currentControllerId: "user-controller",
+    controllerRequestQueue: [],
+    speakerQueue: [],
     participants: new Map([
       [
         "user-controller",
@@ -79,17 +81,45 @@ assert.deepEqual(
   validateRobotControlMessage({
     room: createRoom(),
     senderId: "user-controller",
+    command: "1003",
+    parameters: { angleDeg: -15, speed: 30 }
+  }),
+  {
+    ok: true,
+    command: "1003",
+    parameters: { angleDeg: -15, speed: 30 }
+  }
+);
+
+assert.deepEqual(
+  validateRobotControlMessage({
+    room: createRoom(),
+    senderId: "user-controller",
+    command: "1000",
+    parameters: {}
+  }),
+  {
+    ok: true,
+    command: "1000",
+    parameters: {}
+  }
+);
+
+assert.deepEqual(
+  validateRobotControlMessage({
+    room: createRoom(),
+    senderId: "user-controller",
     command: "1001",
     parameters: {}
   }),
   {
     ok: false,
     code: "COMMAND_NOT_ALLOWED",
-    message: "Command must be one of 1000, 1002, 1003, 1004, 1005, or 1006"
+    message: "Command must be one of 1000, 1002, or 1003"
   }
 );
 
-for (const command of ["1007", "1008", "1009"] as const) {
+for (const command of ["1004", "1005", "1006", "1007", "1008", "1009"] as const) {
   assert.deepEqual(
     validateRobotControlMessage({
       room: createRoom(),
@@ -100,7 +130,7 @@ for (const command of ["1007", "1008", "1009"] as const) {
     {
       ok: false,
       code: "COMMAND_NOT_ALLOWED",
-      message: "Command must be one of 1000, 1002, 1003, 1004, 1005, or 1006"
+      message: "Command must be one of 1000, 1002, or 1003"
     }
   );
 }
@@ -120,146 +150,6 @@ for (const command of ["1004", "1005", "1006"] as const) {
     }
   );
 }
-
-assert.deepEqual(
-  validateRobotControlMessage({
-    room: createRoom(),
-    senderId: "user-controller",
-    command: "1004",
-    parameters: {}
-  }),
-  {
-    ok: true,
-    command: "1004",
-    parameters: {}
-  }
-);
-
-assert.deepEqual(
-  validateRobotControlMessage({
-    room: createRoom(),
-    senderId: "user-controller",
-    command: "1004",
-    parameters: { a: 10 }
-  }),
-  {
-    ok: false,
-    code: "INVALID_PARAMETERS",
-    message: "1004 head stop must not include movement parameters"
-  }
-);
-
-assert.deepEqual(
-  validateRobotControlMessage({
-    room: createRoom(),
-    senderId: "user-controller",
-    command: "1005",
-    parameters: { d: 1, a: 120, av: 60 }
-  }),
-  {
-    ok: true,
-    command: "1005",
-    parameters: { d: 1, a: 120, av: 60 }
-  }
-);
-
-assert.deepEqual(
-  validateRobotControlMessage({
-    room: createRoom(),
-    senderId: "user-controller",
-    command: "1005",
-    parameters: { d: 3, a: 15, av: 60 }
-  }),
-  {
-    ok: false,
-    code: "INVALID_PARAMETERS",
-    message: "d must be 1 for vertical head movement or 2 for horizontal head movement"
-  }
-);
-
-assert.deepEqual(
-  validateRobotControlMessage({
-    room: createRoom(),
-    senderId: "user-controller",
-    command: "1005",
-    parameters: { d: 1, a: -1, av: 60 }
-  }),
-  {
-    ok: false,
-    code: "INVALID_PARAMETERS",
-    message: "a must be between 0 and 180"
-  }
-);
-
-assert.deepEqual(
-  validateRobotControlMessage({
-    room: createRoom(),
-    senderId: "user-controller",
-    command: "1005",
-    parameters: { d: 1, a: 181, av: 60 }
-  }),
-  {
-    ok: false,
-    code: "INVALID_PARAMETERS",
-    message: "a must be between 0 and 180"
-  }
-);
-
-assert.deepEqual(
-  validateRobotControlMessage({
-    room: createRoom(),
-    senderId: "user-controller",
-    command: "1005",
-    parameters: { d: 1, a: 15, av: 121 }
-  }),
-  {
-    ok: false,
-    code: "INVALID_PARAMETERS",
-    message: "av must be greater than 0 and no more than 120"
-  }
-);
-
-assert.deepEqual(
-  validateRobotControlMessage({
-    room: createRoom(),
-    senderId: "user-controller",
-    command: "1006",
-    parameters: {}
-  }),
-  {
-    ok: true,
-    command: "1006",
-    parameters: { d: 0 }
-  }
-);
-
-assert.deepEqual(
-  validateRobotControlMessage({
-    room: createRoom(),
-    senderId: "user-controller",
-    command: "1006",
-    parameters: { d: 2 }
-  }),
-  {
-    ok: true,
-    command: "1006",
-    parameters: { d: 2 }
-  }
-);
-
-assert.deepEqual(
-  validateRobotControlMessage({
-    room: createRoom(),
-    senderId: "user-controller",
-    command: "1006",
-    parameters: { d: 4 }
-  }),
-  {
-    ok: false,
-    code: "INVALID_PARAMETERS",
-    message: "d must be 0, 1, or 2"
-  }
-);
 
 assert.deepEqual(
   validateRobotControlMessage({

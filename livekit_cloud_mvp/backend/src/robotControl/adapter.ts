@@ -34,8 +34,6 @@ function sanitizeParameters(parameters: RobotControlLogParameters): RobotControl
     ...(parameters.distanceCm !== undefined ? { distanceCm: parameters.distanceCm } : {}),
     ...(parameters.angleDeg !== undefined ? { angleDeg: parameters.angleDeg } : {}),
     ...(parameters.speed !== undefined ? { speed: parameters.speed } : {}),
-    ...(parameters.d !== undefined ? { d: parameters.d } : {}),
-    ...(parameters.a !== undefined ? { a: parameters.a } : {}),
     ...(parameters.lv !== undefined ? { lv: parameters.lv } : {}),
     ...(parameters.av !== undefined ? { av: parameters.av } : {}),
     ...(parameters.direction !== undefined ? { direction: parameters.direction } : {}),
@@ -67,23 +65,12 @@ export class VendorRobotControlAdapter implements RobotControlAdapter {
   constructor(private readonly config: RobotControlConfig) {}
 
   async sendCommand(request: RobotControlRequest): Promise<RobotControlResult> {
-    const isHeadCommand = request.command === "1004" || request.command === "1005" || request.command === "1006";
-
     if (!this.config.enabled) {
       return {
         ok: false,
         mode: this.mode,
         code: "ROBOT_CONTROL_DISABLED",
         message: "Robot real control is disabled on backend"
-      };
-    }
-
-    if (isHeadCommand && !this.config.headControlEnabled) {
-      return {
-        ok: false,
-        mode: this.mode,
-        code: "ROBOT_CONTROL_DISABLED",
-        message: "Robot head control is disabled on backend"
       };
     }
 
@@ -108,12 +95,7 @@ export class VendorRobotControlAdapter implements RobotControlAdapter {
       return {
         ok: true,
         mode: this.mode,
-        message:
-          request.command === "1000"
-            ? "Robot stop command sent"
-            : request.command === "1004"
-              ? "Robot head stop command sent"
-              : "Robot control command sent"
+        message: request.command === "1000" ? "Robot stop command sent" : "Robot control command sent"
       };
     } catch (error) {
       if (error instanceof PadBotRobotControlError) {

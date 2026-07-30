@@ -1,25 +1,18 @@
-import { useEffect, useRef, useState } from "react";
 import type {
   ControlParameters,
+  ControlRequestParticipant,
   KeyboardControlConfig,
   KeyboardControlStatus,
   KeyboardDirection,
-  ParticipantSummary,
   RobotCommand,
   WebRole
 } from "../types";
 import { KeyboardControlPanel } from "./KeyboardControlPanel";
 
-const HEAD_VERTICAL_DIRECTION = 1;
-const HEAD_TILT_SPEED_DEG_PER_SEC = 60;
-const HEAD_TILT_CENTER_ANGLE_DEG = 90;
-const HEAD_TILT_UP_ANGLE_DEG = 120;
-const HEAD_TILT_DOWN_ANGLE_DEG = 60;
-
 type ControlPanelProps = {
   role: WebRole | null;
   participantId: string;
-  participants: ParticipantSummary[];
+  controlRequestQueue: ControlRequestParticipant[];
   robotOnline: boolean;
   connectionState: string;
   actionPending: boolean;
@@ -36,7 +29,7 @@ type ControlPanelProps = {
 export function ControlPanel({
   role,
   participantId,
-  participants,
+  controlRequestQueue,
   robotOnline,
   connectionState,
   actionPending,
@@ -50,52 +43,7 @@ export function ControlPanel({
   onKeyboardStop
 }: ControlPanelProps) {
   const disabled = role !== "controller" || !robotOnline || connectionState !== "connected";
-  const [headStopArmed, setHeadStopArmed] = useState(false);
-  const headStopArmedRef = useRef(false);
-  const transferableViewers = participants.filter(
-    (participant) => participant.id !== participantId && participant.role === "viewer" && participant.connected
-  );
-
-  function sendHeadTilt(angleDeg: number) {
-    onControl("1005", {
-      d: HEAD_VERTICAL_DIRECTION,
-      a: angleDeg,
-      av: HEAD_TILT_SPEED_DEG_PER_SEC
-    });
-    headStopArmedRef.current = true;
-    setHeadStopArmed(true);
-  }
-
-  function sendHeadStop() {
-    onControl("1004");
-    headStopArmedRef.current = false;
-    setHeadStopArmed(false);
-  }
-
-  function sendHeadReset() {
-    onControl("1006", { d: HEAD_VERTICAL_DIRECTION });
-    headStopArmedRef.current = false;
-    setHeadStopArmed(false);
-  }
-
-  useEffect(() => {
-    if (!headStopArmed && headStopArmedRef.current) {
-      headStopArmedRef.current = false;
-    }
-  }, [headStopArmed]);
-
-  useEffect(() => {
-    function handleBlur() {
-      if (!headStopArmedRef.current || disabled) {
-        return;
-      }
-
-      sendHeadStop();
-    }
-
-    window.addEventListener("blur", handleBlur);
-    return () => window.removeEventListener("blur", handleBlur);
-  }, [disabled]);
+  const pendingControlRequests = controlRequestQueue.filter((participant) => participant.id !== participantId && participant.connected);
 
   return (
     <section className="tool-panel" aria-labelledby="control-title">
@@ -132,40 +80,6 @@ export function ControlPanel({
         </button>
       </div>
 
-      <div className="head-control-panel" aria-labelledby="head-control-title">
-        <div className="panel-heading">
-          <h3 id="head-control-title">Head Control</h3>
-          <span>{role === "controller" ? "safe step" : "viewer locked"}</span>
-        </div>
-
-        <div className="head-control-grid">
-          <button type="button" disabled={disabled} onClick={() => sendHeadTilt(HEAD_TILT_UP_ANGLE_DEG)}>
-            抬头
-            <span>{HEAD_TILT_UP_ANGLE_DEG}deg</span>
-            <small>1005 d=1 absolute</small>
-          </button>
-          <button type="button" disabled={disabled} onClick={() => sendHeadTilt(HEAD_TILT_DOWN_ANGLE_DEG)}>
-            低头
-            <span>{HEAD_TILT_DOWN_ANGLE_DEG}deg</span>
-            <small>1005 d=1 absolute</small>
-          </button>
-          <button type="button" className="head-stop-button" disabled={disabled} onClick={sendHeadStop}>
-            头部停止
-            <span>1004</span>
-            <small>head stop</small>
-          </button>
-          <button type="button" disabled={disabled} onClick={sendHeadReset}>
-            头部复位
-            <span>d=1</span>
-            <small>1006 vertical</small>
-          </button>
-        </div>
-
-        <p className="calibration-note">
-          头部控制按厂商协议使用绝对角度发送，默认中位 {HEAD_TILT_CENTER_ANGLE_DEG}deg；若真实方向相反，只需交换抬头/低头角度常量。
-        </p>
-      </div>
-
       <KeyboardControlPanel
         role={role}
         robotOnline={robotOnline}
@@ -181,28 +95,28 @@ export function ControlPanel({
       {role === "controller" ? (
         <div className="transfer-panel" aria-labelledby="transfer-title">
           <div className="panel-heading">
-            <h3 id="transfer-title">Transfer control</h3>
-            <span>{transferableViewers.length} online viewers</span>
+            <h3 id="transfer-title">Control requests</h3>
+            <span>{pendingControlRequests.length} pending</span>
           </div>
 
-          {transferableViewers.length === 0 ? (
-            <p className="empty-state">No online viewers available for transfer</p>
+          {pendingControlRequests.length === 0 ? (
+            <p className="empty-state">No pending control requests</p>
           ) : (
             <div className="transfer-list">
-              {transferableViewers.map((viewer) => (
-                <div className="transfer-row" key={viewer.id}>
-                  <span>{viewer.name}</span>
+              {pendingControlRequests.map((requester) => (
+                <div className="transfer-row" key={requester.id}>
+                  <span>{requester.name}</span>
                   <button
                     type="button"
                     className="transfer-button"
                     disabled={actionPending}
                     onClick={() => {
-                      if (window.confirm(`Transfer control to ${viewer.name}?`)) {
-                        onTransferControl(viewer.id);
+                      if (window.confirm(`Approve control request from ${requester.name}?`)) {
+                        onTransferControl(requester.id);
                       }
                     }}
                   >
-                    转交控制权
+                    批准
                   </button>
                 </div>
               ))}

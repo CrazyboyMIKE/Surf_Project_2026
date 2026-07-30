@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { RobotControlEvent } from "../types";
 import type { LiveKitConnectionState, RobotAudioTrackInfo, RobotVideoTrackInfo } from "../useLiveKitRoom";
 
@@ -23,16 +23,8 @@ function describeEvent(event: RobotControlEvent): string {
     return `1003 rotate ${event.parameters.angleDeg ?? 15}deg`;
   }
 
-  if (event.command === "1004") {
-    return "1004 head stop";
-  }
-
-  if (event.command === "1005") {
-    return `1005 head d=${event.parameters.d ?? 1} a=${event.parameters.a ?? 0}deg`;
-  }
-
-  if (event.command === "1006") {
-    return `1006 head reset d=${event.parameters.d ?? 0}`;
+  if (event.command === "1001") {
+    return `1001 keyboard lv=${event.parameters.lv ?? 0} av=${event.parameters.av ?? 0}`;
   }
 
   return "1000 stop";
@@ -68,6 +60,38 @@ function getRobotAudioUnavailableText(liveKitState: LiveKitConnectionState, robo
   }
 
   return "robot has no microphone track";
+}
+
+function getSpeakingStyle(audioLevel: number): CSSProperties & Record<"--speaking-level", string> {
+  const level = Math.min(1, Math.max(0.18, audioLevel));
+  return {
+    "--speaking-level": level.toFixed(2)
+  };
+}
+
+function SpeakingBadge({
+  hasAudioTrack,
+  isSpeaking,
+  audioLevel
+}: {
+  hasAudioTrack: boolean;
+  isSpeaking: boolean;
+  audioLevel: number;
+}) {
+  if (!hasAudioTrack) {
+    return null;
+  }
+
+  return (
+    <span
+      className={`speaking-badge video-speaking-badge${isSpeaking ? " active" : ""}`}
+      style={getSpeakingStyle(audioLevel)}
+      title={isSpeaking ? "Speaking" : "Audio track available"}
+      aria-label={isSpeaking ? "Speaking" : "Audio track available"}
+    >
+      <span className="speaking-icon" aria-hidden="true" />
+    </span>
+  );
 }
 
 function RobotAudioPlayer({
@@ -173,9 +197,14 @@ export function RobotVideo({
   return (
     <section className="video-section" aria-label="Robot video">
       {robotVideoTrack ? (
-        <div className="video-live">
+        <div className={`video-live${robotVideoTrack.hasAudioTrack && robotVideoTrack.isSpeaking ? " is-speaking" : ""}`}>
           <video ref={videoRef} autoPlay playsInline muted className="robot-video" />
           <div className="video-role-badge">{stageParticipantRole}</div>
+          <SpeakingBadge
+            hasAudioTrack={robotVideoTrack.hasAudioTrack}
+            isSpeaking={robotVideoTrack.isSpeaking}
+            audioLevel={robotVideoTrack.audioLevel}
+          />
           <div className="video-badge">{robotVideoTrack.participantName ?? robotVideoTrack.participantIdentity}</div>
         </div>
       ) : (

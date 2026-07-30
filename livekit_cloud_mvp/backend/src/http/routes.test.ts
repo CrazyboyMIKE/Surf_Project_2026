@@ -11,6 +11,7 @@ import { createApiRouter } from "./routes.js";
 type TestServer = {
   baseUrl: string;
   roomStore: RoomStore;
+  stopCalls: Array<{ roomName: string; reason: string }>;
   close: () => Promise<void>;
 };
 
@@ -48,6 +49,7 @@ const fakeLiveKitTokenService = {
 
 async function createTestServer(): Promise<TestServer> {
   const roomStore = new RoomStore({ mockRobotOnline: false });
+  const stopCalls: Array<{ roomName: string; reason: string }> = [];
   const app = express();
   app.use(express.json());
   app.use(
@@ -55,7 +57,9 @@ async function createTestServer(): Promise<TestServer> {
       roomStore,
       liveKitTokenService: fakeLiveKitTokenService as LiveKitTokenService,
       keyboardControlConfig: readKeyboardControlConfig({}),
-      stopKeyboardControl: async () => undefined,
+      stopKeyboardControl: async (roomName, reason) => {
+        stopCalls.push({ roomName, reason });
+      },
       broadcastRoleUpdate: () => undefined,
       broadcastRobotStatus: () => undefined
     })
@@ -66,6 +70,7 @@ async function createTestServer(): Promise<TestServer> {
   return {
     baseUrl: `http://127.0.0.1:${port}`,
     roomStore,
+    stopCalls,
     close: () =>
       new Promise((resolve, reject) => {
         server.close((error) => {
@@ -161,6 +166,92 @@ try {
   assert.equal(robotRestore.body.participantId, robotParticipantId);
   assert.equal(robotRestore.body.clientSessionId, "robot-client-session-a");
   assert.equal(robotRestore.body.reusedParticipant, true);
+
+  const controllerJoin = await requestJson(server.baseUrl, "/api/rooms/join", {
+    method: "POST",
+    body: JSON.stringify({
+      roomName: "control-route-room",
+      participantName: "Controller",
+      requestedRole: "controller",
+      clientSessionId: "controller-session"
+    })
+  });
+  assert.equal(controllerJoin.status, 201);
+  const controllerId = controllerJoin.body.participantId as string;
+  server.roomStore.markParticipantConnected("control-route-room", controllerId);
+
+  const viewerJoin = await requestJson(server.baseUrl, "/api/rooms/join", {
+    method: "POST",
+    body: JSON.stringify({
+      roomName: "control-route-room",
+      participantName: "Viewer",
+      requestedRole: "viewer",
+      clientSessionId: "viewer-session"
+    })
+  });
+  assert.equal(viewerJoin.status, 201);
+  const viewerId = viewerJoin.body.participantId as string;
+  server.roomStore.markParticipantConnected("control-route-room", viewerId);
+
+  const unrequestedJoin = await requestJson(server.baseUrl, "/api/rooms/join", {
+    method: "POST",
+    body: JSON.stringify({
+      roomName: "control-route-room",
+      participantName: "Unrequested",
+      requestedRole: "viewer",
+      clientSessionId: "unrequested-session"
+    })
+  });
+  assert.equal(unrequestedJoin.status, 201);
+  const unrequestedId = unrequestedJoin.body.participantId as string;
+  server.roomStore.markParticipantConnected("control-route-room", unrequestedId);
+
+  const queuedRequest = await requestJson(server.baseUrl, "/api/rooms/control/request", {
+    method: "POST",
+    body: JSON.stringify({
+      roomName: "control-route-room",
+      participantId: viewerId
+    })
+  });
+  assert.equal(queuedRequest.status, 200);
+  assert.equal(queuedRequest.body.role, "viewer");
+  assert.equal(queuedRequest.body.controlRequestQueued, true);
+  assert.equal(Object.prototype.hasOwnProperty.call(queuedRequest.body, "token"), false);
+
+  const bypassTransfer = await requestJson(server.baseUrl, "/api/rooms/control/transfer", {
+    method: "POST",
+    body: JSON.stringify({
+      roomName: "control-route-room",
+      fromParticipantId: controllerId,
+      targetParticipantId: unrequestedId
+    })
+  });
+  assert.equal(bypassTransfer.status, 409);
+  assert.equal(bypassTransfer.body.code, "CONTROL_REQUEST_NOT_FOUND");
+
+  const approvedTransfer = await requestJson(server.baseUrl, "/api/rooms/control/transfer", {
+    method: "POST",
+    body: JSON.stringify({
+      roomName: "control-route-room",
+      fromParticipantId: controllerId,
+      targetParticipantId: viewerId
+    })
+  });
+  assert.equal(approvedTransfer.status, 200);
+  assert.equal(approvedTransfer.body.currentControllerId, viewerId);
+  assert.equal(server.roomStore.getRoom("control-route-room")?.participants.get(controllerId)?.role, "viewer");
+  assert.equal(server.stopCalls.some((call) => call.roomName === "control-route-room" && call.reason === "controller_transferred"), true);
+
+  const releaseControl = await requestJson(server.baseUrl, "/api/rooms/control/release", {
+    method: "POST",
+    body: JSON.stringify({
+      roomName: "control-route-room",
+      participantId: viewerId
+    })
+  });
+  assert.equal(releaseControl.status, 200);
+  assert.equal(server.roomStore.getRoom("control-route-room")?.currentControllerId, undefined);
+  assert.equal(server.stopCalls.some((call) => call.roomName === "control-route-room" && call.reason === "controller_released"), true);
 } finally {
   await server.close();
 }

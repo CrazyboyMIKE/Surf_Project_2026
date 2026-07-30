@@ -10,6 +10,9 @@ type StatusBarProps = {
   robotOnline: boolean;
   currentControllerName?: string;
   participants: ParticipantSummary[];
+  controlRequestCount: number;
+  controlRequestPending: boolean;
+  controlActionsDisabled: boolean;
   onRequestControl: () => void;
   onReleaseControl: () => void;
   onLeaveRoom: () => void;
@@ -26,6 +29,9 @@ export function StatusBar({
   robotOnline,
   currentControllerName,
   participants,
+  controlRequestCount,
+  controlRequestPending,
+  controlActionsDisabled,
   onRequestControl,
   onReleaseControl,
   onLeaveRoom,
@@ -65,13 +71,26 @@ export function StatusBar({
         <span>
           Participants <strong>{participants.length || 1}</strong>
         </span>
+        <span>
+          Control queue <strong>{controlRequestCount}</strong>
+        </span>
       </div>
 
       <div className="status-actions">
-        <button type="button" className="secondary-button" onClick={onRequestControl} disabled={isController || actionPending}>
-          Request control
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={onRequestControl}
+          disabled={isController || controlRequestPending || actionPending || controlActionsDisabled}
+        >
+          {controlRequestPending ? "Request queued" : "Request control"}
         </button>
-        <button type="button" className="secondary-button" onClick={onReleaseControl} disabled={!isController || actionPending}>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={onReleaseControl}
+          disabled={!isController || actionPending || controlActionsDisabled}
+        >
           Release
         </button>
         <button type="button" className="secondary-button" onClick={onLeaveRoom} disabled={actionPending}>

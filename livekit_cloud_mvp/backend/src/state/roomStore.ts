@@ -3,6 +3,7 @@ import type { RoomHistoryRepository } from "../db/roomHistoryRepository.js";
 import type {
   AdminRoomDetail,
   AdminRoomSummary,
+  ControlRequestQueueSnapshot,
   KeyboardControlStatus,
   Participant,
   RobotControlEventCommand,
@@ -11,6 +12,7 @@ import type {
   RoomRecordDetail,
   RoomRecordSummary,
   RoomState,
+  SpeakerStateSnapshot,
   WebRole
 } from "../types.js";
 
@@ -34,13 +36,15 @@ export type ControlRequestResult =
       ok: true;
       room: RoomState;
       participant: Participant;
+      granted: boolean;
+      queued: boolean;
       message: string;
     }
   | {
       ok: false;
       room?: RoomState;
       status: number;
-      code: "ROOM_NOT_FOUND" | "PARTICIPANT_NOT_FOUND" | "CONTROLLER_BUSY";
+      code: "ROOM_NOT_FOUND" | "PARTICIPANT_NOT_FOUND" | "FORBIDDEN" | "TARGET_OFFLINE";
       role: WebRole;
       message: string;
     };
@@ -74,9 +78,41 @@ export type ControlTransferResult =
       code:
         | "ROOM_NOT_FOUND"
         | "PARTICIPANT_NOT_FOUND"
+        | "FORBIDDEN"
         | "NOT_CONTROLLER"
+        | "CONTROL_REQUEST_NOT_FOUND"
         | "TARGET_NOT_VIEWER"
         | "TARGET_OFFLINE";
+      message: string;
+    };
+
+export type SpeakerRequestResult =
+  | {
+      ok: true;
+      room: RoomState;
+      speaker: Participant;
+      message: string;
+    }
+  | {
+      ok: false;
+      room?: RoomState;
+      status: number;
+      code: "ROOM_NOT_FOUND" | "PARTICIPANT_NOT_FOUND" | "FORBIDDEN" | "TARGET_OFFLINE";
+      message: string;
+    };
+
+export type SpeakerEndResult =
+  | {
+      ok: true;
+      room: RoomState;
+      endedSpeaker: Participant;
+      message: string;
+    }
+  | {
+      ok: false;
+      room?: RoomState;
+      status: number;
+      code: "ROOM_NOT_FOUND" | "PARTICIPANT_NOT_FOUND" | "NOT_SPEAKER" | "TARGET_OFFLINE";
       message: string;
     };
 
@@ -181,6 +217,8 @@ export class RoomStore {
       roomName,
       robotOnline: this.options.mockRobotOnline,
       participants: new Map(),
+      controllerRequestQueue: [],
+      speakerQueue: [],
       updatedAt: Date.now()
     };
 
@@ -196,11 +234,13 @@ export class RoomStore {
     options: { previousParticipantId?: string; clientSessionId?: string } = {}
   ): JoinWebParticipantResult {
     const room = this.getOrCreateRoom(roomName);
+    this.normalizeControllerRequestQueue(room);
     const now = Date.now();
     const reusableParticipant = this.findReusableWebParticipant(room, participantName, options);
     if (reusableParticipant) {
       const canGrantController = requestedRole === "controller" && !room.currentControllerId;
       if (canGrantController) {
+        this.removeControlRequest(room, reusableParticipant.id);
         reusableParticipant.role = "controller";
         room.currentControllerId = reusableParticipant.id;
       }
@@ -235,6 +275,7 @@ export class RoomStore {
 
     room.participants.set(participantId, participant);
     if (role === "controller") {
+      this.removeControlRequest(room, participantId);
       room.currentControllerId = participantId;
     }
     this.touchRoom(room);
@@ -308,8 +349,9 @@ export class RoomStore {
       };
     }
 
+    this.normalizeControllerRequestQueue(room);
     const participant = room.participants.get(participantId);
-    if (!participant || participant.role === "robot") {
+    if (!participant) {
       return {
         ok: false,
         room,
@@ -320,20 +362,66 @@ export class RoomStore {
       };
     }
 
-    if (room.currentControllerId && room.currentControllerId !== participantId) {
-      participant.role = "viewer";
+    if (participant.role === "robot") {
+      return {
+        ok: false,
+        room,
+        status: 403,
+        code: "FORBIDDEN",
+        role: "viewer",
+        message: "Robot cannot request control"
+      };
+    }
+
+    if (!participant.connected) {
       return {
         ok: false,
         room,
         status: 409,
-        code: "CONTROLLER_BUSY",
-        role: "viewer",
-        message: "Another controller is active"
+        code: "TARGET_OFFLINE",
+        role: participant.role === "controller" ? "controller" : "viewer",
+        message: "Participant is offline"
       };
     }
 
+    if (room.currentControllerId && room.currentControllerId !== participantId) {
+      participant.role = "viewer";
+      const alreadyQueued = room.controllerRequestQueue.includes(participantId);
+      if (!alreadyQueued) {
+        room.controllerRequestQueue.push(participantId);
+      }
+      participant.lastSeenAt = Date.now();
+      this.touchRoom(room, participant.lastSeenAt);
+      this.persistParticipant(room, participant, undefined, participant.lastSeenAt);
+
+      return {
+        ok: true,
+        room,
+        participant,
+        granted: false,
+        queued: true,
+        message: alreadyQueued ? "Control request already queued" : "Control request queued"
+      };
+    }
+
+    if (room.currentControllerId === participantId && participant.role === "controller") {
+      this.removeControlRequest(room, participantId);
+      participant.lastSeenAt = Date.now();
+      this.touchRoom(room, participant.lastSeenAt);
+      return {
+        ok: true,
+        room,
+        participant,
+        granted: true,
+        queued: false,
+        message: "Already controller"
+      };
+    }
+
+    this.removeControlRequest(room, participantId);
     participant.role = "controller";
     room.currentControllerId = participantId;
+    this.normalizeSpeakerState(room);
     participant.lastSeenAt = Date.now();
     this.touchRoom(room);
     this.persistParticipant(room, participant, "controller_changed", participant.lastSeenAt, {
@@ -346,6 +434,8 @@ export class RoomStore {
       ok: true,
       room,
       participant,
+      granted: true,
+      queued: false,
       message: "Control granted"
     };
   }
@@ -375,7 +465,10 @@ export class RoomStore {
     if (released) {
       room.currentControllerId = undefined;
     }
+    this.removeControlRequest(room, participantId);
     participant.role = "viewer";
+    this.normalizeSpeakerState(room);
+    this.normalizeControllerRequestQueue(room);
     participant.lastSeenAt = Date.now();
     this.touchRoom(room);
     this.persistParticipant(room, participant, released ? "controller_changed" : undefined, participant.lastSeenAt, {
@@ -403,14 +496,25 @@ export class RoomStore {
       };
     }
 
+    this.normalizeControllerRequestQueue(room);
     const fromParticipant = room.participants.get(fromParticipantId);
-    if (!fromParticipant || fromParticipant.role === "robot") {
+    if (!fromParticipant) {
       return {
         ok: false,
         room,
         status: 404,
         code: "PARTICIPANT_NOT_FOUND",
         message: "Current controller participant is not in this room"
+      };
+    }
+
+    if (fromParticipant.role === "robot") {
+      return {
+        ok: false,
+        room,
+        status: 403,
+        code: "FORBIDDEN",
+        message: "Robot cannot approve control requests"
       };
     }
 
@@ -455,12 +559,25 @@ export class RoomStore {
       };
     }
 
+    if (!room.controllerRequestQueue.includes(targetParticipantId)) {
+      return {
+        ok: false,
+        room,
+        status: 409,
+        code: "CONTROL_REQUEST_NOT_FOUND",
+        message: "Target participant must request control before approval"
+      };
+    }
+
     const now = Date.now();
+    this.removeControlRequest(room, fromParticipantId);
+    this.removeControlRequest(room, targetParticipantId);
     fromParticipant.role = "viewer";
     fromParticipant.lastSeenAt = now;
     targetParticipant.role = "controller";
     targetParticipant.lastSeenAt = now;
     room.currentControllerId = targetParticipant.id;
+    this.normalizeSpeakerState(room);
     this.touchRoom(room, now);
     this.persistParticipant(room, fromParticipant, undefined, now);
     this.persistParticipant(room, targetParticipant, "controller_changed", now, {
@@ -476,6 +593,137 @@ export class RoomStore {
       previousController: fromParticipant,
       newController: targetParticipant,
       message: "Control transferred"
+    };
+  }
+
+  requestSpeaker(roomName: string, participantId: string): SpeakerRequestResult {
+    const room = this.getRoom(roomName);
+    if (!room) {
+      return {
+        ok: false,
+        status: 404,
+        code: "ROOM_NOT_FOUND",
+        message: "Room does not exist"
+      };
+    }
+
+    this.normalizeSpeakerState(room);
+    const participant = room.participants.get(participantId);
+    if (!participant) {
+      return {
+        ok: false,
+        room,
+        status: 404,
+        code: "PARTICIPANT_NOT_FOUND",
+        message: "Participant is not in this room"
+      };
+    }
+
+    if (!participant.connected) {
+      return {
+        ok: false,
+        room,
+        status: 409,
+        code: "TARGET_OFFLINE",
+        message: "Participant is offline"
+      };
+    }
+
+    if (participant.role !== "viewer") {
+      return {
+        ok: false,
+        room,
+        status: 403,
+        code: "FORBIDDEN",
+        message: "Only viewers can request Speaker"
+      };
+    }
+
+    if (room.currentSpeakerId === participantId || room.speakerQueue.includes(participantId)) {
+      return {
+        ok: true,
+        room,
+        speaker: participant,
+        message: room.currentSpeakerId === participantId ? "Already current Speaker" : "Already in Speaker queue"
+      };
+    }
+
+    if (!room.currentSpeakerId) {
+      room.currentSpeakerId = participantId;
+      participant.lastSeenAt = Date.now();
+      this.touchRoom(room, participant.lastSeenAt);
+      return {
+        ok: true,
+        room,
+        speaker: participant,
+        message: "Speaker granted"
+      };
+    }
+
+    room.speakerQueue.push(participantId);
+    participant.lastSeenAt = Date.now();
+    this.touchRoom(room, participant.lastSeenAt);
+    return {
+      ok: true,
+      room,
+      speaker: participant,
+      message: "Added to Speaker queue"
+    };
+  }
+
+  endSpeaker(roomName: string, participantId: string): SpeakerEndResult {
+    const room = this.getRoom(roomName);
+    if (!room) {
+      return {
+        ok: false,
+        status: 404,
+        code: "ROOM_NOT_FOUND",
+        message: "Room does not exist"
+      };
+    }
+
+    this.normalizeSpeakerState(room);
+    const participant = room.participants.get(participantId);
+    if (!participant) {
+      return {
+        ok: false,
+        room,
+        status: 404,
+        code: "PARTICIPANT_NOT_FOUND",
+        message: "Participant is not in this room"
+      };
+    }
+
+    if (!participant.connected) {
+      return {
+        ok: false,
+        room,
+        status: 409,
+        code: "TARGET_OFFLINE",
+        message: "Participant is offline"
+      };
+    }
+
+    if (room.currentSpeakerId !== participantId) {
+      return {
+        ok: false,
+        room,
+        status: 403,
+        code: "NOT_SPEAKER",
+        message: "Only the current Speaker can end Speaker"
+      };
+    }
+
+    room.currentSpeakerId = undefined;
+    participant.lastSeenAt = Date.now();
+    this.normalizeSpeakerState(room);
+    this.touchRoom(room, participant.lastSeenAt);
+
+    return {
+      ok: true,
+      room,
+      endedSpeaker: participant,
+      message: "Speaker ended"
     };
   }
 
@@ -509,11 +757,25 @@ export class RoomStore {
     }
 
     const now = Date.now();
+    const controllerReleased = room.currentControllerId === participantId;
+    if (controllerReleased) {
+      room.currentControllerId = undefined;
+      if (participant.role === "controller") {
+        participant.role = "viewer";
+      }
+    }
+    this.removeControlRequest(room, participantId);
     participant.connected = false;
     participant.lastSeenAt = now;
     participant.disconnectedAt = now;
+    this.normalizeControllerRequestQueue(room);
+    this.normalizeSpeakerState(room);
     this.touchRoom(room, now);
-    this.persistParticipant(room, participant, undefined, now);
+    this.persistParticipant(room, participant, controllerReleased ? "controller_changed" : undefined, now, {
+      participantId,
+      participantName: participant.name,
+      role: participant.role
+    });
 
     return { room, robotStatusChanged: false };
   }
@@ -540,6 +802,7 @@ export class RoomStore {
     if (controllerReleased) {
       room.currentControllerId = undefined;
     }
+    this.removeControlRequest(room, participantId);
 
     if (participant.role === "robot") {
       room.robotOnline = false;
@@ -562,6 +825,8 @@ export class RoomStore {
       };
     }
 
+    this.normalizeControllerRequestQueue(room);
+    this.normalizeSpeakerState(room);
     this.touchRoom(room, now);
     this.persistRoomState(room, now);
     return {
@@ -629,6 +894,8 @@ export class RoomStore {
       robotOnline: room.robotOnline,
       currentControllerId: room.currentControllerId,
       currentControllerName: currentController?.name,
+      controlRequests: this.getControlRequestQueueSnapshot(room),
+      speaker: this.getSpeakerStateSnapshot(room),
       lastRobotControl: room.lastRobotControl,
       keyboardControl: room.keyboardControl,
       participants: Array.from(room.participants.values()).map((participant) => ({
@@ -699,7 +966,10 @@ export class RoomStore {
       controller.lastSeenAt = Date.now();
       this.persistParticipant(room, controller, undefined, controller.lastSeenAt);
     }
+    this.removeControlRequest(room, controllerId);
     room.currentControllerId = undefined;
+    this.normalizeControllerRequestQueue(room);
+    this.normalizeSpeakerState(room);
     this.touchRoom(room);
     this.persistRoomState(room);
     this.recordHistoryEvent(room, "controller_changed", controller, {
@@ -735,6 +1005,7 @@ export class RoomStore {
         continue;
       }
 
+      this.removeControlRequest(room, participant.id);
       room.participants.delete(participant.id);
       removedCount += 1;
       this.markHistoryParticipantRemoved(room, participant, { eventType: "participant_left" }, now);
@@ -750,6 +1021,8 @@ export class RoomStore {
     }
 
     if (removedCount > 0) {
+      this.normalizeControllerRequestQueue(room);
+      this.normalizeSpeakerState(room);
       this.touchRoom(room, now);
       if (room.participants.size === 0) {
         this.closeHistoryRoom(room, "empty_room", undefined, now);
@@ -862,6 +1135,117 @@ export class RoomStore {
       ok: true,
       closedParticipants,
       message: "Room closed by admin"
+    };
+  }
+
+  private normalizeControllerRequestQueue(room: RoomState): void {
+    room.controllerRequestQueue = room.controllerRequestQueue ?? [];
+    const nextQueue: string[] = [];
+    const seen = new Set<string>();
+    for (const participantId of room.controllerRequestQueue) {
+      if (participantId === room.currentControllerId || seen.has(participantId)) {
+        continue;
+      }
+
+      const participant = room.participants.get(participantId);
+      if (!participant || participant.role !== "viewer" || !participant.connected) {
+        continue;
+      }
+
+      seen.add(participantId);
+      nextQueue.push(participantId);
+    }
+
+    room.controllerRequestQueue = nextQueue;
+  }
+
+  private removeControlRequest(room: RoomState, participantId: string): void {
+    room.controllerRequestQueue = (room.controllerRequestQueue ?? []).filter((queuedParticipantId) => queuedParticipantId !== participantId);
+  }
+
+  private toControlRequestParticipantSnapshot(
+    participant: Participant | undefined
+  ): ControlRequestQueueSnapshot["queue"][number] | undefined {
+    if (!participant || participant.role !== "viewer") {
+      return undefined;
+    }
+
+    return {
+      id: participant.id,
+      name: participant.name,
+      role: participant.role,
+      connected: participant.connected
+    };
+  }
+
+  private getControlRequestQueueSnapshot(room: RoomState): ControlRequestQueueSnapshot {
+    this.normalizeControllerRequestQueue(room);
+    const currentController = room.currentControllerId ? room.participants.get(room.currentControllerId) : undefined;
+
+    return {
+      currentControllerId: room.currentControllerId,
+      currentControllerName: currentController?.name,
+      queue: room.controllerRequestQueue
+        .map((participantId) => this.toControlRequestParticipantSnapshot(room.participants.get(participantId)))
+        .filter((participant): participant is NonNullable<typeof participant> => Boolean(participant))
+    };
+  }
+
+  private normalizeSpeakerState(room: RoomState): void {
+    room.speakerQueue = room.speakerQueue ?? [];
+    const currentSpeaker = room.currentSpeakerId ? room.participants.get(room.currentSpeakerId) : undefined;
+    if (!currentSpeaker || currentSpeaker.role !== "viewer" || !currentSpeaker.connected) {
+      room.currentSpeakerId = undefined;
+    }
+
+    const nextQueue: string[] = [];
+    const seen = new Set<string>();
+    for (const participantId of room.speakerQueue) {
+      if (participantId === room.currentSpeakerId || seen.has(participantId)) {
+        continue;
+      }
+
+      const participant = room.participants.get(participantId);
+      if (!participant || participant.role !== "viewer" || !participant.connected) {
+        continue;
+      }
+
+      seen.add(participantId);
+      nextQueue.push(participantId);
+    }
+
+    room.speakerQueue = nextQueue;
+    if (!room.currentSpeakerId) {
+      room.currentSpeakerId = room.speakerQueue.shift();
+    }
+  }
+
+  private toSpeakerParticipantSnapshot(participant: Participant | undefined): SpeakerStateSnapshot["currentSpeaker"] {
+    if (!participant || (participant.role !== "controller" && participant.role !== "viewer")) {
+      return undefined;
+    }
+
+    return {
+      id: participant.id,
+      name: participant.name,
+      role: participant.role,
+      connected: participant.connected
+    };
+  }
+
+  private getSpeakerStateSnapshot(room: RoomState): SpeakerStateSnapshot {
+    this.normalizeSpeakerState(room);
+    const viewerSpeaker = room.currentSpeakerId ? room.participants.get(room.currentSpeakerId) : undefined;
+    const fallbackController = room.currentControllerId ? room.participants.get(room.currentControllerId) : undefined;
+    const currentSpeaker = this.toSpeakerParticipantSnapshot(viewerSpeaker) ?? this.toSpeakerParticipantSnapshot(fallbackController);
+
+    return {
+      currentSpeaker,
+      currentSpeakerId: currentSpeaker?.id,
+      currentSpeakerName: currentSpeaker?.name,
+      queue: room.speakerQueue
+        .map((participantId) => this.toSpeakerParticipantSnapshot(room.participants.get(participantId)))
+        .filter((participant): participant is NonNullable<typeof participant> => Boolean(participant))
     };
   }
 

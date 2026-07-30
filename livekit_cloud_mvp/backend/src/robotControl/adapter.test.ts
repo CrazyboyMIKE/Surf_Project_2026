@@ -8,7 +8,6 @@ function createRealConfig(): RobotControlConfig {
   return {
     mode: "real",
     enabled: true,
-    headControlEnabled: true,
     vendor: {
       apiBaseUrl: "http://s.padbot.cn:9080",
       appKey: "test-app-key",
@@ -60,7 +59,6 @@ function createRealConfig(): RobotControlConfig {
   const adapter = new VendorRobotControlAdapter({
     mode: "real",
     enabled: false,
-    headControlEnabled: false,
     vendor: {
       language: "zh-CN",
       linearSpeed: 200,
@@ -90,7 +88,6 @@ function createRealConfig(): RobotControlConfig {
   const adapter = new VendorRobotControlAdapter({
     mode: "real",
     enabled: true,
-    headControlEnabled: false,
     vendor: {
       language: "zh-CN",
       linearSpeed: 200,
@@ -121,7 +118,6 @@ function createRealConfig(): RobotControlConfig {
     getMissingRobotVendorFields({
       mode: "real",
       enabled: true,
-      headControlEnabled: false,
       vendor: {
         language: "zh-CN",
         linearSpeed: 200,
@@ -158,44 +154,6 @@ function createRealConfig(): RobotControlConfig {
     buildPadBotControlPayload("1001", { lv: 80, av: -15, direction: "forward_right" }, config, "test-message-id"),
     '{"id":"test-message-id","t":"83","m":"{\\"a\\":\\"1001\\",\\"m\\":{\\"lv\\":80,\\"av\\":-15}}"}'
   );
-  assert.equal(
-    buildPadBotControlPayload("1004", {}, config, "test-message-id"),
-    '{"id":"test-message-id","t":"83","m":"{\\"a\\":\\"1004\\"}"}'
-  );
-  assert.equal(
-    buildPadBotControlPayload("1005", { d: 1, a: 90, av: 60 }, config, "test-message-id"),
-    '{"id":"test-message-id","t":"83","m":"{\\"a\\":\\"1005\\",\\"m\\":{\\"d\\":1,\\"a\\":90,\\"av\\":60}}"}'
-  );
-  assert.equal(
-    buildPadBotControlPayload("1005", { d: 1, a: 120, av: 60 }, config, "test-message-id"),
-    '{"id":"test-message-id","t":"83","m":"{\\"a\\":\\"1005\\",\\"m\\":{\\"d\\":1,\\"a\\":120,\\"av\\":60}}"}'
-  );
-  assert.equal(
-    buildPadBotControlPayload("1006", { d: 1 }, config, "test-message-id"),
-    '{"id":"test-message-id","t":"83","m":"{\\"a\\":\\"1006\\",\\"m\\":{\\"d\\":1}}"}'
-  );
-}
-
-{
-  const adapter = new VendorRobotControlAdapter({
-    ...createRealConfig(),
-    headControlEnabled: false
-  });
-
-  const result = await adapter.sendCommand({
-    roomName: "robot-room-001",
-    senderId: "user-controller",
-    command: "1004",
-    parameters: {},
-    timestamp: Date.now()
-  });
-
-  assert.deepEqual(result, {
-    ok: false,
-    mode: "real",
-    code: "ROBOT_CONTROL_DISABLED",
-    message: "Robot head control is disabled on backend"
-  });
 }
 
 {

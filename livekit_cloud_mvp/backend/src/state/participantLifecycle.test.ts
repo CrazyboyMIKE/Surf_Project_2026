@@ -39,12 +39,17 @@ function createRoomWithControllerViewerRobot() {
   const { store, controller, viewer } = createRoomWithControllerViewerRobot();
   store.markParticipantDisconnected("robot-room-001", controller.id);
 
-  assert.equal(store.getRoom("robot-room-001")?.currentControllerId, controller.id);
+  assert.equal(store.getRoom("robot-room-001")?.currentControllerId, undefined);
+  assert.equal(store.getRoom("robot-room-001")?.participants.get(controller.id)?.role, "viewer");
   assert.equal(store.getRoom("robot-room-001")?.participants.get(controller.id)?.connected, false);
 
   const controlRequest = store.requestControl("robot-room-001", viewer.id);
-  assert.equal(controlRequest.ok, false);
-  assert.equal(controlRequest.code, "CONTROLLER_BUSY");
+  assert.equal(controlRequest.ok, true);
+  if (controlRequest.ok) {
+    assert.equal(controlRequest.granted, true);
+    assert.equal(controlRequest.queued, false);
+  }
+  assert.equal(store.getRoom("robot-room-001")?.currentControllerId, viewer.id);
 }
 
 {
@@ -74,7 +79,7 @@ function createRoomWithControllerViewerRobot() {
   store.markParticipantDisconnected("robot-room-001", controller.id);
   const result = store.removeParticipant("robot-room-001", controller.id);
 
-  assert.equal(result.controllerReleased, true);
+  assert.equal(result.controllerReleased, false);
   assert.equal(store.getRoom("robot-room-001")?.currentControllerId, undefined);
 
   const controlRequest = store.requestControl("robot-room-001", viewer.id);

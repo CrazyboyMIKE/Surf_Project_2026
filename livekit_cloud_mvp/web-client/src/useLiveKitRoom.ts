@@ -19,15 +19,26 @@ export type RobotVideoTrackInfo = {
   track: RemoteVideoTrack;
   participantIdentity: string;
   participantName?: string;
+  hasAudioTrack: boolean;
+  isSpeaking: boolean;
+  audioLevel: number;
 };
 
 export type RobotAudioTrackInfo = {
   track: RemoteAudioTrack;
   participantIdentity: string;
   participantName?: string;
+  isSpeaking: boolean;
+  audioLevel: number;
 };
 
 export type LocalMediaState = "off" | "starting" | "on" | "permission-denied" | "device-not-found" | "not-allowed" | "error";
+
+export type ParticipantSpeakingInfo = {
+  hasAudioTrack: boolean;
+  isSpeaking: boolean;
+  audioLevel: number;
+};
 
 export type RemoteParticipantMediaInfo = {
   identity: string;
@@ -37,6 +48,9 @@ export type RemoteParticipantMediaInfo = {
   videoEnabled: boolean;
   audioTrack: RemoteAudioTrack | null;
   videoTrack: RemoteVideoTrack | null;
+  hasAudioTrack: boolean;
+  isSpeaking: boolean;
+  audioLevel: number;
 };
 
 function readParticipantRole(participant: RemoteParticipant): Role | "unknown" {
@@ -56,16 +70,24 @@ function isRobotParticipant(participant: RemoteParticipant): boolean {
   return readParticipantRole(participant) === "robot" || `${participant.identity} ${participant.name ?? ""}`.toLowerCase().includes("robot");
 }
 
+function hasSubscribedAudioTrack(participant: RemoteParticipant): boolean {
+  return Array.from(participant.audioTrackPublications.values()).some((publication) => publication.track instanceof RemoteAudioTrack);
+}
+
 function findRobotVideoTrack(room: Room): RobotVideoTrackInfo | null {
   const robotParticipants = Array.from(room.remoteParticipants.values()).filter(isRobotParticipant);
 
   for (const participant of robotParticipants) {
     for (const publication of participant.videoTrackPublications.values()) {
       if (publication.track && publication.track.kind === Track.Kind.Video) {
+        const hasAudioTrack = hasSubscribedAudioTrack(participant);
         return {
           track: publication.track as RemoteVideoTrack,
           participantIdentity: participant.identity,
-          participantName: participant.name
+          participantName: participant.name,
+          hasAudioTrack,
+          isSpeaking: hasAudioTrack && participant.isSpeaking,
+          audioLevel: hasAudioTrack ? participant.audioLevel : 0
         };
       }
     }
@@ -83,7 +105,9 @@ function findRobotAudioTrack(room: Room): RobotAudioTrackInfo | null {
         return {
           track: publication.track as RemoteAudioTrack,
           participantIdentity: participant.identity,
-          participantName: participant.name
+          participantName: participant.name,
+          isSpeaking: participant.isSpeaking,
+          audioLevel: participant.audioLevel
         };
       }
     }
@@ -98,6 +122,9 @@ function collectRemoteParticipants(room: Room): RemoteParticipantMediaInfo[] {
     .map((participant) => {
       const audioPublication = Array.from(participant.audioTrackPublications.values()).find((publication) => publication.track);
       const videoPublication = Array.from(participant.videoTrackPublications.values()).find((publication) => publication.track);
+      const audioTrack = audioPublication?.track instanceof RemoteAudioTrack ? audioPublication.track : null;
+      const videoTrack = videoPublication?.track instanceof RemoteVideoTrack ? videoPublication.track : null;
+      const hasAudioTrack = Boolean(audioTrack);
 
       return {
         identity: participant.identity,
@@ -105,10 +132,22 @@ function collectRemoteParticipants(room: Room): RemoteParticipantMediaInfo[] {
         role: readParticipantRole(participant),
         audioEnabled: Boolean(audioPublication?.isEnabled && audioPublication.track),
         videoEnabled: Boolean(videoPublication?.isEnabled && videoPublication.track),
-        audioTrack: audioPublication?.track instanceof RemoteAudioTrack ? audioPublication.track : null,
-        videoTrack: videoPublication?.track instanceof RemoteVideoTrack ? videoPublication.track : null
+        audioTrack,
+        videoTrack,
+        hasAudioTrack,
+        isSpeaking: hasAudioTrack && participant.isSpeaking,
+        audioLevel: hasAudioTrack ? participant.audioLevel : 0
       };
     });
+}
+
+function collectLocalSpeaking(room: Room, localAudioTrack: LocalAudioTrack | null): ParticipantSpeakingInfo {
+  const hasAudioTrack = Boolean(localAudioTrack);
+  return {
+    hasAudioTrack,
+    isSpeaking: hasAudioTrack && room.localParticipant.isSpeaking,
+    audioLevel: hasAudioTrack ? room.localParticipant.audioLevel : 0
+  };
 }
 
 function classifyMediaError(error: unknown): LocalMediaState {
@@ -136,6 +175,11 @@ export function useLiveKitRoom(session: JoinRoomResponse | null) {
   const [robotAudioTrack, setRobotAudioTrack] = useState<RobotAudioTrackInfo | null>(null);
   const [remoteParticipants, setRemoteParticipants] = useState<RemoteParticipantMediaInfo[]>([]);
   const [localAudioState, setLocalAudioState] = useState<LocalMediaState>("off");
+  const [localSpeaking, setLocalSpeaking] = useState<ParticipantSpeakingInfo>({
+    hasAudioTrack: false,
+    isSpeaking: false,
+    audioLevel: 0
+  });
   const [localVideoState, setLocalVideoState] = useState<LocalMediaState>("off");
   const [localVideoTrack, setLocalVideoTrack] = useState<LocalVideoTrack | null>(null);
   const [canPlaybackAudio, setCanPlaybackAudio] = useState(true);
@@ -147,6 +191,7 @@ export function useLiveKitRoom(session: JoinRoomResponse | null) {
     setRemoteParticipants([]);
     setLastError("");
     setLocalAudioState("off");
+    setLocalSpeaking({ hasAudioTrack: false, isSpeaking: false, audioLevel: 0 });
     setLocalVideoState("off");
     setLocalVideoTrack(null);
 
@@ -171,6 +216,7 @@ export function useLiveKitRoom(session: JoinRoomResponse | null) {
         setRobotVideoTrack(findRobotVideoTrack(room));
         setRobotAudioTrack(findRobotAudioTrack(room));
         setRemoteParticipants(collectRemoteParticipants(room));
+        setLocalSpeaking(collectLocalSpeaking(room, localAudioTrackRef.current));
         setCanPlaybackAudio(room.canPlaybackAudio);
       }
     };
@@ -192,6 +238,7 @@ export function useLiveKitRoom(session: JoinRoomResponse | null) {
       setRobotVideoTrack(null);
       setRobotAudioTrack(null);
       setRemoteParticipants([]);
+      setLocalSpeaking({ hasAudioTrack: false, isSpeaking: false, audioLevel: 0 });
     });
     room.on(RoomEvent.ParticipantConnected, updateRemoteMedia);
     room.on(RoomEvent.ParticipantDisconnected, updateRemoteMedia);
@@ -202,6 +249,7 @@ export function useLiveKitRoom(session: JoinRoomResponse | null) {
     room.on(RoomEvent.TrackMuted, updateRemoteMedia);
     room.on(RoomEvent.TrackUnmuted, updateRemoteMedia);
     room.on(RoomEvent.AudioPlaybackStatusChanged, updateRemoteMedia);
+    room.on(RoomEvent.ActiveSpeakersChanged, updateRemoteMedia);
 
     setConnectionState("connecting");
     void room.connect(session.liveKitUrl, session.token, { autoSubscribe: true }).catch((error: unknown) => {
@@ -222,6 +270,7 @@ export function useLiveKitRoom(session: JoinRoomResponse | null) {
       localAudioTrackRef.current = null;
       localVideoTrackRef.current = null;
       setLocalAudioState("off");
+      setLocalSpeaking({ hasAudioTrack: false, isSpeaking: false, audioLevel: 0 });
       setLocalVideoState("off");
       setLocalVideoTrack(null);
       roomRef.current = null;
@@ -248,6 +297,7 @@ export function useLiveKitRoom(session: JoinRoomResponse | null) {
       await room.localParticipant.unpublishTrack(track, true);
       track.stop();
       setLocalAudioState("off");
+      setLocalSpeaking({ hasAudioTrack: false, isSpeaking: false, audioLevel: 0 });
       return;
     }
 
@@ -260,6 +310,7 @@ export function useLiveKitRoom(session: JoinRoomResponse | null) {
       });
       localAudioTrackRef.current = track;
       setLocalAudioState("on");
+      setLocalSpeaking(collectLocalSpeaking(room, track));
       setLastError("");
     } catch (error) {
       setLocalAudioState(classifyMediaError(error));
@@ -329,6 +380,7 @@ export function useLiveKitRoom(session: JoinRoomResponse | null) {
       robotAudioTrack,
       remoteParticipants,
       localAudioState,
+      localSpeaking,
       localVideoState,
       localVideoTrack,
       canPlaybackAudio,
@@ -343,6 +395,7 @@ export function useLiveKitRoom(session: JoinRoomResponse | null) {
       enableAudioPlayback,
       lastError,
       localAudioState,
+      localSpeaking,
       localVideoState,
       localVideoTrack,
       remoteParticipants,

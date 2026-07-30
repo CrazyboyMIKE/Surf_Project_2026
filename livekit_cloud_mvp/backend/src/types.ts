@@ -1,6 +1,6 @@
 export type Role = "robot" | "controller" | "viewer";
 export type WebRole = "controller" | "viewer";
-export type RobotCommand = "1000" | "1002" | "1003" | "1004" | "1005" | "1006";
+export type RobotCommand = "1000" | "1002" | "1003";
 export type RobotContinuousCommand = "1001";
 export type RobotControlEventCommand = RobotCommand | RobotContinuousCommand;
 export type KeyboardDirection =
@@ -24,9 +24,6 @@ export type ControlParameters = {
   distanceCm?: number;
   angleDeg?: number;
   speed?: number;
-  d?: number;
-  a?: number;
-  av?: number;
 };
 
 export type ContinuousControlParameters = {
@@ -76,6 +73,33 @@ export type Participant = {
   disconnectedAt?: number;
 };
 
+export type SpeakerParticipantSnapshot = {
+  id: string;
+  name: string;
+  role: WebRole;
+  connected: boolean;
+};
+
+export type SpeakerStateSnapshot = {
+  currentSpeaker?: SpeakerParticipantSnapshot;
+  currentSpeakerId?: string;
+  currentSpeakerName?: string;
+  queue: SpeakerParticipantSnapshot[];
+};
+
+export type ControlRequestParticipantSnapshot = {
+  id: string;
+  name: string;
+  role: WebRole;
+  connected: boolean;
+};
+
+export type ControlRequestQueueSnapshot = {
+  currentControllerId?: string;
+  currentControllerName?: string;
+  queue: ControlRequestParticipantSnapshot[];
+};
+
 export type RoomState = {
   roomName: string;
   historyRoomId?: number;
@@ -83,6 +107,9 @@ export type RoomState = {
   robotOnline: boolean;
   participants: Map<string, Participant>;
   currentControllerId?: string;
+  controllerRequestQueue: string[];
+  currentSpeakerId?: string;
+  speakerQueue: string[];
   updatedAt: number;
   lastRobotControl?: {
     command: RobotControlEventCommand;
@@ -99,6 +126,8 @@ export type RoomSnapshot = {
   robotOnline: boolean;
   currentControllerId?: string;
   currentControllerName?: string;
+  controlRequests: ControlRequestQueueSnapshot;
+  speaker: SpeakerStateSnapshot;
   lastRobotControl?: {
     command: RobotControlEventCommand;
     parameters: RobotControlLogParameters;
@@ -202,6 +231,7 @@ export type ApiErrorCode =
   | "ROOM_NOT_FOUND"
   | "PARTICIPANT_NOT_FOUND"
   | "NOT_CONTROLLER"
+  | "NOT_SPEAKER"
   | "COMMAND_NOT_ALLOWED"
   | "INVALID_PARAMETERS"
   | "ROBOT_OFFLINE"
@@ -212,6 +242,7 @@ export type ApiErrorCode =
   | "KEYBOARD_CONTROL_INACTIVE"
   | "KEYBOARD_CONTROL_ACTIVE"
   | "CONTROLLER_BUSY"
+  | "CONTROL_REQUEST_NOT_FOUND"
   | "TARGET_NOT_VIEWER"
   | "TARGET_OFFLINE"
   | "ADMIN_DISABLED"

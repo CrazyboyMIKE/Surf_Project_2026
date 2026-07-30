@@ -3,6 +3,7 @@ import { WS_URL } from "./api";
 import type {
   ChatMessage,
   ControlParameters,
+  ControlRequestState,
   JoinRoomResponse,
   KeyboardControlStatus,
   KeyboardDirection,
@@ -12,12 +13,19 @@ import type {
   RobotCommand,
   RobotControlEvent,
   RoomSocketMessage,
+  SpeakerState,
   WebRole
 } from "./types";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "reconnecting" | "closed" | "error";
 
 const MAX_RECONNECT_DELAY_MS = 10_000;
+const EMPTY_SPEAKER_STATE: SpeakerState = {
+  queue: []
+};
+const EMPTY_CONTROL_REQUEST_STATE: ControlRequestState = {
+  queue: []
+};
 
 function getReconnectDelayMs(attempt: number): number {
   return Math.min(1000 * 2 ** Math.max(attempt - 1, 0), MAX_RECONNECT_DELAY_MS);
@@ -36,6 +44,10 @@ export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconne
   const [privateChatErrors, setPrivateChatErrors] = useState<PrivateChatErrorMessage[]>([]);
   const [robotEvents, setRobotEvents] = useState<RobotControlEvent[]>([]);
   const [keyboardStatus, setKeyboardStatus] = useState<KeyboardControlStatus | null>(null);
+  const [speaker, setSpeaker] = useState<SpeakerState>(EMPTY_SPEAKER_STATE);
+  const [controlRequests, setControlRequests] = useState<ControlRequestState>(
+    session?.controlRequests ?? EMPTY_CONTROL_REQUEST_STATE
+  );
   const [lastKeyboardResult, setLastKeyboardResult] = useState("");
   const [lastError, setLastError] = useState<string>("");
 
@@ -56,9 +68,11 @@ export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconne
     setPrivateChatErrors([]);
     setRobotEvents([]);
     setKeyboardStatus(null);
+    setSpeaker(EMPTY_SPEAKER_STATE);
+    setControlRequests(session?.controlRequests ?? EMPTY_CONTROL_REQUEST_STATE);
     setLastKeyboardResult("");
     setLastError("");
-  }, [session?.participantId, session?.currentControllerName, session?.robotOnline]);
+  }, [session?.participantId, session?.currentControllerName, session?.robotOnline, session?.controlRequests]);
 
   useEffect(() => {
     if (!session) {
@@ -152,6 +166,25 @@ export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconne
 
         if (message.type === "robot_status") {
           setRobotOnline(message.online);
+          return;
+        }
+
+        if (message.type === "speaker_update") {
+          setSpeaker({
+            currentSpeaker: message.currentSpeaker,
+            currentSpeakerId: message.currentSpeakerId,
+            currentSpeakerName: message.currentSpeakerName,
+            queue: message.queue
+          });
+          return;
+        }
+
+        if (message.type === "control_request_update") {
+          setControlRequests({
+            currentControllerId: message.currentControllerId,
+            currentControllerName: message.currentControllerName,
+            queue: message.queue
+          });
           return;
         }
 
@@ -336,6 +369,34 @@ export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconne
     );
   }, [session]);
 
+  const sendSpeakerRequest = useCallback(() => {
+    if (!session || role !== "viewer" || socketRef.current?.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    socketRef.current.send(
+      JSON.stringify({
+        type: "speaker_request",
+        roomName: session.roomName,
+        senderId: session.participantId
+      })
+    );
+  }, [role, session]);
+
+  const sendSpeakerEnd = useCallback(() => {
+    if (!session || socketRef.current?.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    socketRef.current.send(
+      JSON.stringify({
+        type: "speaker_end",
+        roomName: session.roomName,
+        senderId: session.participantId
+      })
+    );
+  }, [session]);
+
   return useMemo(
     () => ({
       connectionState,
@@ -348,6 +409,8 @@ export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconne
       privateChatErrors,
       robotEvents,
       keyboardStatus,
+      speaker,
+      controlRequests,
       lastKeyboardResult,
       lastError,
       sendChat,
@@ -355,7 +418,9 @@ export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconne
       sendControl,
       sendKeyboardControlStart,
       sendKeyboardControlKeepalive,
-      sendKeyboardControlStop
+      sendKeyboardControlStop,
+      sendSpeakerRequest,
+      sendSpeakerEnd
     }),
     [
       chatMessages,
@@ -367,6 +432,8 @@ export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconne
       privateMessages,
       robotEvents,
       keyboardStatus,
+      speaker,
+      controlRequests,
       lastKeyboardResult,
       robotOnline,
       role,
@@ -375,7 +442,9 @@ export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconne
       sendControl,
       sendKeyboardControlKeepalive,
       sendKeyboardControlStart,
-      sendKeyboardControlStop
+      sendKeyboardControlStop,
+      sendSpeakerRequest,
+      sendSpeakerEnd
     ]
   );
 }

@@ -92,4 +92,4 @@ npm run check:livekit-env
 - Admin APIs require `Authorization: Bearer <ADMIN_TOKEN>` and never return tokens or secrets.
 - Room history stores room metadata, participants, and sanitized events only. It must not store LiveKit secrets, LiveKit tokens, robot keys, or robot tokens.
 - Viewer robot-control attempts are rejected by backend business logic.
-- Allowed normal robot-control commands are `1000`, `1002`, `1003`, `1004`, `1005`, and `1006`; `1001` remains keyboard-control-only.
+- Allowed normal robot-control commands are `1000`, `1002`, and `1003`; `1001` remains keyboard-control-only, and `1004`/`1005`/`1006` are rejected.

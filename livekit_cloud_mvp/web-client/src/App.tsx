@@ -211,7 +211,15 @@ function RoomApp() {
         liveKitUrl: response.liveKitUrl ?? session.liveKitUrl,
         token: response.token ?? session.token,
         tokenMode: response.tokenMode ?? session.tokenMode,
-        mediaPermissions: response.mediaPermissions ?? session.mediaPermissions
+        mediaPermissions: response.mediaPermissions ?? session.mediaPermissions,
+        robotOnline: response.robotOnline ?? session.robotOnline,
+        currentControllerId: response.controlRequests
+          ? response.controlRequests.currentControllerId
+          : response.currentControllerId ?? session.currentControllerId,
+        currentControllerName: response.controlRequests
+          ? response.controlRequests.currentControllerName
+          : response.currentControllerName ?? session.currentControllerName,
+        controlRequests: response.controlRequests ?? session.controlRequests
       };
       setSession(nextSession);
       saveStoredSession(nextSession);
@@ -238,7 +246,15 @@ function RoomApp() {
         liveKitUrl: response.liveKitUrl ?? session.liveKitUrl,
         token: response.token ?? session.token,
         tokenMode: response.tokenMode ?? session.tokenMode,
-        mediaPermissions: response.mediaPermissions ?? session.mediaPermissions
+        mediaPermissions: response.mediaPermissions ?? session.mediaPermissions,
+        robotOnline: response.robotOnline ?? session.robotOnline,
+        currentControllerId: response.controlRequests
+          ? response.controlRequests.currentControllerId
+          : response.currentControllerId ?? session.currentControllerId,
+        currentControllerName: response.controlRequests
+          ? response.controlRequests.currentControllerName
+          : response.currentControllerName ?? session.currentControllerName,
+        controlRequests: response.controlRequests ?? session.controlRequests
       };
       setSession(nextSession);
       saveStoredSession(nextSession);
@@ -381,7 +397,10 @@ function RoomApp() {
       ? {
           participantIdentity: selectedRemoteParticipant.identity,
           participantName: selectedRemoteParticipant.name ?? selectedRemoteParticipant.identity,
-          track: selectedRemoteParticipant.videoTrack
+          track: selectedRemoteParticipant.videoTrack,
+          hasAudioTrack: selectedRemoteParticipant.hasAudioTrack,
+          isSpeaking: selectedRemoteParticipant.isSpeaking,
+          audioLevel: selectedRemoteParticipant.audioLevel
         }
       : null;
   const selectedStageVideoTrack = selectedRemoteVideoTrack ?? liveKitRoom.robotVideoTrack;
@@ -409,6 +428,11 @@ function RoomApp() {
   }
 
   const effectiveRole = roomSocket.role ?? session.role;
+  const controlRequestQueue = roomSocket.controlRequests.queue;
+  const hasCurrentController = Boolean(roomSocket.controlRequests.currentControllerId);
+  const controlRequestPending =
+    hasCurrentController && controlRequestQueue.some((request) => request.id === session.participantId);
+  const controlActionsDisabled = roomSocket.connectionState !== "connected";
 
   return (
     <main className="app-shell">
@@ -422,6 +446,9 @@ function RoomApp() {
         robotOnline={roomSocket.robotOnline}
         currentControllerName={roomSocket.currentControllerName}
         participants={roomSocket.participants}
+        controlRequestCount={controlRequestQueue.length}
+        controlRequestPending={controlRequestPending}
+        controlActionsDisabled={controlActionsDisabled}
         onRequestControl={handleRequestControl}
         onReleaseControl={handleReleaseControl}
         onLeaveRoom={handleLeaveRoom}
@@ -455,9 +482,13 @@ function RoomApp() {
             robotVideoTrack={liveKitRoom.robotVideoTrack}
             robotAudioTrack={liveKitRoom.robotAudioTrack}
             canPlaybackAudio={liveKitRoom.canPlaybackAudio}
+            speaker={roomSocket.speaker}
+            speakerActionsDisabled={roomSocket.connectionState !== "connected"}
             locallyMutedAudio={locallyMutedAudio}
             privateUnreadCounts={privateUnreadCounts}
             onEnableAudio={liveKitRoom.enableAudioPlayback}
+            onRequestSpeaker={roomSocket.sendSpeakerRequest}
+            onEndSpeaker={roomSocket.sendSpeakerEnd}
             onSelectStageParticipant={setSelectedStageParticipantId}
             onToggleLocalAudioMute={handleToggleLocalAudioMute}
             onStartPrivateChat={handleSelectPrivateChatParticipant}
@@ -488,7 +519,7 @@ function RoomApp() {
           <ControlPanel
             role={effectiveRole}
             participantId={session.participantId}
-            participants={roomSocket.participants}
+            controlRequestQueue={controlRequestQueue}
             robotOnline={roomSocket.robotOnline}
             connectionState={roomSocket.connectionState}
             actionPending={actionPending}
@@ -509,6 +540,7 @@ function RoomApp() {
             tokenMode={session.tokenMode}
             liveKitState={liveKitRoom.connectionState}
             localAudioState={liveKitRoom.localAudioState}
+            localSpeaking={liveKitRoom.localSpeaking}
             localVideoState={liveKitRoom.localVideoState}
             localVideoTrack={liveKitRoom.localVideoTrack}
             onToggleMicrophone={liveKitRoom.toggleMicrophone}

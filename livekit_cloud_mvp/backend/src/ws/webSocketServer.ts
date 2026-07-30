@@ -31,6 +31,8 @@ type WebSocketMessage = {
 
 export type WebSocketHub = {
   broadcastRoleUpdate: (roomName: string) => void;
+  broadcastControlRequestUpdate: (roomName: string) => void;
+  broadcastSpeakerUpdate: (roomName: string) => void;
   broadcastRobotStatus: (roomName: string) => void;
   broadcastRoomUpdate: (roomName: string) => void;
   stopKeyboardControl: (roomName: string, reason: string) => Promise<void>;
@@ -211,6 +213,41 @@ export function attachWebSocketServer(
       participants: snapshot.participants,
       timestamp: Date.now()
     });
+    broadcastControlRequestUpdate(roomName);
+    broadcastSpeakerUpdate(roomName);
+  }
+
+  function broadcastControlRequestUpdate(roomName: string): void {
+    const snapshot = roomStore.getRoomSnapshot(roomName);
+    if (!snapshot) {
+      return;
+    }
+
+    broadcast(roomName, {
+      type: "control_request_update",
+      roomName,
+      currentControllerId: snapshot.controlRequests.currentControllerId,
+      currentControllerName: snapshot.controlRequests.currentControllerName,
+      queue: snapshot.controlRequests.queue,
+      timestamp: Date.now()
+    });
+  }
+
+  function broadcastSpeakerUpdate(roomName: string): void {
+    const snapshot = roomStore.getRoomSnapshot(roomName);
+    if (!snapshot) {
+      return;
+    }
+
+    broadcast(roomName, {
+      type: "speaker_update",
+      roomName,
+      currentSpeaker: snapshot.speaker.currentSpeaker,
+      currentSpeakerId: snapshot.speaker.currentSpeakerId,
+      currentSpeakerName: snapshot.speaker.currentSpeakerName,
+      queue: snapshot.speaker.queue,
+      timestamp: Date.now()
+    });
   }
 
   function broadcastRobotStatus(roomName: string): void {
@@ -264,7 +301,7 @@ export function attachWebSocketServer(
     }
   });
 
-  async function forceHeadStop(roomName: string, senderId: string, reason: string): Promise<void> {
+  async function forceSafetyStop(roomName: string, senderId: string, reason: string): Promise<void> {
     const room = roomStore.getRoom(roomName);
     if (!room?.robotOnline) {
       return;
@@ -276,21 +313,21 @@ export function attachWebSocketServer(
       roomName,
       senderId,
       robotId: room.robotId,
-      command: "1004",
+      command: "1000",
       parameters,
       timestamp
     });
 
     if (!result.ok) {
-      console.error(`[robot-control:head-stop] room=${roomName} reason=${reason} failed=${result.code}`);
+      console.error(`[robot-control:safety-stop] room=${roomName} reason=${reason} failed=${result.code}`);
       return;
     }
 
-    roomStore.recordRobotControl(roomName, "1004", parameters, senderId, timestamp);
+    roomStore.recordRobotControl(roomName, "1000", parameters, senderId, timestamp);
     broadcast(roomName, {
       type: "robot_control",
       roomName,
-      command: "1004",
+      command: "1000",
       parameters,
       from: senderId,
       timestamp
@@ -515,6 +552,52 @@ export function attachWebSocketServer(
         return;
       }
 
+      if (message.type === "speaker_request") {
+        if (!hasOnlyKeys(message, ["type", "roomName", "senderId"])) {
+          sendError(socket, "INVALID_REQUEST", "Speaker request contains unsupported fields");
+          return;
+        }
+
+        const roomName = readString(message.roomName);
+        const senderId = readString(message.senderId);
+        if (!roomName || !senderId || !contextMatches(context, roomName, senderId)) {
+          sendError(socket, context ? "SENDER_MISMATCH" : "SOCKET_NOT_IDENTIFIED", "Speaker sender does not match this WebSocket");
+          return;
+        }
+
+        const result = roomStore.requestSpeaker(roomName, senderId);
+        if (!result.ok) {
+          sendError(socket, result.code, result.message);
+          return;
+        }
+
+        broadcastSpeakerUpdate(roomName);
+        return;
+      }
+
+      if (message.type === "speaker_end") {
+        if (!hasOnlyKeys(message, ["type", "roomName", "senderId"])) {
+          sendError(socket, "INVALID_REQUEST", "Speaker end contains unsupported fields");
+          return;
+        }
+
+        const roomName = readString(message.roomName);
+        const senderId = readString(message.senderId);
+        if (!roomName || !senderId || !contextMatches(context, roomName, senderId)) {
+          sendError(socket, context ? "SENDER_MISMATCH" : "SOCKET_NOT_IDENTIFIED", "Speaker sender does not match this WebSocket");
+          return;
+        }
+
+        const result = roomStore.endSpeaker(roomName, senderId);
+        if (!result.ok) {
+          sendError(socket, result.code, result.message);
+          return;
+        }
+
+        broadcastSpeakerUpdate(roomName);
+        return;
+      }
+
       if (message.type === "robot_control") {
         const roomName = readString(message.roomName);
         const senderId = readString(message.senderId);
@@ -685,8 +768,11 @@ export function attachWebSocketServer(
         });
       }
       const roomBeforeDisconnect = roomStore.getRoom(context.roomName);
-      if (roomBeforeDisconnect?.currentControllerId === context.participantId) {
-        void forceHeadStop(context.roomName, context.participantId, "websocket_disconnected");
+      if (
+        roomBeforeDisconnect?.currentControllerId === context.participantId &&
+        !(keyboardStatus.active && keyboardStatus.controllerId === context.participantId)
+      ) {
+        void forceSafetyStop(context.roomName, context.participantId, "websocket_disconnected");
       }
       const result = roomStore.markParticipantDisconnected(context.roomName, context.participantId);
       console.log(
@@ -713,6 +799,8 @@ export function attachWebSocketServer(
 
   return {
     broadcastRoleUpdate,
+    broadcastControlRequestUpdate,
+    broadcastSpeakerUpdate,
     broadcastRobotStatus,
     broadcastRoomUpdate,
     disconnectParticipant(roomName: string, participantId: string, payload: Record<string, unknown>): void {
@@ -738,8 +826,10 @@ export function attachWebSocketServer(
       }
     },
     async stopKeyboardControl(roomName: string, reason: string): Promise<void> {
-      await keyboardControlManager.forceStop(roomName, reason);
-      await forceHeadStop(roomName, "system", reason);
+      const result = await keyboardControlManager.forceStop(roomName, reason);
+      if (!result) {
+        await forceSafetyStop(roomName, "system", reason);
+      }
     },
     close(): void {
       clearInterval(heartbeatTimer);

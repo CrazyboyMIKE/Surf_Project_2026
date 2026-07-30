@@ -77,17 +77,12 @@ Do not mark tests as passed unless they were run against a real LiveKit Cloud pr
 69. [ ] 普通 `robot_control` 发送 `1001` 被拒绝。
 70. [ ] `1002/1003/1000` 原有控制不受影响。
 71. [ ] 聊天输入框、textarea、select 聚焦时按 `W/A/S/D` 不触发机器人运动。
-72. [ ] `ROBOT_ENABLE_HEAD_CONTROL=false` 时 real 模式头部控制被后端拒绝。
-73. [ ] `ROBOT_ENABLE_HEAD_CONTROL=true` 后 controller 可发送 `1004 head stop`。
-74. [ ] controller 可发送 `1005 head move`，payload 使用 `d/a/av`。
-75. [ ] controller 可发送 `1006 head reset`，payload 使用 `d`。
-76. [ ] viewer 发送 `1004/1005/1006` 被拒绝。
-77. [ ] `1004` 带多余参数被拒绝。
-78. [ ] `1005` 非法 `d/a/av` 被拒绝。
-79. [ ] `1006` 非法 `d` 被拒绝。
-80. [ ] `1007/1008/1009` 默认被拒绝。
-81. [ ] controller 断开、释放或转移控制权时，backend 尽力发送 `1004 head stop`。
-82. [ ] 真实机器人现场先测 `1000 stop` 和 `1004 head stop`，再测低速底盘和小角度头部动作。
+72. [ ] 普通 `robot_control` 发送 `1004` 被拒绝。
+73. [ ] 普通 `robot_control` 发送 `1005` 被拒绝。
+74. [ ] 普通 `robot_control` 发送 `1006` 被拒绝。
+75. [ ] `1007/1008/1009` 默认被拒绝。
+76. [ ] controller 断开、释放或转移控制权时，backend 使用 `1000 stop` 做底盘安全停止。
+77. [ ] 真实机器人现场先测 `1000 stop`，再测低速底盘动作。
 83. [ ] Issues are recorded with timestamp, room name, participant type, browser/device, and logs without secrets.
 
 ## Evidence To Capture
@@ -105,7 +100,7 @@ Do not mark tests as passed unless they were run against a real LiveKit Cloud pr
 - real mode config error screenshot or log, if real credentials are not ready.
 - PadBot MQTT info request result without key/token/secret values.
 - Keyboard control status showing active direction and stop reason.
-- Head control mock/real adapter result showing `1004/1005/1006` without secrets.
+- Rejection result for removed `1004/1005/1006` commands.
 - Android camera publishing screenshot or log.
 - LiveKit Cloud usage page screenshot without secrets.
 - Admin console screenshot with token/secret fields hidden.

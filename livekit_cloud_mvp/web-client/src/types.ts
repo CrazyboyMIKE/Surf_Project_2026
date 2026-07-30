@@ -1,6 +1,6 @@
 export type Role = "robot" | "controller" | "viewer";
 export type WebRole = "controller" | "viewer";
-export type RobotCommand = "1000" | "1002" | "1003" | "1004" | "1005" | "1006";
+export type RobotCommand = "1000" | "1002" | "1003";
 export type RobotControlEventCommand = RobotCommand | "1001";
 export type KeyboardDirection =
   | "forward"
@@ -16,8 +16,6 @@ export type ControlParameters = {
   distanceCm?: number;
   angleDeg?: number;
   speed?: number;
-  d?: number;
-  a?: number;
   lv?: number;
   av?: number;
   direction?: KeyboardDirection;
@@ -81,6 +79,7 @@ export type JoinRoomResponse = {
   robotOnline: boolean;
   currentControllerId?: string;
   currentControllerName?: string;
+  controlRequests?: ControlRequestState;
 };
 
 export type ControlResponse = {
@@ -88,6 +87,12 @@ export type ControlResponse = {
   role?: WebRole;
   message: string;
   code?: string;
+  controlGranted?: boolean;
+  controlRequestQueued?: boolean;
+  controlRequests?: ControlRequestState;
+  robotOnline?: boolean;
+  currentControllerId?: string;
+  currentControllerName?: string;
   liveKitUrl?: string;
   token?: string;
   tokenMode?: "mock" | "livekit";
@@ -103,6 +108,7 @@ export type ControlTransferResponse = {
   currentControllerId?: string;
   currentControllerName?: string;
   participants?: ParticipantSummary[];
+  controlRequests?: ControlRequestState;
   code?: string;
 };
 
@@ -120,6 +126,33 @@ export type ParticipantSummary = {
   joinedAt?: number;
   lastSeenAt?: number;
   disconnectedAt?: number;
+};
+
+export type SpeakerParticipant = {
+  id: string;
+  name: string;
+  role: WebRole;
+  connected: boolean;
+};
+
+export type SpeakerState = {
+  currentSpeaker?: SpeakerParticipant;
+  currentSpeakerId?: string;
+  currentSpeakerName?: string;
+  queue: SpeakerParticipant[];
+};
+
+export type ControlRequestParticipant = {
+  id: string;
+  name: string;
+  role: WebRole;
+  connected: boolean;
+};
+
+export type ControlRequestState = {
+  currentControllerId?: string;
+  currentControllerName?: string;
+  queue: ControlRequestParticipant[];
 };
 
 export type AdminParticipant = {
@@ -314,6 +347,25 @@ export type RobotStatusMessage = {
   timestamp: number;
 };
 
+export type SpeakerUpdateMessage = {
+  type: "speaker_update";
+  roomName: string;
+  currentSpeaker?: SpeakerParticipant;
+  currentSpeakerId?: string;
+  currentSpeakerName?: string;
+  queue: SpeakerParticipant[];
+  timestamp: number;
+};
+
+export type ControlRequestUpdateMessage = {
+  type: "control_request_update";
+  roomName: string;
+  currentControllerId?: string;
+  currentControllerName?: string;
+  queue: ControlRequestParticipant[];
+  timestamp: number;
+};
+
 export type ServerErrorMessage = {
   type: "error";
   code: string;
@@ -330,6 +382,8 @@ export type RoomSocketMessage =
   | KeyboardControlStatusMessage
   | RoleUpdateMessage
   | RobotStatusMessage
+  | SpeakerUpdateMessage
+  | ControlRequestUpdateMessage
   | ServerErrorMessage
   | {
       type: "hello";

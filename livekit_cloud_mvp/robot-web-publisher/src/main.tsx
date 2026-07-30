@@ -15,7 +15,7 @@ import {
 import "./styles.css";
 
 type Role = "robot" | "controller" | "viewer";
-type RobotCommand = "1000" | "1001" | "1002" | "1003" | "1004" | "1005" | "1006";
+type RobotCommand = "1000" | "1001" | "1002" | "1003";
 type RobotMicrophoneState =
   | "idle"
   | "not-published"
@@ -63,6 +63,30 @@ type RoleUpdateMessage = {
   participants: ParticipantPresence[];
 };
 
+type SpeakerParticipant = {
+  id: string;
+  name: string;
+  role: "controller" | "viewer";
+  connected: boolean;
+};
+
+type SpeakerState = {
+  currentSpeaker?: SpeakerParticipant;
+  currentSpeakerId?: string;
+  currentSpeakerName?: string;
+  queue: SpeakerParticipant[];
+};
+
+type SpeakerUpdateMessage = {
+  type: "speaker_update";
+  roomName: string;
+  currentSpeaker?: SpeakerParticipant;
+  currentSpeakerId?: string;
+  currentSpeakerName?: string;
+  queue: SpeakerParticipant[];
+  timestamp: number;
+};
+
 type KeyboardControlStatusMessage = {
   type: "keyboard_control_status";
   roomName: string;
@@ -108,6 +132,15 @@ type RemoteVideoInfo = {
   role: "controller" | "viewer";
   videoTrack: RemoteVideoTrack | null;
   audioTrack: RemoteAudioTrack | null;
+  hasAudioTrack: boolean;
+  isSpeaking: boolean;
+  audioLevel: number;
+};
+
+type ParticipantSpeakingInfo = {
+  hasAudioTrack: boolean;
+  isSpeaking: boolean;
+  audioLevel: number;
 };
 
 function stripTrailingSlash(value: string): string {
@@ -134,6 +167,14 @@ const API_BASE_URL = resolveApiBaseUrl();
 const WS_URL = resolveWebSocketUrl(API_BASE_URL);
 const ROBOT_SESSION_STORAGE_KEY = "livekit-cloud-mvp.robot-session";
 const ROBOT_CLIENT_SESSION_STORAGE_KEY = "livekit-cloud-mvp.robot-client-session-id";
+const EMPTY_SPEAKING: ParticipantSpeakingInfo = {
+  hasAudioTrack: false,
+  isSpeaking: false,
+  audioLevel: 0
+};
+const EMPTY_SPEAKER_STATE: SpeakerState = {
+  queue: []
+};
 
 function readPersistentValue(key: string): string | null {
   try {
@@ -336,6 +377,17 @@ function isKeyboardControlStatusMessage(message: unknown): message is KeyboardCo
   return typeof message === "object" && message !== null && "type" in message && message.type === "keyboard_control_status";
 }
 
+function isSpeakerUpdateMessage(message: unknown): message is SpeakerUpdateMessage {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    "type" in message &&
+    message.type === "speaker_update" &&
+    "queue" in message &&
+    Array.isArray(message.queue)
+  );
+}
+
 function isRobotControlMessage(message: unknown): message is RobotControlMessage {
   return typeof message === "object" && message !== null && "type" in message && message.type === "robot_control";
 }
@@ -431,6 +483,38 @@ function firstRemoteAudioTrack(participant: RemoteParticipant): RemoteAudioTrack
   return publication?.track instanceof RemoteAudioTrack ? publication.track : null;
 }
 
+function getSpeakingStyle(audioLevel: number): React.CSSProperties & Record<"--speaking-level", string> {
+  const level = Math.min(1, Math.max(0.18, audioLevel));
+  return {
+    "--speaking-level": level.toFixed(2)
+  };
+}
+
+function SpeakingBadge({
+  hasAudioTrack,
+  isSpeaking,
+  audioLevel
+}: {
+  hasAudioTrack: boolean;
+  isSpeaking: boolean;
+  audioLevel: number;
+}) {
+  if (!hasAudioTrack) {
+    return null;
+  }
+
+  return (
+    <span
+      className={`speaking-badge${isSpeaking ? " active" : ""}`}
+      style={getSpeakingStyle(audioLevel)}
+      title={isSpeaking ? "Speaking" : "Audio track available"}
+      aria-label={isSpeaking ? "Speaking" : "Audio track available"}
+    >
+      <span className="speaking-icon" aria-hidden="true" />
+    </span>
+  );
+}
+
 function collectRemoteVideos(
   room: Room,
   participantsById: Map<string, ParticipantPresence>,
@@ -447,16 +531,29 @@ function collectRemoteVideos(
       return [];
     }
 
+    const audioTrack = firstRemoteAudioTrack(participant);
     return [
       {
         identity: participant.identity,
         name: presence?.name ?? participant.name ?? participant.identity,
         role,
         videoTrack: firstRemoteVideoTrack(participant),
-        audioTrack: firstRemoteAudioTrack(participant)
+        audioTrack,
+        hasAudioTrack: Boolean(audioTrack),
+        isSpeaking: Boolean(audioTrack) && participant.isSpeaking,
+        audioLevel: audioTrack ? participant.audioLevel : 0
       }
     ];
   });
+}
+
+function collectLocalSpeaking(room: Room, audioTrack: LocalAudioTrack | null): ParticipantSpeakingInfo {
+  const hasAudioTrack = Boolean(audioTrack);
+  return {
+    hasAudioTrack,
+    isSpeaking: hasAudioTrack && room.localParticipant.isSpeaking,
+    audioLevel: hasAudioTrack ? room.localParticipant.audioLevel : 0
+  };
 }
 
 function requestElementFullscreen(element: HTMLElement | null): string | null {
@@ -512,9 +609,19 @@ function RemoteVideoTile({
   }, [participant.videoTrack]);
 
   return (
-    <article className={compact ? "remote-video-tile compact-video-tile" : "remote-video-tile"} ref={tileRef}>
+    <article
+      className={`${compact ? "remote-video-tile compact-video-tile" : "remote-video-tile"}${
+        participant.hasAudioTrack && participant.isSpeaking ? " is-speaking" : ""
+      }`}
+      ref={tileRef}
+    >
       {participant.videoTrack ? <video ref={videoRef} autoPlay playsInline /> : <div className="video-empty">Waiting for video</div>}
       <span className="role-badge">{participant.role}</span>
+      <SpeakingBadge
+        hasAudioTrack={participant.hasAudioTrack}
+        isSpeaking={participant.isSpeaking}
+        audioLevel={participant.audioLevel}
+      />
       <span className="name-badge">{participant.name}</span>
       <button
         type="button"
@@ -536,11 +643,13 @@ function RemoteVideoTile({
 function LocalPreview({
   track,
   robotName,
+  speaking,
   compact = false,
   onFullscreenError
 }: {
   track: LocalVideoTrack | null;
   robotName: string;
+  speaking: ParticipantSpeakingInfo;
   compact?: boolean;
   onFullscreenError: (message: string) => void;
 }) {
@@ -652,10 +761,17 @@ function LocalPreview({
   } as React.CSSProperties & Record<"--preview-aspect-ratio", string>;
 
   return (
-    <div className={compact ? "local-preview compact-video-tile" : "local-preview"} ref={tileRef} style={previewStyle}>
+    <div
+      className={`${compact ? "local-preview compact-video-tile" : "local-preview"}${
+        speaking.hasAudioTrack && speaking.isSpeaking ? " is-speaking" : ""
+      }`}
+      ref={tileRef}
+      style={previewStyle}
+    >
       {track ? <video ref={videoRef} autoPlay muted playsInline /> : <div className="preview-placeholder">Robot camera preview</div>}
       {previewWarning ? <span className="preview-warning">{previewWarning}</span> : null}
       <span className="role-badge">robot</span>
+      <SpeakingBadge hasAudioTrack={speaking.hasAudioTrack} isSpeaking={speaking.isSpeaking} audioLevel={speaking.audioLevel} />
       <span className="name-badge">{robotName}</span>
       <button
         type="button"
@@ -775,34 +891,59 @@ function RemoteAudioMixer({ participants }: { participants: RemoteVideoInfo[] })
   );
 }
 
-function PrimaryControllerStage({
-  controller,
+function SpeakerQueueSummary({ speaker }: { speaker: SpeakerState }) {
+  return (
+    <div className="speaker-queue-panel" aria-label="Speaker queue">
+      <div>
+        <span>Current</span>
+        <strong>{speaker.currentSpeaker ? `${speaker.currentSpeaker.name} · ${speaker.currentSpeaker.role}` : "none"}</strong>
+      </div>
+      <div className="speaker-queue-list">
+        {speaker.queue.length === 0 ? (
+          <span>Queue empty</span>
+        ) : (
+          speaker.queue.map((participant, index) => (
+            <span key={participant.id}>
+              {index + 1}. {participant.name}
+            </span>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PrimarySpeakerStage({
+  speaker,
+  speakerVideo,
   onFullscreenError
 }: {
-  controller: RemoteVideoInfo | null;
+  speaker: SpeakerState;
+  speakerVideo: RemoteVideoInfo | null;
   onFullscreenError: (message: string) => void;
 }) {
   const stageRef = useRef<HTMLElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const currentSpeaker = speaker.currentSpeaker;
 
   useEffect(() => {
     const videoElement = videoRef.current;
-    if (!controller?.videoTrack || !videoElement) {
+    if (!speakerVideo?.videoTrack || !videoElement) {
       return;
     }
 
-    controller.videoTrack.attach(videoElement);
+    speakerVideo.videoTrack.attach(videoElement);
     return () => {
-      controller.videoTrack?.detach(videoElement);
+      speakerVideo.videoTrack?.detach(videoElement);
     };
-  }, [controller]);
+  }, [speakerVideo]);
 
   return (
-    <section className="controller-stage" aria-labelledby="controller-stage-title" ref={stageRef}>
+    <section className="controller-stage" aria-labelledby="speaker-stage-title" ref={stageRef}>
       <div className="panel-heading">
         <div>
-          <h2 id="controller-stage-title">Controller primary video</h2>
-          <p className="subtle">{controller ? `Current controller: ${controller.name}` : "No controller video track is active"}</p>
+          <h2 id="speaker-stage-title">Speaker</h2>
+          <p className="subtle">{currentSpeaker ? `Current speaker: ${currentSpeaker.name}` : "No Speaker video track is active"}</p>
         </div>
         <button
           type="button"
@@ -818,20 +959,28 @@ function PrimaryControllerStage({
         </button>
       </div>
 
-      <div className="controller-video-frame">
-        {controller?.videoTrack ? (
+      <div className={`controller-video-frame${speakerVideo?.hasAudioTrack && speakerVideo.isSpeaking ? " is-speaking" : ""}`}>
+        {speakerVideo?.videoTrack ? (
           <video ref={videoRef} autoPlay playsInline />
         ) : (
-          <div className="empty-video-state">Waiting for controller video</div>
+          <div className="empty-video-state">Waiting for Speaker video</div>
         )}
-        {controller ? (
+        {currentSpeaker ? (
           <>
-            <span className="role-badge">controller</span>
-            <span className="name-badge">{controller.name}</span>
+            <span className="role-badge">{currentSpeaker.role}</span>
+            {speakerVideo ? (
+              <SpeakingBadge
+                hasAudioTrack={speakerVideo.hasAudioTrack}
+                isSpeaking={speakerVideo.isSpeaking}
+                audioLevel={speakerVideo.audioLevel}
+              />
+            ) : null}
+            <span className="name-badge">{currentSpeaker.name}</span>
           </>
         ) : null}
       </div>
 
+      <SpeakerQueueSummary speaker={speaker} />
     </section>
   );
 }
@@ -919,6 +1068,8 @@ function RobotRoomView({
   microphoneState,
   tokenMode,
   localTrack,
+  localSpeaking,
+  speaker,
   remoteVideos,
   error,
   keyboardStatus,
@@ -935,6 +1086,8 @@ function RobotRoomView({
   microphoneState: RobotMicrophoneState;
   tokenMode: "mock" | "livekit" | "none";
   localTrack: LocalVideoTrack | null;
+  localSpeaking: ParticipantSpeakingInfo;
+  speaker: SpeakerState;
   remoteVideos: RemoteVideoInfo[];
   error: string;
   keyboardStatus: KeyboardControlStatusMessage | null;
@@ -946,6 +1099,25 @@ function RobotRoomView({
   const controllerVideos = remoteVideos.filter((participant) => participant.role === "controller");
   const viewerVideos = remoteVideos.filter((participant) => participant.role === "viewer");
   const currentController = controllerVideos[0] ?? null;
+  const fallbackSpeaker =
+    speaker.currentSpeaker ??
+    (currentController
+      ? {
+          id: currentController.identity,
+          name: currentController.name,
+          role: currentController.role,
+          connected: true
+        }
+      : undefined);
+  const effectiveSpeaker = {
+    ...speaker,
+    currentSpeaker: fallbackSpeaker,
+    currentSpeakerId: fallbackSpeaker?.id,
+    currentSpeakerName: fallbackSpeaker?.name
+  };
+  const speakerVideo = fallbackSpeaker
+    ? (remoteVideos.find((participant) => participant.identity === fallbackSpeaker.id) ?? null)
+    : currentController;
   const [fullscreenError, setFullscreenError] = useState("");
 
   return (
@@ -1027,7 +1199,13 @@ function RobotRoomView({
                 <strong>{session.robotName}</strong>
                 <span>robot</span>
               </div>
-              <LocalPreview track={localTrack} robotName={session.robotName} compact onFullscreenError={setFullscreenError} />
+              <LocalPreview
+                track={localTrack}
+                robotName={session.robotName}
+                speaking={localSpeaking}
+                compact
+                onFullscreenError={setFullscreenError}
+              />
             </article>
 
             {viewerVideos.length === 0 ? (
@@ -1054,7 +1232,7 @@ function RobotRoomView({
           </div>
         </section>
 
-        <PrimaryControllerStage controller={currentController} onFullscreenError={setFullscreenError} />
+        <PrimarySpeakerStage speaker={effectiveSpeaker} speakerVideo={speakerVideo} onFullscreenError={setFullscreenError} />
       </section>
 
       <RemoteAudioMixer participants={remoteVideos} />
@@ -1076,6 +1254,8 @@ function App() {
   const [microphoneState, setMicrophoneState] = useState<RobotMicrophoneState>("idle");
   const [tokenMode, setTokenMode] = useState<"mock" | "livekit" | "none">("none");
   const [localTrack, setLocalTrack] = useState<LocalVideoTrack | null>(null);
+  const [localSpeaking, setLocalSpeaking] = useState<ParticipantSpeakingInfo>(EMPTY_SPEAKING);
+  const [speaker, setSpeaker] = useState<SpeakerState>(EMPTY_SPEAKER_STATE);
   const [remoteVideos, setRemoteVideos] = useState<RemoteVideoInfo[]>([]);
   const [keyboardStatus, setKeyboardStatus] = useState<KeyboardControlStatusMessage | null>(null);
   const [lastRobotControl, setLastRobotControl] = useState<RobotControlMessage | null>(null);
@@ -1095,10 +1275,12 @@ function App() {
     const currentSession = sessionRef.current;
     if (!room || !currentSession) {
       setRemoteVideos([]);
+      setLocalSpeaking(EMPTY_SPEAKING);
       return;
     }
 
     setRemoteVideos(collectRemoteVideos(room, participantsByIdRef.current, currentSession.participantId));
+    setLocalSpeaking(collectLocalSpeaking(room, localAudioTrackRef.current));
   }
 
   function resetConnections() {
@@ -1121,6 +1303,8 @@ function App() {
     participantsByIdRef.current = new Map();
     sessionRef.current = null;
     setLocalTrack(null);
+    setLocalSpeaking(EMPTY_SPEAKING);
+    setSpeaker(EMPTY_SPEAKER_STATE);
     setRemoteVideos([]);
     setKeyboardStatus(null);
     setLastRobotControl(null);
@@ -1154,6 +1338,7 @@ function App() {
     }
     audioTrack?.stop();
     setMicrophoneState("not-published");
+    setLocalSpeaking(EMPTY_SPEAKING);
     updateStoredMicrophonePreference(false);
   }
 
@@ -1217,6 +1402,7 @@ function App() {
       });
       localAudioTrackRef.current = audioTrack;
       setMicrophoneState("publishing");
+      setLocalSpeaking(collectLocalSpeaking(room, audioTrack));
       updateStoredMicrophonePreference(true);
     } catch (error) {
       audioTrack?.stop();
@@ -1330,6 +1516,16 @@ function App() {
           return;
         }
 
+        if (isSpeakerUpdateMessage(message)) {
+          setSpeaker({
+            currentSpeaker: message.currentSpeaker,
+            currentSpeakerId: message.currentSpeakerId,
+            currentSpeakerName: message.currentSpeakerName,
+            queue: message.queue
+          });
+          return;
+        }
+
         if (isRobotControlMessage(message)) {
           setLastRobotControl(message);
         }
@@ -1359,6 +1555,7 @@ function App() {
       room.on(RoomEvent.Disconnected, () => {
         setLiveKitState("disconnected");
         setRemoteVideos([]);
+        setLocalSpeaking(EMPTY_SPEAKING);
       });
       room.on(RoomEvent.ParticipantConnected, updateRemoteVideos);
       room.on(RoomEvent.ParticipantDisconnected, updateRemoteVideos);
@@ -1368,6 +1565,7 @@ function App() {
       room.on(RoomEvent.TrackUnpublished, updateRemoteVideos);
       room.on(RoomEvent.TrackMuted, updateRemoteVideos);
       room.on(RoomEvent.TrackUnmuted, updateRemoteVideos);
+      room.on(RoomEvent.ActiveSpeakersChanged, updateRemoteVideos);
 
       setLiveKitState("connecting");
       try {
@@ -1464,6 +1662,8 @@ function App() {
       microphoneState={microphoneState}
       tokenMode={tokenMode}
       localTrack={localTrack}
+      localSpeaking={localSpeaking}
+      speaker={speaker}
       remoteVideos={remoteVideos}
       error={error}
       keyboardStatus={keyboardStatus}

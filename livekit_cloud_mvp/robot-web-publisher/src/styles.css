@@ -10,10 +10,15 @@
   box-sizing: border-box;
 }
 
+html {
+  overflow-x: hidden;
+}
+
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 button,
@@ -423,6 +428,14 @@ button:focus-visible {
   object-fit: contain;
 }
 
+.local-preview.is-speaking,
+.remote-video-tile.is-speaking,
+.controller-video-frame.is-speaking {
+  outline: 2px solid rgba(68, 167, 153, 0.94);
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 3px rgba(92, 188, 176, 0.18);
+}
+
 .role-badge,
 .name-badge {
   position: absolute;
@@ -450,6 +463,66 @@ button:focus-visible {
   background: rgba(23, 32, 38, 0.82);
   font-size: 0.86rem;
   font-weight: 850;
+}
+
+.speaking-badge {
+  display: inline-grid;
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 3;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid rgba(220, 232, 229, 0.7);
+  border-radius: 999px;
+  color: #ffffff;
+  background: rgba(23, 32, 38, 0.74);
+  opacity: 0.34;
+  pointer-events: none;
+  transition:
+    opacity 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.speaking-badge.active {
+  background: rgba(33, 117, 125, 0.94);
+  opacity: 1;
+  box-shadow:
+    0 0 0 3px rgba(226, 245, 241, 0.28),
+    0 0 18px rgba(68, 167, 153, var(--speaking-level));
+}
+
+.speaking-icon {
+  position: relative;
+  width: 16px;
+  height: 14px;
+}
+
+.speaking-icon::before,
+.speaking-icon::after {
+  position: absolute;
+  content: "";
+}
+
+.speaking-icon::before {
+  left: 1px;
+  top: 4px;
+  width: 5px;
+  height: 6px;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+.speaking-icon::after {
+  left: 6px;
+  top: 1px;
+  width: 8px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-left: 0;
+  border-radius: 0 12px 12px 0;
 }
 
 .preview-warning {
@@ -508,6 +581,56 @@ button:focus-visible {
 .controller-audio-panel strong,
 .remote-audio-panel strong {
   color: #172026;
+}
+
+.speaker-queue-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid #d5dfdd;
+  border-radius: 6px;
+  background: #f8fbfa;
+  padding: 10px 12px;
+}
+
+.speaker-queue-panel > div:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.speaker-queue-panel span {
+  color: #587073;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.speaker-queue-panel strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #172026;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.speaker-queue-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.speaker-queue-list span {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #d5dfdd;
+  border-radius: 999px;
+  background: #ffffff;
+  padding: 4px 8px;
+  color: #4b5f62;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .remote-audio-panel {

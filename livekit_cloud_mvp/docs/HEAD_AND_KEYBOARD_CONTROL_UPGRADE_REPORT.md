@@ -1,123 +1,52 @@
-# Head And Keyboard Control Upgrade Report
+# Head Control Removal And Keyboard Control Status
 
-本报告记录本轮只在 `livekit_cloud_mvp/` 中完成的机器人头部控制与键盘连续控制升级。
+本文件记录 `livekit_cloud_mvp/` 中头部控制清理后的当前状态。
 
-## 本轮完成内容
+## 当前结论
 
-- Web controller 控制区新增头部控制按钮：
-  - `1005` 抬头。
-  - `1005` 低头。
-  - `1004` 头部停止。
-  - `1006` 头部复位。
-- 普通 `robot_control` 白名单扩展为：
+- Web UI 已移除头部控制区，不再显示“抬头”“低头”“头部停止”“头部复位”。
+- 前端普通 `robot_control` 不再发送 `1004/1005/1006`。
+- 后端普通 `robot_control` 白名单只允许：
   - `1000`
   - `1002`
   - `1003`
-  - `1004`
-  - `1005`
-  - `1006`
-- `1001` 仍然只允许通过键盘连续控制专用 WebSocket 消息进入后端，不允许普通 `robot_control` 任意发送。
-- 键盘控制支持：
-  - `ArrowUp` / `W`
-  - `ArrowDown` / `S`
-  - `ArrowLeft` / `A`
-  - `ArrowRight` / `D`
-  - `Space` 急停
-- 聊天输入框、textarea、select、contenteditable 聚焦时不会触发键盘运动控制。
-- controller WebSocket 断开、释放控制权、转移控制权或离开房间时，backend 会保留原有 `1000 stop` 逻辑，并尽力发送 `1004 head stop`。
+- `1004/1005/1006` 已从普通白名单移除，默认返回 `COMMAND_NOT_ALLOWED`。
+- `1007/1008/1009` 仍未实现，继续返回 `COMMAND_NOT_ALLOWED`。
+- `1001` 仍然只允许通过 keyboard control 专用 WebSocket 流程进入后端，不允许普通 `robot_control` 任意发送。
 
-## 新增环境变量
+## 保留的控制能力
 
-```env
-ROBOT_ENABLE_HEAD_CONTROL=false
+底盘步进控制：
+
+```text
+1000 -> stop
+1002 -> move distance
+1003 -> rotate angle
 ```
 
-说明：
-
-- mock 模式下头部命令只记录，不会驱动真实机器人。
-- real 模式下必须显式设置 `ROBOT_ENABLE_HEAD_CONTROL=true`，backend 才会把 `1004/1005/1006` 发给 PadBot MQTT 适配层。
-- 不需要、也不允许在 Web 或 Android 中配置机器人 key/token。
-
-## 1001 按住运动 / 松手停止
-
-键盘控制仍然走专用 WebSocket 消息：
+键盘连续控制仍然走专用 WebSocket 消息：
 
 - `keyboard_control_start`
 - `keyboard_control_keepalive`
 - `keyboard_control_stop`
 
-后端将方向转换为 `1001` 的 `lv/av`：
+后端将方向转换为 `1001` 的 `lv/av`，并保留松手、空格、页面失焦、deadman timeout、WebSocket 断开、controller release/transfer 的 `1000 stop` 保护。
 
-```text
-forward  -> { lv: +linearSpeed, av: 0 }
-backward -> { lv: -linearSpeed, av: 0 }
-left     -> { lv: 0, av: +angularSpeed }
-right    -> { lv: 0, av: -angularSpeed }
-```
+## 安全策略
 
-安全策略：
-
-- 默认关闭。
-- 必须同时开启 `ROBOT_ENABLE_KEYBOARD_CONTROL=true` 和 `ROBOT_ENABLE_CONTINUOUS_1001=true`。
 - viewer 和非当前 controller 会被后端拒绝。
-- 后端校验 direction、线速度、角速度和机器人在线状态。
-- 松手、空格、失焦、deadman timeout、断线、释放/转移控制权都会触发 `1000 stop`；单次最大时长保护已改为可选，默认 `ROBOT_KEYBOARD_MAX_SESSION_MS=0` 表示不启用。
-
-## 1004 / 1005 / 1006 头部控制
-
-后端参数校验：
-
-- `1004`：不接受运动参数。
-- `1005`：只接受 `d/a/av`。
-- `1005.d`：只允许 `1` 或 `2`。
-- `1005.a`：按厂商协议示例使用非负绝对角度，限制在 `0` 到 `180` deg。
-- `1005.av`：必须大于 `0` 且不超过 `120` deg/s。
-- `1006`：只接受 `d`。
-- `1006.d`：允许 `0/1/2`，缺省按 `0` 处理。
-
-PadBot MQTT payload：
-
-```text
-1004 -> {"a":"1004"}
-1005 -> {"a":"1005","m":{"d":1,"a":90,"av":60}}
-1006 -> {"a":"1006","m":{"d":1}}
-```
-
-## Viewer 为什么不能控制
-
-底盘和头部控制都先经过 backend 权限校验：
-
-- room 必须存在。
-- sender 必须在 room 中。
-- sender 必须是当前 controller。
-- robot 必须在线。
-- command 必须在白名单内。
-- 参数必须通过白名单字段和范围校验。
-
-viewer 即使绕过前端按钮直接发 WebSocket，也会被 backend 拒绝。
-
-## 抬头 / 低头角度校准
-
-当前 Web UI 常量：
-
-```text
-HEAD_TILT_CENTER_ANGLE_DEG = 90
-HEAD_TILT_UP_ANGLE_DEG = 120
-HEAD_TILT_DOWN_ANGLE_DEG = 60
-```
-
-`1005` 按厂商协议使用非负绝对角度，backend 会拒绝负数。真实机器人上如果发现抬头/低头方向相反，只需要交换 `HEAD_TILT_UP_ANGLE_DEG` 和 `HEAD_TILT_DOWN_ANGLE_DEG`，并再次低速测试。
+- 普通 `robot_control` 仍会检查 room、sender、current controller、robot online、命令白名单和参数白名单。
+- controller 断开、释放、转移控制权时，backend 使用 `1000 stop` 做底盘安全停止。
+- 不再提供 `ROBOT_ENABLE_HEAD_CONTROL`，也不再把 `1004/1005/1006` 发给 PadBot MQTT 适配层。
 
 ## 真实机器人测试前必须做
 
 1. 确认机器人在空旷区域。
 2. 旁边有人准备物理急停。
 3. 先测试 `1000 stop`。
-4. 再测试 `1004 head stop`。
-5. 低速短按测试底盘方向。
-6. 用非负绝对角度测试抬头/低头。
-7. 如果方向相反，先交换抬头/低头角度，不要继续高速度测试。
-8. 全程不要把真实 key/token 写入代码或前端。
+4. 再低速短按测试 `1002/1003`。
+5. 若启用 keyboard control，再低速测试方向键，并确认松手、空格、失焦、断线都会触发 `1000 stop`。
+6. 全程不要把真实 key/token 写入代码或前端。
 
 ## 未做内容
 
@@ -125,9 +54,3 @@ HEAD_TILT_DOWN_ANGLE_DEG = 60
 - 未新增数据库、账号系统、自建 WebRTC/SFU。
 - 未让 backend 转发音视频帧。
 - 未修改真实 `.env`。
-
-## 未验证项
-
-- 真实机器人头部抬头/低头方向需要现场校准。
-- 真实机器人头部控制是否需要额外厂商状态 topic，需要现场日志确认。
-- 本报告不声称真实机器人动作已通过，必须以现场测试为准。
