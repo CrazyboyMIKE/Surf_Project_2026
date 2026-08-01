@@ -26,6 +26,7 @@ type RobotMicrophoneState =
   | "device-not-found"
   | "unsupported"
   | "publish-failed";
+type MicrophoneDeviceListState = "idle" | "checking" | "ready" | "permission-denied" | "not-found" | "unsupported" | "error";
 type KeyboardDirection =
   | "forward"
   | "backward"
@@ -124,6 +125,12 @@ type ServerErrorMessage = {
 type RoomSession = JoinRobotResponse & {
   robotName: string;
   publishMicrophone: boolean;
+  microphoneDeviceId: string;
+};
+
+type MicrophoneDeviceInfo = {
+  deviceId: string;
+  label: string;
 };
 
 type RemoteVideoInfo = {
@@ -250,7 +257,8 @@ function readStoredRobotSession(): RoomSession | null {
       ...parsed,
       online: Boolean(parsed.online),
       tokenMode: parsed.tokenMode === "livekit" ? "livekit" : "mock",
-      publishMicrophone: Boolean(parsed.publishMicrophone)
+      publishMicrophone: Boolean(parsed.publishMicrophone),
+      microphoneDeviceId: typeof parsed.microphoneDeviceId === "string" ? parsed.microphoneDeviceId : ""
     } as RoomSession;
   } catch {
     return null;
@@ -324,6 +332,61 @@ function describeCameraError(error: unknown): string {
   }
 
   return `Camera failed to start: ${describeUnknownError(error)}`;
+}
+
+function collectMicrophoneDevices(devices: MediaDeviceInfo[]): MicrophoneDeviceInfo[] {
+  return devices
+    .filter((device) => device.kind === "audioinput")
+    .map((device, index) => ({
+      deviceId: device.deviceId,
+      label: device.label.trim() || (device.deviceId === "default" ? "Default microphone" : `Microphone ${index + 1}`)
+    }));
+}
+
+function describeMicrophoneState(state: RobotMicrophoneState): string {
+  switch (state) {
+    case "idle":
+      return "Microphone idle";
+    case "not-published":
+      return "Microphone off";
+    case "requesting":
+      return "Requesting microphone";
+    case "publishing":
+      return "Microphone publishing";
+    case "muted/off":
+      return "Microphone muted";
+    case "permission-denied":
+      return "Microphone permission denied";
+    case "device-not-found":
+      return "No microphone found";
+    case "unsupported":
+      return "Microphone unsupported";
+    case "publish-failed":
+      return "Microphone failed";
+  }
+}
+
+function describeMicrophoneDeviceState(state: MicrophoneDeviceListState, deviceCount: number): string {
+  switch (state) {
+    case "idle":
+      return "Click Refresh devices to choose a microphone.";
+    case "checking":
+      return "Checking microphone devices...";
+    case "ready":
+      return deviceCount === 1 ? "1 microphone available." : `${deviceCount} microphones available.`;
+    case "permission-denied":
+      return "Microphone permission denied.";
+    case "not-found":
+      return "No microphone devices found.";
+    case "unsupported":
+      return "Microphone device selection is not supported by this browser.";
+    case "error":
+      return "Could not refresh microphone devices.";
+  }
+}
+
+function createMicrophoneAudioOptions(deviceId: string) {
+  return deviceId ? { deviceId } : undefined;
 }
 
 function classifyMicrophoneError(error: unknown): { state: RobotMicrophoneState; message: string } {
@@ -985,25 +1048,81 @@ function PrimarySpeakerStage({
   );
 }
 
+function MicrophoneDevicePanel({
+  devices,
+  selectedDeviceId,
+  deviceListState,
+  microphoneState,
+  pending,
+  onRefresh,
+  onDeviceChange
+}: {
+  devices: MicrophoneDeviceInfo[];
+  selectedDeviceId: string;
+  deviceListState: MicrophoneDeviceListState;
+  microphoneState: RobotMicrophoneState;
+  pending: boolean;
+  onRefresh: () => void;
+  onDeviceChange: (deviceId: string) => void;
+}) {
+  return (
+    <div className="microphone-device-panel" aria-label="Microphone device selection">
+      <div className="microphone-device-header">
+        <strong>Select microphone</strong>
+        <span>{describeMicrophoneState(microphoneState)}</span>
+      </div>
+      <div className="microphone-device-controls">
+        <label>
+          Microphone
+          <select value={selectedDeviceId} disabled={pending || devices.length === 0} onChange={(event) => onDeviceChange(event.target.value)}>
+            <option value="">Default microphone</option>
+            {devices.map((device, index) => (
+              <option key={`${device.deviceId}-${index}`} value={device.deviceId}>
+                {device.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="button" className="ghost-button" disabled={pending || deviceListState === "checking"} onClick={onRefresh}>
+          {deviceListState === "checking" ? "Refreshing..." : "Refresh devices"}
+        </button>
+      </div>
+      <p className="microphone-device-status">{describeMicrophoneDeviceState(deviceListState, devices.length)}</p>
+    </div>
+  );
+}
+
 function EntryView({
   robotName,
   roomName,
   publishMicrophone,
+  microphoneDevices,
+  selectedMicrophoneDeviceId,
+  microphoneDeviceState,
+  microphoneState,
   error,
   pending,
   onRobotNameChange,
   onRoomNameChange,
   onPublishMicrophoneChange,
+  onRefreshMicrophones,
+  onMicrophoneDeviceChange,
   onEnter
 }: {
   robotName: string;
   roomName: string;
   publishMicrophone: boolean;
+  microphoneDevices: MicrophoneDeviceInfo[];
+  selectedMicrophoneDeviceId: string;
+  microphoneDeviceState: MicrophoneDeviceListState;
+  microphoneState: RobotMicrophoneState;
   error: string;
   pending: boolean;
   onRobotNameChange: (value: string) => void;
   onRoomNameChange: (value: string) => void;
   onPublishMicrophoneChange: (value: boolean) => void;
+  onRefreshMicrophones: () => void;
+  onMicrophoneDeviceChange: (deviceId: string) => void;
   onEnter: (mode: "create" | "join") => void;
 }) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -1043,6 +1162,16 @@ function EntryView({
             Publish microphone audio
           </label>
 
+          <MicrophoneDevicePanel
+            devices={microphoneDevices}
+            selectedDeviceId={selectedMicrophoneDeviceId}
+            deviceListState={microphoneDeviceState}
+            microphoneState={microphoneState}
+            pending={pending}
+            onRefresh={onRefreshMicrophones}
+            onDeviceChange={onMicrophoneDeviceChange}
+          />
+
           <div className="entry-actions">
             <button type="button" disabled={pending} onClick={() => onEnter("create")}>
               创建房间
@@ -1066,6 +1195,9 @@ function RobotRoomView({
   liveKitState,
   publishState,
   microphoneState,
+  microphoneDevices,
+  selectedMicrophoneDeviceId,
+  microphoneDeviceState,
   tokenMode,
   localTrack,
   localSpeaking,
@@ -1074,6 +1206,8 @@ function RobotRoomView({
   error,
   keyboardStatus,
   lastRobotControl,
+  onRefreshMicrophones,
+  onMicrophoneDeviceChange,
   onStartMicrophone,
   onStopMicrophone,
   onLeave
@@ -1084,6 +1218,9 @@ function RobotRoomView({
   liveKitState: string;
   publishState: string;
   microphoneState: RobotMicrophoneState;
+  microphoneDevices: MicrophoneDeviceInfo[];
+  selectedMicrophoneDeviceId: string;
+  microphoneDeviceState: MicrophoneDeviceListState;
   tokenMode: "mock" | "livekit" | "none";
   localTrack: LocalVideoTrack | null;
   localSpeaking: ParticipantSpeakingInfo;
@@ -1092,6 +1229,8 @@ function RobotRoomView({
   error: string;
   keyboardStatus: KeyboardControlStatusMessage | null;
   lastRobotControl: RobotControlMessage | null;
+  onRefreshMicrophones: () => void;
+  onMicrophoneDeviceChange: (deviceId: string) => void;
   onStartMicrophone: () => void;
   onStopMicrophone: () => void;
   onLeave: () => void;
@@ -1151,7 +1290,7 @@ function RobotRoomView({
             Publish <strong>{publishState}</strong>
           </span>
           <span>
-            Microphone <strong>{microphoneState}</strong>
+            Microphone <strong>{describeMicrophoneState(microphoneState)}</strong>
           </span>
           <span>
             Token <strong>{tokenMode}</strong>
@@ -1166,12 +1305,18 @@ function RobotRoomView({
             Direction <strong>{keyboardStatus?.direction?.replace("_", " ") ?? "-"}</strong>
           </span>
           <span>
-            Last command <strong>{lastRobotControl?.command ?? "-"}</strong>
-          </span>
-          <span>
-            Stop reason <strong>{keyboardStatus?.stopReason ?? lastRobotControl?.parameters?.stopReason ?? "-"}</strong>
+            Control <strong>{lastRobotControl ? "Last action received" : "Waiting"}</strong>
           </span>
         </div>
+        <MicrophoneDevicePanel
+          devices={microphoneDevices}
+          selectedDeviceId={selectedMicrophoneDeviceId}
+          deviceListState={microphoneDeviceState}
+          microphoneState={microphoneState}
+          pending={false}
+          onRefresh={onRefreshMicrophones}
+          onDeviceChange={onMicrophoneDeviceChange}
+        />
         <div className="microphone-actions" aria-label="Robot microphone controls">
           <button type="button" disabled={liveKitState !== "connected" || microphoneState === "publishing"} onClick={onStartMicrophone}>
             Publish microphone
@@ -1252,6 +1397,9 @@ function App() {
   const [publishState, setPublishState] = useState("idle");
   const [publishMicrophone, setPublishMicrophone] = useState(() => Boolean(storedSession?.publishMicrophone));
   const [microphoneState, setMicrophoneState] = useState<RobotMicrophoneState>("idle");
+  const [microphoneDevices, setMicrophoneDevices] = useState<MicrophoneDeviceInfo[]>([]);
+  const [selectedMicrophoneDeviceId, setSelectedMicrophoneDeviceId] = useState(() => storedSession?.microphoneDeviceId ?? "");
+  const [microphoneDeviceState, setMicrophoneDeviceState] = useState<MicrophoneDeviceListState>("idle");
   const [tokenMode, setTokenMode] = useState<"mock" | "livekit" | "none">("none");
   const [localTrack, setLocalTrack] = useState<LocalVideoTrack | null>(null);
   const [localSpeaking, setLocalSpeaking] = useState<ParticipantSpeakingInfo>(EMPTY_SPEAKING);
@@ -1330,15 +1478,74 @@ function App() {
     saveStoredRobotSession(nextSession);
   }
 
-  async function stopRobotMicrophone() {
+  function updateStoredMicrophoneDevice(nextDeviceId: string) {
+    setSelectedMicrophoneDeviceId(nextDeviceId);
+    const currentSession = sessionRef.current ?? session;
+    if (!currentSession) {
+      return;
+    }
+
+    const nextSession = {
+      ...currentSession,
+      microphoneDeviceId: nextDeviceId
+    };
+    sessionRef.current = nextSession;
+    setSession(nextSession);
+    saveStoredRobotSession(nextSession);
+  }
+
+  async function refreshMicrophoneDevices() {
+    if (!navigator.mediaDevices?.enumerateDevices) {
+      setMicrophoneDevices([]);
+      setMicrophoneDeviceState("unsupported");
+      setError("Microphone device selection is not supported by this browser.");
+      return;
+    }
+
+    setMicrophoneDeviceState("checking");
+    setError("");
+    let permissionStream: MediaStream | null = null;
+
+    try {
+      if (navigator.mediaDevices.getUserMedia) {
+        permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      }
+
+      const nextDevices = collectMicrophoneDevices(await navigator.mediaDevices.enumerateDevices());
+      setMicrophoneDevices(nextDevices);
+      setMicrophoneDeviceState(nextDevices.length > 0 ? "ready" : "not-found");
+      if (selectedMicrophoneDeviceId && !nextDevices.some((device) => device.deviceId === selectedMicrophoneDeviceId)) {
+        updateStoredMicrophoneDevice("");
+      }
+    } catch (error) {
+      const microphoneError = classifyMicrophoneError(error);
+      setMicrophoneDevices([]);
+      setMicrophoneDeviceState(
+        microphoneError.state === "permission-denied"
+          ? "permission-denied"
+          : microphoneError.state === "device-not-found"
+            ? "not-found"
+            : "error"
+      );
+      setError(microphoneError.message);
+    } finally {
+      permissionStream?.getTracks().forEach((track) => track.stop());
+    }
+  }
+
+  async function releaseRobotMicrophoneTrack(room: Room | null) {
     const audioTrack = localAudioTrackRef.current;
     localAudioTrackRef.current = null;
-    if (audioTrack && roomRef.current) {
-      await roomRef.current.localParticipant.unpublishTrack(audioTrack, true).catch(() => undefined);
+    if (audioTrack && room) {
+      await room.localParticipant.unpublishTrack(audioTrack, true).catch(() => undefined);
     }
     audioTrack?.stop();
-    setMicrophoneState("not-published");
     setLocalSpeaking(EMPTY_SPEAKING);
+  }
+
+  async function stopRobotMicrophone() {
+    await releaseRobotMicrophoneTrack(roomRef.current);
+    setMicrophoneState("not-published");
     updateStoredMicrophonePreference(false);
   }
 
@@ -1374,15 +1581,14 @@ function App() {
     setError(message);
   }
 
-  async function publishRobotMicrophone(room: Room, robotId: string, shouldPublishMicrophone: boolean) {
+  async function publishRobotMicrophone(
+    room: Room,
+    robotId: string,
+    shouldPublishMicrophone: boolean,
+    microphoneDeviceId = selectedMicrophoneDeviceId
+  ) {
     if (!shouldPublishMicrophone) {
       setMicrophoneState("not-published");
-      return;
-    }
-
-    if (localAudioTrackRef.current) {
-      setMicrophoneState("publishing");
-      updateStoredMicrophonePreference(true);
       return;
     }
 
@@ -1395,7 +1601,8 @@ function App() {
     setMicrophoneState("requesting");
     let audioTrack: LocalAudioTrack | null = null;
     try {
-      audioTrack = await createLocalAudioTrack();
+      await releaseRobotMicrophoneTrack(room);
+      audioTrack = await createLocalAudioTrack(createMicrophoneAudioOptions(microphoneDeviceId));
       await room.localParticipant.publishTrack(audioTrack, {
         source: Track.Source.Microphone,
         name: `${robotId}-microphone`
@@ -1415,6 +1622,18 @@ function App() {
     }
   }
 
+  async function handleMicrophoneDeviceChange(deviceId: string) {
+    updateStoredMicrophoneDevice(deviceId);
+    const room = roomRef.current;
+    const currentSession = sessionRef.current ?? session;
+    if (!room || !currentSession || microphoneState !== "publishing") {
+      return;
+    }
+
+    setError("");
+    await publishRobotMicrophone(room, currentSession.robotId, true, deviceId);
+  }
+
   async function startRobotMicrophone() {
     const room = roomRef.current;
     const currentSession = sessionRef.current ?? session;
@@ -1424,7 +1643,7 @@ function App() {
     }
 
     setError("");
-    await publishRobotMicrophone(room, currentSession.robotId, true);
+    await publishRobotMicrophone(room, currentSession.robotId, true, selectedMicrophoneDeviceId);
   }
 
   async function enterRoom(_mode: "create" | "join", options: { restoreSession?: RoomSession } = {}) {
@@ -1432,7 +1651,8 @@ function App() {
     const trimmedRoomName = (restoredSession?.roomName ?? roomName).trim();
     const trimmedRobotName = (restoredSession?.robotName ?? robotName).trim();
     const savedPublishMicrophone = restoredSession?.publishMicrophone ?? publishMicrophone;
-    const shouldPublishMicrophone = savedPublishMicrophone;
+    const savedMicrophoneDeviceId = restoredSession?.microphoneDeviceId ?? selectedMicrophoneDeviceId;
+    const shouldPublishMicrophone = restoredSession ? false : savedPublishMicrophone;
     if (!trimmedRobotName) {
       setError("用户名不能为空");
       return;
@@ -1448,6 +1668,7 @@ function App() {
     setRoomName(trimmedRoomName);
     setRobotName(trimmedRobotName);
     setPublishMicrophone(savedPublishMicrophone);
+    setSelectedMicrophoneDeviceId(savedMicrophoneDeviceId);
     setBackendState("joining");
     setWebSocketState("idle");
     setLiveKitState("idle");
@@ -1464,7 +1685,8 @@ function App() {
       const nextSession = {
         ...joinResponse,
         robotName: trimmedRobotName,
-        publishMicrophone: savedPublishMicrophone
+        publishMicrophone: shouldPublishMicrophone,
+        microphoneDeviceId: savedMicrophoneDeviceId
       };
       setSession(nextSession);
       sessionRef.current = nextSession;
@@ -1602,7 +1824,7 @@ function App() {
         throw new Error(describeLiveKitPublishError(error));
       }
       setPublishState("publishing");
-      await publishRobotMicrophone(room, joinResponse.robotId, shouldPublishMicrophone);
+      await publishRobotMicrophone(room, joinResponse.robotId, shouldPublishMicrophone, savedMicrophoneDeviceId);
       updateRemoteVideos();
     } catch (error) {
       if (restoredSession) {
@@ -1642,11 +1864,17 @@ function App() {
         robotName={robotName}
         roomName={roomName}
         publishMicrophone={publishMicrophone}
+        microphoneDevices={microphoneDevices}
+        selectedMicrophoneDeviceId={selectedMicrophoneDeviceId}
+        microphoneDeviceState={microphoneDeviceState}
+        microphoneState={microphoneState}
         error={error}
         pending={pending}
         onRobotNameChange={setRobotName}
         onRoomNameChange={setRoomName}
         onPublishMicrophoneChange={setPublishMicrophone}
+        onRefreshMicrophones={refreshMicrophoneDevices}
+        onMicrophoneDeviceChange={(deviceId) => void handleMicrophoneDeviceChange(deviceId)}
         onEnter={enterRoom}
       />
     );
@@ -1660,6 +1888,9 @@ function App() {
       liveKitState={liveKitState}
       publishState={publishState}
       microphoneState={microphoneState}
+      microphoneDevices={microphoneDevices}
+      selectedMicrophoneDeviceId={selectedMicrophoneDeviceId}
+      microphoneDeviceState={microphoneDeviceState}
       tokenMode={tokenMode}
       localTrack={localTrack}
       localSpeaking={localSpeaking}
@@ -1668,6 +1899,8 @@ function App() {
       error={error}
       keyboardStatus={keyboardStatus}
       lastRobotControl={lastRobotControl}
+      onRefreshMicrophones={refreshMicrophoneDevices}
+      onMicrophoneDeviceChange={(deviceId) => void handleMicrophoneDeviceChange(deviceId)}
       onStartMicrophone={startRobotMicrophone}
       onStopMicrophone={stopRobotMicrophone}
       onLeave={leaveRoom}

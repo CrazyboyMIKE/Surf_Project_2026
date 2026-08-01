@@ -428,15 +428,13 @@ button:focus-visible {
   color: #cfe1dd;
 }
 
-.event-strip {
+.robot-status-strip {
   display: grid;
   gap: 6px;
-  max-height: clamp(72px, 12vh, 112px);
-  overflow: auto;
   padding: 12px 14px;
 }
 
-.event-strip p,
+.robot-status-strip p,
 .empty-state {
   margin: 0;
   color: #596d70;
@@ -490,12 +488,6 @@ button:focus-visible {
   font-weight: 800;
 }
 
-.control-pad button small {
-  color: #587073;
-  font-size: 0.68rem;
-  font-weight: 750;
-}
-
 .control-pad button:first-child {
   grid-column: 2;
 }
@@ -524,10 +516,6 @@ button:focus-visible {
   background: #edf2f1;
 }
 
-.control-pad button:disabled small {
-  color: #8a9897;
-}
-
 .keyboard-control-panel {
   display: grid;
   gap: 12px;
@@ -548,8 +536,7 @@ button:focus-visible {
   width: auto;
 }
 
-.risk-note,
-.keyboard-result {
+.risk-note {
   margin: 0;
   border: 1px solid #e2baa9;
   border-radius: 6px;
@@ -559,39 +546,54 @@ button:focus-visible {
   font-weight: 750;
 }
 
-.keyboard-cheatsheet {
-  display: grid;
-  gap: 10px;
-  border: 1px solid #d5dfdd;
+.keyboard-help {
+  position: relative;
+  width: max-content;
+  max-width: 100%;
+}
+
+.keyboard-help-button {
+  display: inline-grid;
+  width: 34px;
+  min-height: 34px;
+  place-items: center;
+  border: 1px solid #aac0bc;
   border-radius: 6px;
-  background: #f8fbfa;
-  padding: 10px;
-}
-
-.keyboard-cheatsheet-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
   color: #172026;
+  background: #eef7f4;
+  padding: 0;
+  font-weight: 950;
 }
 
-.keyboard-cheatsheet-header span,
-.keyboard-cheatsheet p {
+.keyboard-help-popover {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 8px);
+  left: 0;
+  display: grid;
+  width: min(520px, calc(100vw - 48px));
+  gap: 10px;
+  border: 1px solid #b8c8c5;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 12px;
+  box-shadow: 0 14px 34px rgba(23, 32, 38, 0.16);
+}
+
+.keyboard-help-popover p {
   margin: 0;
   color: #587073;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   font-weight: 700;
 }
 
-.keyboard-cheatsheet-grid {
+.keyboard-help-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(120px, 1fr));
   gap: 8px;
 }
 
-.keyboard-cheatsheet-grid span {
+.keyboard-help-grid span {
   display: grid;
   min-width: 0;
   gap: 4px;
@@ -603,12 +605,12 @@ button:focus-visible {
   font-size: 0.78rem;
 }
 
-.keyboard-cheatsheet-grid strong {
+.keyboard-help-grid strong {
   color: #172026;
   font-size: 0.86rem;
 }
 
-.keyboard-cheatsheet kbd {
+.keyboard-help kbd {
   display: inline-grid;
   min-width: 22px;
   place-items: center;
@@ -622,7 +624,7 @@ button:focus-visible {
   font-weight: 900;
 }
 
-.keyboard-cheatsheet-stop {
+.keyboard-help-stop {
   border-color: #e2baa9 !important;
   background: #fff3ee !important;
 }
@@ -637,26 +639,15 @@ button:focus-visible {
   padding: 0;
 }
 
-.keyboard-status-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(140px, 1fr));
-  gap: 8px;
-  color: #4b5f62;
-  font-size: 0.86rem;
-}
-
-.keyboard-status-grid span {
-  min-width: 0;
+.keyboard-simple-status {
+  margin: 0;
   border: 1px solid #d5dfdd;
   border-radius: 6px;
   background: #f8fbfa;
   padding: 8px 10px;
-}
-
-.keyboard-status-grid strong {
-  display: block;
-  overflow-wrap: anywhere;
-  color: #172026;
+  color: #4b5f62;
+  font-size: 0.86rem;
+  font-weight: 800;
 }
 
 .keyboard-stop-button {
@@ -1449,12 +1440,15 @@ button:focus-visible {
 
   .status-grid,
   .control-pad,
-  .keyboard-cheatsheet-grid,
+  .keyboard-help-grid,
   .keyboard-settings,
-  .keyboard-status-grid,
   .media-status-grid,
   .admin-detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .keyboard-help-popover {
+    width: min(420px, calc(100vw - 36px));
   }
 
   .status-actions .secondary-button,

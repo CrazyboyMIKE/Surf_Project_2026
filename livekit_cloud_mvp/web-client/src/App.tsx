@@ -470,7 +470,7 @@ function RoomApp() {
             stageParticipantRole={selectedStageRole}
             stageParticipantName={selectedStageParticipantName}
             stageParticipantIdentity={selectedStageParticipantIdentity}
-            robotEvents={roomSocket.robotEvents}
+            robotActionCount={roomSocket.robotEvents.length}
           />
         </div>
 
@@ -529,7 +529,6 @@ function RoomApp() {
             actionPending={actionPending}
             keyboardControlConfig={session.keyboardControl ?? FALLBACK_KEYBOARD_CONTROL_CONFIG}
             keyboardStatus={roomSocket.keyboardStatus}
-            lastKeyboardResult={roomSocket.lastKeyboardResult}
             onControl={roomSocket.sendControl}
             onTransferControl={handleTransferControl}
             onKeyboardStart={roomSocket.sendKeyboardControlStart}

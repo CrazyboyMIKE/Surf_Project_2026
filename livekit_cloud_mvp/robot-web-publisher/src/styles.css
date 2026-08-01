@@ -22,7 +22,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -108,7 +109,8 @@ label {
   font-weight: 750;
 }
 
-input {
+input,
+select {
   width: 100%;
   border: 1px solid #b8c8c5;
   border-radius: 6px;
@@ -129,6 +131,7 @@ input {
 }
 
 input:focus,
+select:focus,
 button:focus-visible {
   outline: 3px solid rgba(33, 117, 125, 0.24);
   outline-offset: 2px;
@@ -211,6 +214,47 @@ button:focus-visible {
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 12px;
+}
+
+.microphone-device-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid #c6d3d0;
+  border-radius: 6px;
+  background: #f8fbfa;
+  padding: 10px 12px;
+}
+
+.microphone-device-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.microphone-device-header strong {
+  color: #172026;
+}
+
+.microphone-device-header span,
+.microphone-device-status {
+  margin: 0;
+  color: #587073;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.microphone-device-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.microphone-device-controls button {
+  white-space: nowrap;
 }
 
 .status-grid {
@@ -669,7 +713,8 @@ button:focus-visible {
 
 @media (max-width: 880px) {
   .publisher-layout,
-  .status-grid {
+  .status-grid,
+  .microphone-device-controls {
     grid-template-columns: 1fr;
   }
 

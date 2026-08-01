@@ -18,7 +18,6 @@ type ControlPanelProps = {
   actionPending: boolean;
   keyboardControlConfig: KeyboardControlConfig;
   keyboardStatus: KeyboardControlStatus | null;
-  lastKeyboardResult: string;
   onControl: (command: RobotCommand, parameters?: ControlParameters) => void;
   onTransferControl: (targetParticipantId: string) => void;
   onKeyboardStart: (direction: KeyboardDirection, linearSpeed: number, angularSpeed: number) => void;
@@ -35,7 +34,6 @@ export function ControlPanel({
   actionPending,
   keyboardControlConfig,
   keyboardStatus,
-  lastKeyboardResult,
   onControl,
   onTransferControl,
   onKeyboardStart,
@@ -56,27 +54,22 @@ export function ControlPanel({
         <button type="button" disabled={disabled} onClick={() => onControl("1002", { distanceCm: 20 })}>
           ↑
           <span>Forward</span>
-          <small>1002 d=20cm</small>
         </button>
         <button type="button" disabled={disabled} onClick={() => onControl("1003", { angleDeg: 15 })}>
           ↺
           <span>Left</span>
-          <small>1003 a=15deg</small>
         </button>
         <button type="button" className="stop-button" disabled={disabled} onClick={() => onControl("1000")}>
           ■
           <span>Stop</span>
-          <small>1000 stop</small>
         </button>
         <button type="button" disabled={disabled} onClick={() => onControl("1003", { angleDeg: -15 })}>
           ↻
           <span>Right</span>
-          <small>1003 a=-15deg</small>
         </button>
         <button type="button" disabled={disabled} onClick={() => onControl("1002", { distanceCm: -20 })}>
           ↓
           <span>Back</span>
-          <small>1002 d=-20cm</small>
         </button>
       </div>
 
@@ -86,7 +79,6 @@ export function ControlPanel({
         connectionState={connectionState}
         config={keyboardControlConfig}
         status={keyboardStatus}
-        lastResult={lastKeyboardResult}
         onStart={onKeyboardStart}
         onKeepalive={onKeyboardKeepalive}
         onStop={onKeyboardStop}

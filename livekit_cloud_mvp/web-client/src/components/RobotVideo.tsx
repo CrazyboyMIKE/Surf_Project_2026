@@ -1,5 +1,5 @@
 import { useEffect, useRef, type CSSProperties } from "react";
-import type { RobotControlEvent, Role } from "../types";
+import type { Role } from "../types";
 import type { LiveKitConnectionState, RobotVideoTrackInfo } from "../useLiveKitRoom";
 
 type RobotVideoProps = {
@@ -9,24 +9,8 @@ type RobotVideoProps = {
   stageParticipantRole: Role | "unknown";
   stageParticipantName: string;
   stageParticipantIdentity: string;
-  robotEvents: RobotControlEvent[];
+  robotActionCount: number;
 };
-
-function describeEvent(event: RobotControlEvent): string {
-  if (event.command === "1002") {
-    return `1002 move ${event.parameters.distanceCm ?? 20}cm`;
-  }
-
-  if (event.command === "1003") {
-    return `1003 rotate ${event.parameters.angleDeg ?? 15}deg`;
-  }
-
-  if (event.command === "1001") {
-    return `1001 keyboard lv=${event.parameters.lv ?? 0} av=${event.parameters.av ?? 0}`;
-  }
-
-  return "1000 stop";
-}
 
 function getPlaceholderText(
   liveKitState: LiveKitConnectionState,
@@ -100,7 +84,7 @@ export function RobotVideo({
   stageParticipantRole,
   stageParticipantName,
   stageParticipantIdentity,
-  robotEvents
+  robotActionCount
 }: RobotVideoProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -141,16 +125,8 @@ export function RobotVideo({
         </div>
       )}
 
-      <div className="event-strip" aria-label="Mock robot control log">
-        {robotEvents.length === 0 ? (
-          <p>No mock robot commands yet</p>
-        ) : (
-          robotEvents.map((event) => (
-            <p key={`${event.timestamp}-${event.command}`}>
-              {new Date(event.timestamp).toLocaleTimeString()} · {describeEvent(event)}
-            </p>
-          ))
-        )}
+      <div className="robot-status-strip" aria-label="Robot status">
+        <p>{robotOnline ? (robotActionCount > 0 ? "Last action sent" : "Robot ready") : "Robot offline"}</p>
       </div>
     </section>
   );
