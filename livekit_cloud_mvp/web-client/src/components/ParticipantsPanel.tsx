@@ -98,6 +98,63 @@ function SpeakingBadge({
   );
 }
 
+function attachPreviewVideoTrack(track: RemoteVideoTrack | LocalVideoTrack, videoElement: HTMLVideoElement, muted: boolean): () => void {
+  let disposed = false;
+  const retryTimers: Array<ReturnType<typeof window.setTimeout>> = [];
+
+  videoElement.autoplay = true;
+  videoElement.playsInline = true;
+  videoElement.preload = "auto";
+  videoElement.muted = muted;
+  videoElement.defaultMuted = muted;
+  videoElement.setAttribute("playsinline", "");
+  videoElement.setAttribute("webkit-playsinline", "true");
+  if (muted) {
+    videoElement.setAttribute("muted", "");
+  }
+
+  track.attach(videoElement);
+
+  const playVideo = () => {
+    if (disposed) {
+      return;
+    }
+
+    void videoElement.play().catch(() => {
+      // Some mobile browsers delay playback until the page is visible again.
+    });
+  };
+
+  const playWhenVisible = () => {
+    if (document.visibilityState !== "hidden") {
+      playVideo();
+    }
+  };
+
+  videoElement.addEventListener("loadedmetadata", playVideo);
+  videoElement.addEventListener("loadeddata", playVideo);
+  videoElement.addEventListener("canplay", playVideo);
+  document.addEventListener("visibilitychange", playWhenVisible);
+  window.addEventListener("focus", playVideo);
+  window.addEventListener("pageshow", playVideo);
+
+  window.requestAnimationFrame(playVideo);
+  retryTimers.push(window.setTimeout(playVideo, 250), window.setTimeout(playVideo, 1000));
+
+  return () => {
+    disposed = true;
+    retryTimers.forEach((timer) => window.clearTimeout(timer));
+    videoElement.removeEventListener("loadedmetadata", playVideo);
+    videoElement.removeEventListener("loadeddata", playVideo);
+    videoElement.removeEventListener("canplay", playVideo);
+    document.removeEventListener("visibilitychange", playWhenVisible);
+    window.removeEventListener("focus", playVideo);
+    window.removeEventListener("pageshow", playVideo);
+    videoElement.pause();
+    track.detach(videoElement);
+  };
+}
+
 function RemoteVideo({
   track,
   hasAudioTrack,
@@ -119,16 +176,12 @@ function RemoteVideo({
       return;
     }
 
-    track.attach(videoElement);
-
-    return () => {
-      track.detach(videoElement);
-    };
+    return attachPreviewVideoTrack(track, videoElement, true);
   }, [track]);
 
   return (
     <div className={`participant-video${hasAudioTrack && isSpeaking ? " is-speaking" : ""}`}>
-      {track ? <video ref={videoRef} autoPlay playsInline /> : <span>{placeholder}</span>}
+      {track ? <video ref={videoRef} autoPlay muted playsInline /> : <span>{placeholder}</span>}
       <SpeakingBadge hasAudioTrack={hasAudioTrack} isSpeaking={isSpeaking} audioLevel={audioLevel} />
     </div>
   );
@@ -151,11 +204,7 @@ function LocalVideoPreview({
       return;
     }
 
-    track.attach(videoElement);
-
-    return () => {
-      track.detach(videoElement);
-    };
+    return attachPreviewVideoTrack(track, videoElement, true);
   }, [track]);
 
   return (

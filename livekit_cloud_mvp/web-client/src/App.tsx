@@ -135,6 +135,10 @@ function dockButtonClassName(active: boolean, highlighted: boolean): string {
   return ["floating-dock-button", active ? "active" : "", highlighted ? "has-alert" : ""].filter(Boolean).join(" ");
 }
 
+function mobileActionClassName(kind: "primary" | "secondary" | "danger", active = false): string {
+  return ["mobile-room-action-button", `mobile-${kind}`, active ? "active" : ""].filter(Boolean).join(" ");
+}
+
 function getManualFeedbackDirection(command: RobotCommand, parameters: ControlParameters = {}): DirectionFeedbackSignal {
   if (command === "1000") {
     return "stop";
@@ -153,6 +157,63 @@ export function App() {
   }
 
   return <RoomApp />;
+}
+
+function MobileRoomActions({
+  role,
+  robotOnline,
+  webSocketState,
+  controlRequestPending,
+  controlActionsDisabled,
+  actionPending,
+  onRequestControl,
+  onReleaseControl,
+  onLeaveRoom
+}: {
+  role: WebRole | null;
+  robotOnline: boolean;
+  webSocketState: string;
+  controlRequestPending: boolean;
+  controlActionsDisabled: boolean;
+  actionPending: boolean;
+  onRequestControl: () => void;
+  onReleaseControl: () => void;
+  onLeaveRoom: () => void;
+}) {
+  const isController = role === "controller";
+
+  return (
+    <nav className="mobile-room-actions" aria-label="Room actions">
+      <div className="mobile-room-summary" aria-label="Room status">
+        <span>{role ?? "viewer"}</span>
+        <span className={webSocketState === "connected" ? "online" : "offline"}>
+          {webSocketState === "connected" ? "connected" : "reconnecting"}
+        </span>
+        <span className={robotOnline ? "online" : "offline"}>{robotOnline ? "robot online" : "robot offline"}</span>
+      </div>
+      <div className="mobile-room-action-grid">
+        <button
+          type="button"
+          className={mobileActionClassName("primary", controlRequestPending)}
+          onClick={onRequestControl}
+          disabled={isController || controlRequestPending || actionPending || controlActionsDisabled}
+        >
+          {controlRequestPending ? "Queued" : "Request"}
+        </button>
+        <button
+          type="button"
+          className={mobileActionClassName("secondary")}
+          onClick={onReleaseControl}
+          disabled={!isController || actionPending || controlActionsDisabled}
+        >
+          Release
+        </button>
+        <button type="button" className={mobileActionClassName("danger")} onClick={onLeaveRoom} disabled={actionPending}>
+          Leave
+        </button>
+      </div>
+    </nav>
+  );
 }
 
 function RoomApp() {
@@ -565,6 +626,17 @@ function RoomApp() {
         onReleaseControl={handleReleaseControl}
         onLeaveRoom={handleLeaveRoom}
         actionPending={actionPending}
+      />
+      <MobileRoomActions
+        role={effectiveRole}
+        robotOnline={roomSocket.robotOnline}
+        webSocketState={roomSocket.connectionState}
+        controlRequestPending={controlRequestPending}
+        controlActionsDisabled={controlActionsDisabled}
+        actionPending={actionPending}
+        onRequestControl={handleRequestControl}
+        onReleaseControl={handleReleaseControl}
+        onLeaveRoom={handleLeaveRoom}
       />
 
       {activeNotice ? <p className="notice notice-toast">{activeNotice}</p> : null}

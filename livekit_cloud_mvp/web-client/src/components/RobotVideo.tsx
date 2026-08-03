@@ -131,6 +131,60 @@ function DirectionFeedbackPad({
   );
 }
 
+function attachStageVideoTrack(track: RobotVideoTrackInfo["track"], videoElement: HTMLVideoElement): () => void {
+  let disposed = false;
+  const retryTimers: Array<ReturnType<typeof window.setTimeout>> = [];
+
+  videoElement.autoplay = true;
+  videoElement.muted = true;
+  videoElement.defaultMuted = true;
+  videoElement.playsInline = true;
+  videoElement.preload = "auto";
+  videoElement.setAttribute("muted", "");
+  videoElement.setAttribute("playsinline", "");
+  videoElement.setAttribute("webkit-playsinline", "true");
+  track.attach(videoElement);
+
+  const playVideo = () => {
+    if (disposed) {
+      return;
+    }
+
+    void videoElement.play().catch(() => {
+      // Mobile browsers may defer playback around page visibility changes.
+    });
+  };
+
+  const playWhenVisible = () => {
+    if (document.visibilityState !== "hidden") {
+      playVideo();
+    }
+  };
+
+  videoElement.addEventListener("loadedmetadata", playVideo);
+  videoElement.addEventListener("loadeddata", playVideo);
+  videoElement.addEventListener("canplay", playVideo);
+  document.addEventListener("visibilitychange", playWhenVisible);
+  window.addEventListener("focus", playVideo);
+  window.addEventListener("pageshow", playVideo);
+
+  window.requestAnimationFrame(playVideo);
+  retryTimers.push(window.setTimeout(playVideo, 250), window.setTimeout(playVideo, 1000));
+
+  return () => {
+    disposed = true;
+    retryTimers.forEach((timer) => window.clearTimeout(timer));
+    videoElement.removeEventListener("loadedmetadata", playVideo);
+    videoElement.removeEventListener("loadeddata", playVideo);
+    videoElement.removeEventListener("canplay", playVideo);
+    document.removeEventListener("visibilitychange", playWhenVisible);
+    window.removeEventListener("focus", playVideo);
+    window.removeEventListener("pageshow", playVideo);
+    videoElement.pause();
+    track.detach(videoElement);
+  };
+}
+
 export function RobotVideo({
   liveKitState,
   robotOnline,
@@ -145,19 +199,16 @@ export function RobotVideo({
   keyboardStateText
 }: RobotVideoProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const stageTrack = stageVideoTrack?.track ?? null;
 
   useEffect(() => {
     const videoElement = videoRef.current;
-    if (!stageVideoTrack || !videoElement) {
+    if (!stageTrack || !videoElement) {
       return;
     }
 
-    stageVideoTrack.track.attach(videoElement);
-
-    return () => {
-      stageVideoTrack.track.detach(videoElement);
-    };
-  }, [stageVideoTrack]);
+    return attachStageVideoTrack(stageTrack, videoElement);
+  }, [stageTrack]);
 
   return (
     <section className="video-section" aria-label="Main video">
