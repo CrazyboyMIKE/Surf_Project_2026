@@ -332,6 +332,7 @@ button:focus-visible {
   gap: 8px;
   min-width: 0;
   min-height: 0;
+  height: 100%;
   overflow-y: hidden;
   overflow-x: auto;
   padding: 0 0 4px;
@@ -339,14 +340,23 @@ button:focus-visible {
 
 .meeting-video-card {
   display: grid;
-  grid-template-rows: auto auto;
+  grid-template-rows: auto minmax(0, 1fr);
   flex: 0 0 clamp(160px, 28vw, 230px);
   min-width: 0;
+  height: 100%;
   gap: 6px;
   border: 1px solid #c6d3d0;
   border-radius: 8px;
   background: #fbfdfc;
   padding: 7px;
+}
+
+.meeting-video-card > .local-preview,
+.meeting-video-card > .remote-video-tile,
+.meeting-video-card > .viewer-overflow-tile {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
 }
 
 .video-card-header {
@@ -430,10 +440,13 @@ button:focus-visible {
   position: relative;
   width: 100%;
   height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   min-width: 0;
   min-height: 0;
   background: #10191c;
   object-fit: contain;
+  object-position: center center;
 }
 
 .preview-placeholder,
@@ -465,18 +478,20 @@ button:focus-visible {
 
 .compact-video-tile {
   width: 100%;
-  height: auto;
+  height: 100%;
+  max-height: 100%;
   min-height: 0;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: auto;
 }
 
 .local-preview.compact-video-tile {
   width: 100%;
-  height: auto;
+  height: 100%;
   min-width: 0;
   max-width: none;
+  max-height: 100%;
   min-height: 0;
-  aspect-ratio: var(--preview-aspect-ratio, 16 / 9);
+  aspect-ratio: auto;
   justify-self: start;
 }
 
@@ -484,14 +499,21 @@ button:focus-visible {
   display: block;
   width: 100%;
   height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
+  object-position: center center;
 }
 
 .compact-video-tile video,
 .remote-video-tile.compact-video-tile video {
   width: 100%;
   height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   background: #10191c;
+  object-fit: contain;
+  object-position: center center;
 }
 
 .local-preview.compact-video-tile video {
