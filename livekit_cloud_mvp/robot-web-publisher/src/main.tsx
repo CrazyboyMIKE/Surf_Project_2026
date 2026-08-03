@@ -183,6 +183,9 @@ const EMPTY_SPEAKER_STATE: SpeakerState = {
   queue: []
 };
 const REMOTE_VIDEO_SYNC_DELAY_MS = 160;
+const MIN_ROBOT_VIEWPORT_HEIGHT = 280;
+const MIN_ROBOT_TOP_STRIP_HEIGHT = 88;
+const MAX_ROBOT_TOP_STRIP_HEIGHT = 230;
 
 function readPersistentValue(key: string): string | null {
   try {
@@ -222,6 +225,57 @@ function removePersistentValue(key: string): void {
   } catch {
     // Ignore storage cleanup failures.
   }
+}
+
+function setRobotViewportCssVariables(): void {
+  const measuredHeight = window.visualViewport?.height ?? window.innerHeight;
+  const appHeight = Math.max(MIN_ROBOT_VIEWPORT_HEIGHT, Math.round(measuredHeight || window.innerHeight || MIN_ROBOT_VIEWPORT_HEIGHT));
+  const topStripHeight = Math.max(
+    MIN_ROBOT_TOP_STRIP_HEIGHT,
+    Math.min(MAX_ROBOT_TOP_STRIP_HEIGHT, Math.round(appHeight * 0.22))
+  );
+
+  document.documentElement.style.setProperty("--robot-app-height", `${appHeight}px`);
+  document.documentElement.style.setProperty("--robot-strip-height", `${topStripHeight}px`);
+}
+
+function useRobotViewportCssVariables(): void {
+  useEffect(() => {
+    let animationFrame = 0;
+    const visualViewport = window.visualViewport;
+
+    const scheduleUpdate = () => {
+      if (animationFrame) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = 0;
+        setRobotViewportCssVariables();
+      });
+    };
+
+    setRobotViewportCssVariables();
+    window.addEventListener("resize", scheduleUpdate);
+    window.addEventListener("orientationchange", scheduleUpdate);
+    window.addEventListener("pageshow", scheduleUpdate);
+    document.addEventListener("visibilitychange", scheduleUpdate);
+    visualViewport?.addEventListener("resize", scheduleUpdate);
+    visualViewport?.addEventListener("scroll", scheduleUpdate);
+
+    return () => {
+      if (animationFrame) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+
+      window.removeEventListener("resize", scheduleUpdate);
+      window.removeEventListener("orientationchange", scheduleUpdate);
+      window.removeEventListener("pageshow", scheduleUpdate);
+      document.removeEventListener("visibilitychange", scheduleUpdate);
+      visualViewport?.removeEventListener("resize", scheduleUpdate);
+      visualViewport?.removeEventListener("scroll", scheduleUpdate);
+    };
+  }, []);
 }
 
 function validateRuntimeConfig() {
@@ -1437,6 +1491,8 @@ function RobotRoomView({
 }
 
 function App() {
+  useRobotViewportCssVariables();
+
   const storedSession = readStoredRobotSession();
   const [view, setView] = useState<"entry" | "room">(() => (storedSession ? "room" : "entry"));
   const [roomName, setRoomName] = useState(() => storedSession?.roomName ?? "robot-room-001");

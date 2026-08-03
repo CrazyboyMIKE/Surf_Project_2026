@@ -1,9 +1,18 @@
 :root {
+  --robot-app-height: 100vh;
+  --robot-strip-height: clamp(128px, 22vh, 230px);
   color: #172026;
   background: #eef3f1;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   line-height: 1.35;
+}
+
+@supports (height: 100svh) {
+  :root {
+    --robot-app-height: 100svh;
+    --robot-strip-height: clamp(128px, 22svh, 230px);
+  }
 }
 
 * {
@@ -13,25 +22,19 @@
 html,
 body {
   width: 100%;
-  height: 100vh;
-  min-height: 100vh;
+  height: var(--robot-app-height);
+  min-height: var(--robot-app-height);
+  max-height: var(--robot-app-height);
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
 #root {
   width: 100%;
-  height: 100vh;
-  min-height: 100vh;
+  height: var(--robot-app-height);
+  min-height: var(--robot-app-height);
+  max-height: var(--robot-app-height);
   overflow: hidden;
-}
-
-@supports (height: 100dvh) {
-  html,
-  body,
-  #root {
-    height: 100dvh;
-    min-height: 100dvh;
-  }
 }
 
 body {
@@ -305,23 +308,21 @@ button:focus-visible {
 }
 
 .meeting-layout {
-  display: grid;
-  grid-template-areas:
-    "thumbnails"
-    "stage";
-  grid-template-columns: 1fr;
-  grid-template-rows: minmax(128px, 22vh) minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   min-height: 0;
+  height: 100%;
   gap: 8px;
-  contain: layout;
   overflow: hidden;
 }
 
 .thumbnail-strip {
-  display: grid;
-  grid-area: thumbnails;
-  grid-template-rows: auto minmax(0, 1fr);
+  display: flex;
+  flex: 0 0 var(--robot-strip-height);
+  flex-direction: column;
+  height: var(--robot-strip-height);
   min-height: 0;
+  max-height: var(--robot-strip-height);
   gap: 8px;
   overflow: hidden;
 }
@@ -329,21 +330,27 @@ button:focus-visible {
 .video-card-grid {
   display: flex;
   align-content: start;
+  align-items: stretch;
+  flex: 1 1 auto;
   gap: 8px;
   min-width: 0;
   min-height: 0;
-  height: 100%;
+  height: auto;
   overflow-y: hidden;
   overflow-x: auto;
   padding: 0 0 4px;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 .meeting-video-card {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  align-self: stretch;
   flex: 0 0 clamp(160px, 28vw, 230px);
   min-width: 0;
-  height: 100%;
+  height: auto;
+  min-height: 0;
   gap: 6px;
   border: 1px solid #c6d3d0;
   border-radius: 8px;
@@ -425,7 +432,7 @@ button:focus-visible {
   border-radius: 6px;
   background: #10191c;
   color: #dce8e5;
-  contain: layout paint;
+  isolation: isolate;
 }
 
 .local-preview {
@@ -522,12 +529,11 @@ button:focus-visible {
 
 .controller-stage {
   display: grid;
-  grid-area: stage;
+  flex: 1 1 auto;
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
   gap: 8px;
   overflow: hidden;
-  contain: layout;
 }
 
 .controller-video-frame {
@@ -783,16 +789,16 @@ button:focus-visible {
 }
 
 @media (min-width: 961px) and (min-height: 681px) and (orientation: landscape) {
+  :root {
+    --robot-strip-height: clamp(126px, 20vh, 230px);
+  }
+
   .room-shell {
     grid-template-rows: auto auto minmax(0, 1fr) auto;
   }
 
   .meeting-layout {
-    grid-template-areas:
-      "thumbnails"
-      "stage";
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(126px, 20vh) minmax(0, 1fr);
+    gap: 8px;
   }
 
   .video-card-grid {
@@ -807,6 +813,10 @@ button:focus-visible {
 }
 
 @media (max-width: 960px), (orientation: portrait) {
+  :root {
+    --robot-strip-height: clamp(128px, 22vh, 230px);
+  }
+
   button {
     min-height: 40px;
     padding: 0 12px;
@@ -826,11 +836,7 @@ button:focus-visible {
   }
 
   .meeting-layout {
-    grid-template-areas:
-      "thumbnails"
-      "stage";
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(128px, 22vh) minmax(0, 1fr);
+    gap: 7px;
   }
 
   .thumbnail-strip {
@@ -859,6 +865,10 @@ button:focus-visible {
 }
 
 @media (max-width: 720px), (max-height: 560px) {
+  :root {
+    --robot-strip-height: clamp(88px, 20vh, 150px);
+  }
+
   .entry-shell {
     padding: 8px;
   }
@@ -918,11 +928,6 @@ button:focus-visible {
   }
 
   .meeting-layout {
-    grid-template-areas:
-      "thumbnails"
-      "stage";
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(88px, 20vh) minmax(0, 1fr);
     gap: 5px;
   }
 
@@ -1035,6 +1040,10 @@ button:focus-visible {
 }
 
 @media (min-height: 561px) and (max-height: 680px) and (orientation: landscape) {
+  :root {
+    --robot-strip-height: clamp(104px, 20vh, 170px);
+  }
+
   button {
     min-height: 36px;
   }
@@ -1052,8 +1061,7 @@ button:focus-visible {
   }
 
   .meeting-layout {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(104px, 20vh) minmax(0, 1fr);
+    gap: 7px;
   }
 
   .video-card-grid {
