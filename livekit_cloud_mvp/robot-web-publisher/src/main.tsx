@@ -182,6 +182,7 @@ const EMPTY_SPEAKING: ParticipantSpeakingInfo = {
 const EMPTY_SPEAKER_STATE: SpeakerState = {
   queue: []
 };
+const REMOTE_VIDEO_SYNC_DELAY_MS = 160;
 
 function readPersistentValue(key: string): string | null {
   try {
@@ -546,6 +547,76 @@ function firstRemoteAudioTrack(participant: RemoteParticipant): RemoteAudioTrack
   return publication?.track instanceof RemoteAudioTrack ? publication.track : null;
 }
 
+function normalizeAudioLevel(audioLevel: number): number {
+  return Math.round(Math.min(1, Math.max(0, audioLevel)) * 20) / 20;
+}
+
+function getVideoTrackStableId(track: RemoteVideoTrack | LocalVideoTrack | null): string {
+  if (!track) {
+    return "no-video";
+  }
+
+  return ("sid" in track && typeof track.sid === "string" && track.sid) || track.mediaStreamTrack.id;
+}
+
+function getRemoteVideoTileKey(participant: RemoteVideoInfo): string {
+  return `${participant.identity}:${getVideoTrackStableId(participant.videoTrack)}`;
+}
+
+function areSpeakingInfosEqual(left: ParticipantSpeakingInfo, right: ParticipantSpeakingInfo): boolean {
+  return left.hasAudioTrack === right.hasAudioTrack && left.isSpeaking === right.isSpeaking && left.audioLevel === right.audioLevel;
+}
+
+function areRemoteVideoInfosEqual(left: RemoteVideoInfo, right: RemoteVideoInfo): boolean {
+  return (
+    left.identity === right.identity &&
+    left.name === right.name &&
+    left.role === right.role &&
+    left.videoTrack === right.videoTrack &&
+    left.audioTrack === right.audioTrack &&
+    left.hasAudioTrack === right.hasAudioTrack &&
+    left.isSpeaking === right.isSpeaking &&
+    left.audioLevel === right.audioLevel
+  );
+}
+
+function areRemoteVideoListsEqual(left: RemoteVideoInfo[], right: RemoteVideoInfo[]): boolean {
+  return left.length === right.length && left.every((item, index) => areRemoteVideoInfosEqual(item, right[index]));
+}
+
+function areSpeakerParticipantsEqual(left?: SpeakerParticipant, right?: SpeakerParticipant): boolean {
+  return (
+    left?.id === right?.id &&
+    left?.name === right?.name &&
+    left?.role === right?.role &&
+    left?.connected === right?.connected
+  );
+}
+
+function areSpeakerStatesEqual(left: SpeakerState, right: SpeakerState): boolean {
+  return (
+    left.currentSpeakerId === right.currentSpeakerId &&
+    left.currentSpeakerName === right.currentSpeakerName &&
+    areSpeakerParticipantsEqual(left.currentSpeaker, right.currentSpeaker) &&
+    left.queue.length === right.queue.length &&
+    left.queue.every((item, index) => areSpeakerParticipantsEqual(item, right.queue[index]))
+  );
+}
+
+function configureVideoElement(videoElement: HTMLVideoElement, muted: boolean): void {
+  videoElement.autoplay = true;
+  videoElement.playsInline = true;
+  videoElement.muted = muted;
+  videoElement.defaultMuted = muted;
+  videoElement.setAttribute("playsinline", "");
+  videoElement.setAttribute("webkit-playsinline", "true");
+  if (muted) {
+    videoElement.setAttribute("muted", "");
+  } else {
+    videoElement.removeAttribute("muted");
+  }
+}
+
 function getSpeakingStyle(audioLevel: number): React.CSSProperties & Record<"--speaking-level", string> {
   const level = Math.min(1, Math.max(0.18, audioLevel));
   return {
@@ -604,7 +675,7 @@ function collectRemoteVideos(
         audioTrack,
         hasAudioTrack: Boolean(audioTrack),
         isSpeaking: Boolean(audioTrack) && participant.isSpeaking,
-        audioLevel: audioTrack ? participant.audioLevel : 0
+        audioLevel: audioTrack ? normalizeAudioLevel(participant.audioLevel) : 0
       }
     ];
   });
@@ -615,7 +686,7 @@ function collectLocalSpeaking(room: Room, audioTrack: LocalAudioTrack | null): P
   return {
     hasAudioTrack,
     isSpeaking: hasAudioTrack && room.localParticipant.isSpeaking,
-    audioLevel: hasAudioTrack ? room.localParticipant.audioLevel : 0
+    audioLevel: hasAudioTrack ? normalizeAudioLevel(room.localParticipant.audioLevel) : 0
   };
 }
 
@@ -658,18 +729,21 @@ function RemoteVideoTile({
 }) {
   const tileRef = useRef<HTMLElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const videoTrack = participant.videoTrack;
 
   useEffect(() => {
     const videoElement = videoRef.current;
-    if (!participant.videoTrack || !videoElement) {
+    if (!videoTrack || !videoElement) {
       return;
     }
 
-    participant.videoTrack.attach(videoElement);
+    configureVideoElement(videoElement, false);
+    videoTrack.attach(videoElement);
+    void videoElement.play().catch(() => undefined);
     return () => {
-      participant.videoTrack?.detach(videoElement);
+      videoTrack.detach(videoElement);
     };
-  }, [participant.videoTrack]);
+  }, [videoTrack]);
 
   return (
     <article
@@ -728,22 +802,19 @@ function LocalPreview({
     }
 
     let disposed = false;
+    let retryTimer: ReturnType<typeof window.setTimeout> | undefined;
     const mediaStream = new MediaStream([track.mediaStreamTrack]);
     setPreviewWarning("");
-    setPreviewAspectRatio(readTrackAspectRatio(track, videoElement));
-    videoElement.muted = true;
-    videoElement.defaultMuted = true;
-    videoElement.autoplay = true;
-    videoElement.playsInline = true;
-    videoElement.setAttribute("muted", "");
-    videoElement.setAttribute("playsinline", "");
-    videoElement.setAttribute("webkit-playsinline", "true");
+    configureVideoElement(videoElement, true);
     videoElement.srcObject = mediaStream;
 
     const updatePreviewAspectRatio = () => {
-      if (!disposed) {
-        setPreviewAspectRatio(readTrackAspectRatio(track, videoElement));
+      if (disposed) {
+        return;
       }
+
+      const nextAspectRatio = readTrackAspectRatio(track, videoElement);
+      setPreviewAspectRatio((current) => (current === nextAspectRatio ? current : nextAspectRatio));
     };
 
     const playPreview = () => {
@@ -752,35 +823,18 @@ function LocalPreview({
       }
 
       updatePreviewAspectRatio();
-
-      if (videoElement.srcObject !== mediaStream) {
-        videoElement.srcObject = mediaStream;
-      }
-
       void videoElement.play().then(
         () => {
           if (!disposed) {
-            setPreviewWarning("");
+            setPreviewWarning((current) => (current ? "" : current));
           }
         },
         () => {
           if (!disposed) {
-            setPreviewWarning("Preview paused by browser. Tap fullscreen or retry camera.");
+            setPreviewWarning((current) => current || "Preview paused by browser. Tap fullscreen or retry camera.");
           }
         }
       );
-    };
-
-    const nudgePreviewPaint = () => {
-      if (disposed) {
-        return;
-      }
-
-      videoElement.style.transform = "translateZ(0)";
-      window.requestAnimationFrame(() => {
-        videoElement.style.transform = "";
-        playPreview();
-      });
     };
 
     if (videoElement.readyState >= HTMLMediaElement.HAVE_METADATA) {
@@ -791,31 +845,26 @@ function LocalPreview({
 
     videoElement.addEventListener("loadeddata", updatePreviewAspectRatio);
     videoElement.addEventListener("canplay", playPreview);
-    videoElement.addEventListener("playing", nudgePreviewPaint);
     document.addEventListener("visibilitychange", playPreview);
     window.addEventListener("focus", playPreview);
-    const resizeObserver =
-      typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => nudgePreviewPaint()) : undefined;
-    resizeObserver?.observe(videoElement);
-    if (tileRef.current) {
-      resizeObserver?.observe(tileRef.current);
-    }
 
     window.requestAnimationFrame(playPreview);
-    const retryTimer = window.setTimeout(playPreview, 250);
+    retryTimer = window.setTimeout(playPreview, 250);
 
     return () => {
       disposed = true;
-      window.clearTimeout(retryTimer);
+      if (retryTimer) {
+        window.clearTimeout(retryTimer);
+      }
       videoElement.removeEventListener("loadedmetadata", playPreview);
       videoElement.removeEventListener("loadeddata", updatePreviewAspectRatio);
       videoElement.removeEventListener("canplay", playPreview);
-      videoElement.removeEventListener("playing", nudgePreviewPaint);
       document.removeEventListener("visibilitychange", playPreview);
       window.removeEventListener("focus", playPreview);
-      resizeObserver?.disconnect();
       videoElement.pause();
-      videoElement.srcObject = null;
+      if (videoElement.srcObject === mediaStream) {
+        videoElement.srcObject = null;
+      }
     };
   }, [track]);
 
@@ -865,26 +914,29 @@ function RemoteParticipantAudio({
   onPlaying: (participantId: string) => void;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioTrack = participant.audioTrack;
+  const participantId = participant.identity;
+  const volume = participant.role === "controller" ? 1 : 0.9;
 
   useEffect(() => {
     const audioElement = audioRef.current;
-    if (!audioElement || !participant.audioTrack) {
+    if (!audioElement || !audioTrack) {
       return;
     }
 
-    participant.audioTrack.attach(audioElement);
+    audioTrack.attach(audioElement);
     audioElement.muted = false;
-    audioElement.volume = participant.role === "controller" ? 1 : 0.9;
+    audioElement.volume = volume;
 
     void audioElement.play().then(
-      () => onPlaying(participant.identity),
-      () => onBlocked(participant.identity)
+      () => onPlaying(participantId),
+      () => onBlocked(participantId)
     );
 
     return () => {
-      participant.audioTrack?.detach(audioElement);
+      audioTrack.detach(audioElement);
     };
-  }, [onBlocked, onPlaying, participant, playbackAttempt]);
+  }, [audioTrack, onBlocked, onPlaying, participantId, playbackAttempt, volume]);
 
   return <audio ref={audioRef} autoPlay playsInline />;
 }
@@ -988,18 +1040,21 @@ function PrimarySpeakerStage({
   const stageRef = useRef<HTMLElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const currentSpeaker = speaker.currentSpeaker;
+  const speakerVideoTrack = speakerVideo?.videoTrack ?? null;
 
   useEffect(() => {
     const videoElement = videoRef.current;
-    if (!speakerVideo?.videoTrack || !videoElement) {
+    if (!speakerVideoTrack || !videoElement) {
       return;
     }
 
-    speakerVideo.videoTrack.attach(videoElement);
+    configureVideoElement(videoElement, false);
+    speakerVideoTrack.attach(videoElement);
+    void videoElement.play().catch(() => undefined);
     return () => {
-      speakerVideo.videoTrack?.detach(videoElement);
+      speakerVideoTrack.detach(videoElement);
     };
-  }, [speakerVideo]);
+  }, [speakerVideoTrack]);
 
   return (
     <section className="controller-stage" aria-labelledby="speaker-stage-title" ref={stageRef}>
@@ -1236,7 +1291,6 @@ function RobotRoomView({
   onLeave: () => void;
 }) {
   const controllerVideos = remoteVideos.filter((participant) => participant.role === "controller");
-  const viewerVideos = remoteVideos.filter((participant) => participant.role === "viewer");
   const currentController = controllerVideos[0] ?? null;
   const fallbackSpeaker =
     speaker.currentSpeaker ??
@@ -1257,6 +1311,9 @@ function RobotRoomView({
   const speakerVideo = fallbackSpeaker
     ? (remoteVideos.find((participant) => participant.identity === fallbackSpeaker.id) ?? null)
     : currentController;
+  const topStripVideos = fallbackSpeaker
+    ? remoteVideos.filter((participant) => participant.identity !== fallbackSpeaker.id)
+    : remoteVideos;
   const [fullscreenError, setFullscreenError] = useState("");
 
   return (
@@ -1272,8 +1329,10 @@ function RobotRoomView({
         </button>
       </header>
 
-      {error ? <p className="error">{error}</p> : null}
-      {fullscreenError ? <p className="error">{fullscreenError}</p> : null}
+      <div className="room-alerts" aria-live="polite">
+        {error ? <p className="error">{error}</p> : null}
+        {fullscreenError ? <p className="error">{fullscreenError}</p> : null}
+      </div>
 
       <section className="status-panel">
         <div className="status-grid">
@@ -1335,10 +1394,10 @@ function RobotRoomView({
       <section className="meeting-layout" aria-label="Robot meeting layout">
         <section className="thumbnail-strip" aria-labelledby="thumbnail-title">
           <div className="panel-heading">
-            <h2 id="thumbnail-title">Robot and viewer videos</h2>
-            <span>{viewerVideos.length} viewers</span>
+            <h2 id="thumbnail-title">Other videos</h2>
+            <span>{topStripVideos.length} remote</span>
           </div>
-          <div className="video-card-grid" aria-label="Robot and viewer video cards">
+          <div className="video-card-grid" aria-label="Robot and other participant video cards">
             <article className="meeting-video-card robot-video-card">
               <div className="video-card-header">
                 <strong>{session.robotName}</strong>
@@ -1353,24 +1412,29 @@ function RobotRoomView({
               />
             </article>
 
-            {viewerVideos.length === 0 ? (
+            {topStripVideos.length === 0 ? (
               <article className="meeting-video-card empty-meeting-card">
                 <div className="video-card-header">
-                  <strong>Viewers</strong>
+                  <strong>Participants</strong>
                   <span>empty</span>
                 </div>
                 <div className="viewer-overflow-tile muted-overflow">
-                  <span>No viewer video yet</span>
+                  <span>No other video yet</span>
                 </div>
               </article>
             ) : (
-              viewerVideos.map((participant) => (
+              topStripVideos.map((participant) => (
                 <article className="meeting-video-card" key={participant.identity}>
                   <div className="video-card-header">
                     <strong>{participant.name}</strong>
                     <span>{participant.role}</span>
                   </div>
-                  <RemoteVideoTile participant={participant} compact onFullscreenError={setFullscreenError} />
+                  <RemoteVideoTile
+                    key={getRemoteVideoTileKey(participant)}
+                    participant={participant}
+                    compact
+                    onFullscreenError={setFullscreenError}
+                  />
                 </article>
               ))
             )}
@@ -1417,21 +1481,61 @@ function App() {
   const participantsByIdRef = useRef<Map<string, ParticipantPresence>>(new Map());
   const sessionRef = useRef<RoomSession | null>(null);
   const restoringSessionRef = useRef(false);
+  const remoteVideosRef = useRef<RemoteVideoInfo[]>([]);
+  const localSpeakingRef = useRef<ParticipantSpeakingInfo>(EMPTY_SPEAKING);
+  const remoteVideoSyncTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+
+  function clearRemoteVideoSyncTimer() {
+    if (remoteVideoSyncTimerRef.current) {
+      window.clearTimeout(remoteVideoSyncTimerRef.current);
+      remoteVideoSyncTimerRef.current = null;
+    }
+  }
+
+  function applyRemoteVideos(nextRemoteVideos: RemoteVideoInfo[]) {
+    if (areRemoteVideoListsEqual(remoteVideosRef.current, nextRemoteVideos)) {
+      return;
+    }
+
+    remoteVideosRef.current = nextRemoteVideos;
+    setRemoteVideos(nextRemoteVideos);
+  }
+
+  function applyLocalSpeaking(nextLocalSpeaking: ParticipantSpeakingInfo) {
+    if (areSpeakingInfosEqual(localSpeakingRef.current, nextLocalSpeaking)) {
+      return;
+    }
+
+    localSpeakingRef.current = nextLocalSpeaking;
+    setLocalSpeaking(nextLocalSpeaking);
+  }
 
   function updateRemoteVideos() {
     const room = roomRef.current;
     const currentSession = sessionRef.current;
     if (!room || !currentSession) {
-      setRemoteVideos([]);
-      setLocalSpeaking(EMPTY_SPEAKING);
+      applyRemoteVideos([]);
+      applyLocalSpeaking(EMPTY_SPEAKING);
       return;
     }
 
-    setRemoteVideos(collectRemoteVideos(room, participantsByIdRef.current, currentSession.participantId));
-    setLocalSpeaking(collectLocalSpeaking(room, localAudioTrackRef.current));
+    applyRemoteVideos(collectRemoteVideos(room, participantsByIdRef.current, currentSession.participantId));
+    applyLocalSpeaking(collectLocalSpeaking(room, localAudioTrackRef.current));
+  }
+
+  function scheduleRemoteVideosSync() {
+    if (remoteVideoSyncTimerRef.current) {
+      return;
+    }
+
+    remoteVideoSyncTimerRef.current = window.setTimeout(() => {
+      remoteVideoSyncTimerRef.current = null;
+      updateRemoteVideos();
+    }, REMOTE_VIDEO_SYNC_DELAY_MS);
   }
 
   function resetConnections() {
+    clearRemoteVideoSyncTimer();
     socketRef.current?.close();
     socketRef.current = null;
 
@@ -1451,9 +1555,9 @@ function App() {
     participantsByIdRef.current = new Map();
     sessionRef.current = null;
     setLocalTrack(null);
-    setLocalSpeaking(EMPTY_SPEAKING);
+    applyLocalSpeaking(EMPTY_SPEAKING);
     setSpeaker(EMPTY_SPEAKER_STATE);
-    setRemoteVideos([]);
+    applyRemoteVideos([]);
     setKeyboardStatus(null);
     setLastRobotControl(null);
     setWebSocketState("closed");
@@ -1540,7 +1644,7 @@ function App() {
       await room.localParticipant.unpublishTrack(audioTrack, true).catch(() => undefined);
     }
     audioTrack?.stop();
-    setLocalSpeaking(EMPTY_SPEAKING);
+    applyLocalSpeaking(EMPTY_SPEAKING);
   }
 
   async function stopRobotMicrophone() {
@@ -1609,7 +1713,7 @@ function App() {
       });
       localAudioTrackRef.current = audioTrack;
       setMicrophoneState("publishing");
-      setLocalSpeaking(collectLocalSpeaking(room, audioTrack));
+      applyLocalSpeaking(collectLocalSpeaking(room, audioTrack));
       updateStoredMicrophonePreference(true);
     } catch (error) {
       audioTrack?.stop();
@@ -1719,7 +1823,7 @@ function App() {
 
         if (isRoleUpdateMessage(message)) {
           participantsByIdRef.current = new Map(message.participants.map((participant) => [participant.id, participant]));
-          updateRemoteVideos();
+          scheduleRemoteVideosSync();
           return;
         }
 
@@ -1739,12 +1843,13 @@ function App() {
         }
 
         if (isSpeakerUpdateMessage(message)) {
-          setSpeaker({
+          const nextSpeaker = {
             currentSpeaker: message.currentSpeaker,
             currentSpeakerId: message.currentSpeakerId,
             currentSpeakerName: message.currentSpeakerName,
             queue: message.queue
-          });
+          };
+          setSpeaker((current) => (areSpeakerStatesEqual(current, nextSpeaker) ? current : nextSpeaker));
           return;
         }
 
@@ -1775,19 +1880,20 @@ function App() {
         updateRemoteVideos();
       });
       room.on(RoomEvent.Disconnected, () => {
+        clearRemoteVideoSyncTimer();
         setLiveKitState("disconnected");
-        setRemoteVideos([]);
-        setLocalSpeaking(EMPTY_SPEAKING);
+        applyRemoteVideos([]);
+        applyLocalSpeaking(EMPTY_SPEAKING);
       });
-      room.on(RoomEvent.ParticipantConnected, updateRemoteVideos);
-      room.on(RoomEvent.ParticipantDisconnected, updateRemoteVideos);
-      room.on(RoomEvent.TrackSubscribed, updateRemoteVideos);
-      room.on(RoomEvent.TrackUnsubscribed, updateRemoteVideos);
-      room.on(RoomEvent.TrackPublished, updateRemoteVideos);
-      room.on(RoomEvent.TrackUnpublished, updateRemoteVideos);
-      room.on(RoomEvent.TrackMuted, updateRemoteVideos);
-      room.on(RoomEvent.TrackUnmuted, updateRemoteVideos);
-      room.on(RoomEvent.ActiveSpeakersChanged, updateRemoteVideos);
+      room.on(RoomEvent.ParticipantConnected, scheduleRemoteVideosSync);
+      room.on(RoomEvent.ParticipantDisconnected, scheduleRemoteVideosSync);
+      room.on(RoomEvent.TrackSubscribed, scheduleRemoteVideosSync);
+      room.on(RoomEvent.TrackUnsubscribed, scheduleRemoteVideosSync);
+      room.on(RoomEvent.TrackPublished, scheduleRemoteVideosSync);
+      room.on(RoomEvent.TrackUnpublished, scheduleRemoteVideosSync);
+      room.on(RoomEvent.TrackMuted, scheduleRemoteVideosSync);
+      room.on(RoomEvent.TrackUnmuted, scheduleRemoteVideosSync);
+      room.on(RoomEvent.ActiveSpeakersChanged, scheduleRemoteVideosSync);
 
       setLiveKitState("connecting");
       try {
