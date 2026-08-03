@@ -194,7 +194,7 @@ button:focus-visible {
 
 .room-shell {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   width: 100%;
   max-width: 1280px;
   height: 100%;
@@ -240,7 +240,6 @@ button:focus-visible {
   background: #dce8e5;
 }
 
-.status-panel,
 .local-camera-card,
 .remote-section,
 .thumbnail-strip,
@@ -250,31 +249,12 @@ button:focus-visible {
   background: #ffffff;
 }
 
-.status-panel,
 .local-camera-card,
 .remote-section,
 .thumbnail-strip,
 .controller-stage {
   min-width: 0;
   padding: 10px;
-}
-
-.status-panel {
-  display: grid;
-  grid-template-columns: minmax(240px, 0.95fr) minmax(280px, 1.2fr) auto;
-  gap: 8px;
-  align-items: end;
-  max-height: 150px;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.microphone-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: end;
-  margin-top: 0;
 }
 
 .microphone-device-panel {
@@ -316,26 +296,6 @@ button:focus-visible {
 
 .microphone-device-controls button {
   white-space: nowrap;
-}
-
-.status-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
-  gap: 7px;
-  color: #4b5f62;
-  font-size: 0.78rem;
-}
-
-.status-grid span {
-  border: 1px solid #c6d3d0;
-  border-radius: 6px;
-  background: #f8fbfa;
-  padding: 6px 8px;
-}
-
-.status-grid strong {
-  display: block;
-  color: #172026;
 }
 
 .publisher-layout {
@@ -802,7 +762,7 @@ button:focus-visible {
 
 @media (min-width: 961px) and (min-height: 681px) and (orientation: landscape) {
   .room-shell {
-    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
   }
 
   .meeting-layout {
@@ -839,12 +799,6 @@ button:focus-visible {
     min-height: 46px;
   }
 
-  .status-panel {
-    grid-template-columns: 1fr;
-    max-height: 150px;
-  }
-
-  .status-grid,
   .microphone-device-controls {
     grid-template-columns: 1fr;
   }
@@ -893,7 +847,7 @@ button:focus-visible {
   }
 
   .room-shell {
-    grid-template-rows: auto auto minmax(0, 82px) minmax(0, 1fr) auto;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
     gap: 5px;
     padding: 6px;
   }
@@ -925,23 +879,6 @@ button:focus-visible {
     font-size: 0.72rem;
   }
 
-  .status-panel {
-    grid-template-columns: 1fr;
-    gap: 5px;
-    max-height: 82px;
-    padding: 6px;
-  }
-
-  .status-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 4px;
-    font-size: 0.68rem;
-  }
-
-  .status-grid span {
-    padding: 4px 6px;
-  }
-
   .microphone-device-panel {
     gap: 4px;
     padding: 5px 6px;
@@ -952,11 +889,6 @@ button:focus-visible {
     font-size: 0.66rem;
   }
 
-  .microphone-actions {
-    gap: 5px;
-  }
-
-  .microphone-actions button,
   .microphone-device-controls button {
     min-height: 30px;
     padding: 0 8px;
@@ -1091,11 +1023,6 @@ button:focus-visible {
 
   .room-topbar {
     min-height: 42px;
-  }
-
-  .status-panel {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    max-height: 116px;
   }
 
   .microphone-device-panel {

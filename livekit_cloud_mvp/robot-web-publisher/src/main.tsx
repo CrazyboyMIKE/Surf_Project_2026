@@ -608,6 +608,7 @@ function configureVideoElement(videoElement: HTMLVideoElement, muted: boolean): 
   videoElement.playsInline = true;
   videoElement.muted = muted;
   videoElement.defaultMuted = muted;
+  videoElement.preload = "auto";
   videoElement.setAttribute("playsinline", "");
   videoElement.setAttribute("webkit-playsinline", "true");
   if (muted) {
@@ -615,6 +616,53 @@ function configureVideoElement(videoElement: HTMLVideoElement, muted: boolean): 
   } else {
     videoElement.removeAttribute("muted");
   }
+}
+
+function attachLiveKitVideoTrack(track: RemoteVideoTrack, videoElement: HTMLVideoElement, muted: boolean): () => void {
+  let disposed = false;
+  const retryTimers: Array<ReturnType<typeof window.setTimeout>> = [];
+
+  configureVideoElement(videoElement, muted);
+  track.attach(videoElement);
+
+  const playVideo = () => {
+    if (disposed) {
+      return;
+    }
+
+    void videoElement.play().catch(() => {
+      // Firefox Android can delay media playback around focus or visibility changes.
+    });
+  };
+
+  const playWhenVisible = () => {
+    if (document.visibilityState !== "hidden") {
+      playVideo();
+    }
+  };
+
+  videoElement.addEventListener("loadedmetadata", playVideo);
+  videoElement.addEventListener("loadeddata", playVideo);
+  videoElement.addEventListener("canplay", playVideo);
+  document.addEventListener("visibilitychange", playWhenVisible);
+  window.addEventListener("focus", playVideo);
+  window.addEventListener("pageshow", playVideo);
+
+  window.requestAnimationFrame(playVideo);
+  retryTimers.push(window.setTimeout(playVideo, 250), window.setTimeout(playVideo, 1000));
+
+  return () => {
+    disposed = true;
+    retryTimers.forEach((timer) => window.clearTimeout(timer));
+    videoElement.removeEventListener("loadedmetadata", playVideo);
+    videoElement.removeEventListener("loadeddata", playVideo);
+    videoElement.removeEventListener("canplay", playVideo);
+    document.removeEventListener("visibilitychange", playWhenVisible);
+    window.removeEventListener("focus", playVideo);
+    window.removeEventListener("pageshow", playVideo);
+    videoElement.pause();
+    track.detach(videoElement);
+  };
 }
 
 function getSpeakingStyle(audioLevel: number): React.CSSProperties & Record<"--speaking-level", string> {
@@ -737,12 +785,7 @@ function RemoteVideoTile({
       return;
     }
 
-    configureVideoElement(videoElement, false);
-    videoTrack.attach(videoElement);
-    void videoElement.play().catch(() => undefined);
-    return () => {
-      videoTrack.detach(videoElement);
-    };
+    return attachLiveKitVideoTrack(videoTrack, videoElement, true);
   }, [videoTrack]);
 
   return (
@@ -752,7 +795,7 @@ function RemoteVideoTile({
       }`}
       ref={tileRef}
     >
-      {participant.videoTrack ? <video ref={videoRef} autoPlay playsInline /> : <div className="video-empty">Waiting for video</div>}
+      {participant.videoTrack ? <video ref={videoRef} autoPlay muted playsInline /> : <div className="video-empty">Waiting for video</div>}
       <span className="role-badge">{participant.role}</span>
       <SpeakingBadge
         hasAudioTrack={participant.hasAudioTrack}
@@ -802,7 +845,7 @@ function LocalPreview({
     }
 
     let disposed = false;
-    let retryTimer: ReturnType<typeof window.setTimeout> | undefined;
+    const retryTimers: Array<ReturnType<typeof window.setTimeout>> = [];
     const mediaStream = new MediaStream([track.mediaStreamTrack]);
     setPreviewWarning("");
     configureVideoElement(videoElement, true);
@@ -837,6 +880,12 @@ function LocalPreview({
       );
     };
 
+    const playWhenVisible = () => {
+      if (document.visibilityState !== "hidden") {
+        playPreview();
+      }
+    };
+
     if (videoElement.readyState >= HTMLMediaElement.HAVE_METADATA) {
       playPreview();
     } else {
@@ -845,22 +894,22 @@ function LocalPreview({
 
     videoElement.addEventListener("loadeddata", updatePreviewAspectRatio);
     videoElement.addEventListener("canplay", playPreview);
-    document.addEventListener("visibilitychange", playPreview);
+    document.addEventListener("visibilitychange", playWhenVisible);
     window.addEventListener("focus", playPreview);
+    window.addEventListener("pageshow", playPreview);
 
     window.requestAnimationFrame(playPreview);
-    retryTimer = window.setTimeout(playPreview, 250);
+    retryTimers.push(window.setTimeout(playPreview, 250), window.setTimeout(playPreview, 1000));
 
     return () => {
       disposed = true;
-      if (retryTimer) {
-        window.clearTimeout(retryTimer);
-      }
+      retryTimers.forEach((timer) => window.clearTimeout(timer));
       videoElement.removeEventListener("loadedmetadata", playPreview);
       videoElement.removeEventListener("loadeddata", updatePreviewAspectRatio);
       videoElement.removeEventListener("canplay", playPreview);
-      document.removeEventListener("visibilitychange", playPreview);
+      document.removeEventListener("visibilitychange", playWhenVisible);
       window.removeEventListener("focus", playPreview);
+      window.removeEventListener("pageshow", playPreview);
       videoElement.pause();
       if (videoElement.srcObject === mediaStream) {
         videoElement.srcObject = null;
@@ -924,16 +973,46 @@ function RemoteParticipantAudio({
       return;
     }
 
+    let disposed = false;
+    const retryTimers: Array<ReturnType<typeof window.setTimeout>> = [];
+
     audioTrack.attach(audioElement);
+    audioElement.autoplay = true;
+    audioElement.preload = "auto";
     audioElement.muted = false;
     audioElement.volume = volume;
 
-    void audioElement.play().then(
-      () => onPlaying(participantId),
-      () => onBlocked(participantId)
-    );
+    const playAudio = () => {
+      if (disposed) {
+        return;
+      }
+
+      void audioElement.play().then(
+        () => onPlaying(participantId),
+        () => onBlocked(participantId)
+      );
+    };
+
+    const playWhenVisible = () => {
+      if (document.visibilityState !== "hidden") {
+        playAudio();
+      }
+    };
+
+    audioElement.addEventListener("canplay", playAudio);
+    document.addEventListener("visibilitychange", playWhenVisible);
+    window.addEventListener("focus", playAudio);
+    window.addEventListener("pageshow", playAudio);
+    playAudio();
+    retryTimers.push(window.setTimeout(playAudio, 250), window.setTimeout(playAudio, 1000));
 
     return () => {
+      disposed = true;
+      retryTimers.forEach((timer) => window.clearTimeout(timer));
+      audioElement.removeEventListener("canplay", playAudio);
+      document.removeEventListener("visibilitychange", playWhenVisible);
+      window.removeEventListener("focus", playAudio);
+      window.removeEventListener("pageshow", playAudio);
       audioTrack.detach(audioElement);
     };
   }, [audioTrack, onBlocked, onPlaying, participantId, playbackAttempt, volume]);
@@ -1048,12 +1127,7 @@ function PrimarySpeakerStage({
       return;
     }
 
-    configureVideoElement(videoElement, false);
-    speakerVideoTrack.attach(videoElement);
-    void videoElement.play().catch(() => undefined);
-    return () => {
-      speakerVideoTrack.detach(videoElement);
-    };
+    return attachLiveKitVideoTrack(speakerVideoTrack, videoElement, true);
   }, [speakerVideoTrack]);
 
   return (
@@ -1079,7 +1153,7 @@ function PrimarySpeakerStage({
 
       <div className={`controller-video-frame${speakerVideo?.hasAudioTrack && speakerVideo.isSpeaking ? " is-speaking" : ""}`}>
         {speakerVideo?.videoTrack ? (
-          <video ref={videoRef} autoPlay playsInline />
+          <video ref={videoRef} autoPlay muted playsInline />
         ) : (
           <div className="empty-video-state">Waiting for Speaker video</div>
         )}
@@ -1245,49 +1319,19 @@ function EntryView({
 
 function RobotRoomView({
   session,
-  backendState,
-  webSocketState,
-  liveKitState,
-  publishState,
-  microphoneState,
-  microphoneDevices,
-  selectedMicrophoneDeviceId,
-  microphoneDeviceState,
-  tokenMode,
   localTrack,
   localSpeaking,
   speaker,
   remoteVideos,
   error,
-  keyboardStatus,
-  lastRobotControl,
-  onRefreshMicrophones,
-  onMicrophoneDeviceChange,
-  onStartMicrophone,
-  onStopMicrophone,
   onLeave
 }: {
   session: RoomSession;
-  backendState: string;
-  webSocketState: string;
-  liveKitState: string;
-  publishState: string;
-  microphoneState: RobotMicrophoneState;
-  microphoneDevices: MicrophoneDeviceInfo[];
-  selectedMicrophoneDeviceId: string;
-  microphoneDeviceState: MicrophoneDeviceListState;
-  tokenMode: "mock" | "livekit" | "none";
   localTrack: LocalVideoTrack | null;
   localSpeaking: ParticipantSpeakingInfo;
   speaker: SpeakerState;
   remoteVideos: RemoteVideoInfo[];
   error: string;
-  keyboardStatus: KeyboardControlStatusMessage | null;
-  lastRobotControl: RobotControlMessage | null;
-  onRefreshMicrophones: () => void;
-  onMicrophoneDeviceChange: (deviceId: string) => void;
-  onStartMicrophone: () => void;
-  onStopMicrophone: () => void;
   onLeave: () => void;
 }) {
   const controllerVideos = remoteVideos.filter((participant) => participant.role === "controller");
@@ -1333,63 +1377,6 @@ function RobotRoomView({
         {error ? <p className="error">{error}</p> : null}
         {fullscreenError ? <p className="error">{fullscreenError}</p> : null}
       </div>
-
-      <section className="status-panel">
-        <div className="status-grid">
-          <span>
-            Backend <strong>{backendState}</strong>
-          </span>
-          <span>
-            WebSocket <strong>{webSocketState}</strong>
-          </span>
-          <span>
-            LiveKit <strong>{liveKitState}</strong>
-          </span>
-          <span>
-            Publish <strong>{publishState}</strong>
-          </span>
-          <span>
-            Microphone <strong>{describeMicrophoneState(microphoneState)}</strong>
-          </span>
-          <span>
-            Token <strong>{tokenMode}</strong>
-          </span>
-          <span>
-            Keyboard <strong>{keyboardStatus?.active ? "active" : "idle"}</strong>
-          </span>
-          <span>
-            Controller <strong>{keyboardStatus?.controllerName ?? "-"}</strong>
-          </span>
-          <span>
-            Direction <strong>{keyboardStatus?.direction?.replace("_", " ") ?? "-"}</strong>
-          </span>
-          <span>
-            Control <strong>{lastRobotControl ? "Last action received" : "Waiting"}</strong>
-          </span>
-        </div>
-        <MicrophoneDevicePanel
-          devices={microphoneDevices}
-          selectedDeviceId={selectedMicrophoneDeviceId}
-          deviceListState={microphoneDeviceState}
-          microphoneState={microphoneState}
-          pending={false}
-          onRefresh={onRefreshMicrophones}
-          onDeviceChange={onMicrophoneDeviceChange}
-        />
-        <div className="microphone-actions" aria-label="Robot microphone controls">
-          <button type="button" disabled={liveKitState !== "connected" || microphoneState === "publishing"} onClick={onStartMicrophone}>
-            Publish microphone
-          </button>
-          <button
-            type="button"
-            className="ghost-button"
-            disabled={microphoneState !== "publishing" && microphoneState !== "requesting"}
-            onClick={onStopMicrophone}
-          >
-            Stop microphone
-          </button>
-        </div>
-      </section>
 
       <section className="meeting-layout" aria-label="Robot meeting layout">
         <section className="thumbnail-strip" aria-labelledby="thumbnail-title">
@@ -1989,26 +1976,11 @@ function App() {
   return (
     <RobotRoomView
       session={session}
-      backendState={backendState}
-      webSocketState={webSocketState}
-      liveKitState={liveKitState}
-      publishState={publishState}
-      microphoneState={microphoneState}
-      microphoneDevices={microphoneDevices}
-      selectedMicrophoneDeviceId={selectedMicrophoneDeviceId}
-      microphoneDeviceState={microphoneDeviceState}
-      tokenMode={tokenMode}
       localTrack={localTrack}
       localSpeaking={localSpeaking}
       speaker={speaker}
       remoteVideos={remoteVideos}
       error={error}
-      keyboardStatus={keyboardStatus}
-      lastRobotControl={lastRobotControl}
-      onRefreshMicrophones={refreshMicrophoneDevices}
-      onMicrophoneDeviceChange={(deviceId) => void handleMicrophoneDeviceChange(deviceId)}
-      onStartMicrophone={startRobotMicrophone}
-      onStopMicrophone={stopRobotMicrophone}
       onLeave={leaveRoom}
     />
   );
