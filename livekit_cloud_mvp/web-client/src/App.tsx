@@ -9,9 +9,19 @@ import { ParticipantsPanel } from "./components/ParticipantsPanel";
 import { PrivateChatPanel } from "./components/PrivateChatPanel";
 import { RobotVideo } from "./components/RobotVideo";
 import { StatusBar } from "./components/StatusBar";
+import { useKeyboardDirectionControl } from "./useKeyboardDirectionControl";
 import { useLiveKitRoom } from "./useLiveKitRoom";
 import { useRoomSocket } from "./useRoomSocket";
-import type { JoinRoomRequest, JoinRoomResponse, KeyboardControlConfig, Role, WebRole } from "./types";
+import type {
+  ControlParameters,
+  JoinRoomRequest,
+  JoinRoomResponse,
+  KeyboardControlConfig,
+  KeyboardDirection,
+  Role,
+  RobotCommand,
+  WebRole
+} from "./types";
 
 const FALLBACK_KEYBOARD_CONTROL_CONFIG: KeyboardControlConfig = {
   enabled: false,
@@ -30,6 +40,7 @@ const FALLBACK_KEYBOARD_CONTROL_CONFIG: KeyboardControlConfig = {
 const SESSION_STORAGE_KEY = "livekit-cloud-mvp.room-session";
 const CLIENT_SESSION_STORAGE_KEY = "livekit-cloud-mvp.client-session-id";
 const ROBOT_STAGE_PARTICIPANT_ID = "__robot_stage__";
+type DirectionFeedbackSignal = KeyboardDirection | "stop";
 
 function readStoredSession(): JoinRoomResponse | null {
   try {
@@ -116,6 +127,26 @@ function shouldRefreshLiveKitToken(lastError: string): boolean {
   );
 }
 
+function formatNotificationCount(count: number): string {
+  return count > 99 ? "99+" : String(count);
+}
+
+function dockButtonClassName(active: boolean, highlighted: boolean): string {
+  return ["floating-dock-button", active ? "active" : "", highlighted ? "has-alert" : ""].filter(Boolean).join(" ");
+}
+
+function getManualFeedbackDirection(command: RobotCommand, parameters: ControlParameters = {}): DirectionFeedbackSignal {
+  if (command === "1000") {
+    return "stop";
+  }
+
+  if (command === "1002") {
+    return (parameters.distanceCm ?? 0) < 0 ? "backward" : "forward";
+  }
+
+  return (parameters.angleDeg ?? 0) < 0 ? "right" : "left";
+}
+
 export function App() {
   if (window.location.pathname === "/admin") {
     return <AdminConsole />;
@@ -128,12 +159,17 @@ function RoomApp() {
   const [session, setSession] = useState<JoinRoomResponse | null>(() => readStoredSession());
   const [actionPending, setActionPending] = useState(false);
   const [notice, setNotice] = useState("");
+  const [activeFloatingPanel, setActiveFloatingPanel] = useState<"chat" | "control" | null>(null);
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [locallyMutedAudio, setLocallyMutedAudio] = useState<Record<string, boolean>>({});
   const [selectedStageParticipantId, setSelectedStageParticipantId] = useState<string | null>(null);
   const [selectedPrivateChatParticipantId, setSelectedPrivateChatParticipantId] = useState<string | null>(null);
   const [privateUnreadCounts, setPrivateUnreadCounts] = useState<Record<string, number>>({});
+  const [manualFeedbackDirection, setManualFeedbackDirection] = useState<DirectionFeedbackSignal | null>(null);
   const recoveringSessionRef = useRef(false);
+  const seenChatMessageCountRef = useRef(0);
   const seenPrivateMessageIdsRef = useRef(new Set<string>());
+  const manualFeedbackTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const handleForcedDisconnect = useCallback((message: string) => {
     clearStoredSession();
     setSession(null);
@@ -141,6 +177,44 @@ function RoomApp() {
   }, []);
   const roomSocket = useRoomSocket(session, handleForcedDisconnect);
   const liveKitRoom = useLiveKitRoom(session);
+  const keyboardControlConfig = session?.keyboardControl ?? FALLBACK_KEYBOARD_CONTROL_CONFIG;
+  const keyboardControl = useKeyboardDirectionControl({
+    role: roomSocket.role ?? session?.role ?? null,
+    robotOnline: roomSocket.robotOnline,
+    connectionState: roomSocket.connectionState,
+    config: keyboardControlConfig,
+    status: roomSocket.keyboardStatus,
+    onStart: roomSocket.sendKeyboardControlStart,
+    onKeepalive: roomSocket.sendKeyboardControlKeepalive,
+    onStop: roomSocket.sendKeyboardControlStop
+  });
+
+  const flashManualFeedback = useCallback((direction: DirectionFeedbackSignal) => {
+    setManualFeedbackDirection(direction);
+    if (manualFeedbackTimerRef.current) {
+      window.clearTimeout(manualFeedbackTimerRef.current);
+    }
+    manualFeedbackTimerRef.current = window.setTimeout(() => {
+      setManualFeedbackDirection(null);
+      manualFeedbackTimerRef.current = null;
+    }, 260);
+  }, []);
+
+  const handleManualControl = useCallback(
+    (command: RobotCommand, parameters: ControlParameters = {}) => {
+      roomSocket.sendControl(command, parameters);
+      flashManualFeedback(getManualFeedbackDirection(command, parameters));
+    },
+    [flashManualFeedback, roomSocket]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (manualFeedbackTimerRef.current) {
+        window.clearTimeout(manualFeedbackTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleToggleLocalAudioMute = useCallback((participantId: string) => {
     setLocallyMutedAudio((current) => ({
@@ -320,8 +394,40 @@ function RoomApp() {
     setSelectedStageParticipantId(null);
     setSelectedPrivateChatParticipantId(null);
     setPrivateUnreadCounts({});
+    setChatUnreadCount(0);
+    setActiveFloatingPanel(null);
+    seenChatMessageCountRef.current = 0;
     seenPrivateMessageIdsRef.current.clear();
   }, [session?.participantId]);
+
+  useEffect(() => {
+    if (!notice) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setNotice(""), 5000);
+    return () => window.clearTimeout(timeoutId);
+  }, [notice]);
+
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+
+    const previousCount = seenChatMessageCountRef.current;
+    const newMessages = roomSocket.chatMessages.slice(previousCount);
+    seenChatMessageCountRef.current = roomSocket.chatMessages.length;
+
+    if (activeFloatingPanel === "chat") {
+      setChatUnreadCount(0);
+      return;
+    }
+
+    const unreadMessages = newMessages.filter((message) => message.senderId !== session.participantId).length;
+    if (unreadMessages > 0) {
+      setChatUnreadCount((current) => current + unreadMessages);
+    }
+  }, [activeFloatingPanel, roomSocket.chatMessages, session]);
 
   useEffect(() => {
     if (!session) {
@@ -437,6 +543,12 @@ function RoomApp() {
   const controlRequestPending =
     hasCurrentController && controlRequestQueue.some((request) => request.id === session.participantId);
   const controlActionsDisabled = roomSocket.connectionState !== "connected";
+  const privateUnreadTotal = Object.values(privateUnreadCounts).reduce((total, count) => total + count, 0);
+  const chatNotificationCount = activeFloatingPanel === "chat" ? 0 : chatUnreadCount + privateUnreadTotal;
+  const controlNotificationCount = controlRequestQueue.length;
+  const manualControlAvailable =
+    effectiveRole === "controller" && roomSocket.robotOnline && roomSocket.connectionState === "connected";
+  const feedbackPadAvailable = manualControlAvailable && (keyboardControl.backendEnabled || manualFeedbackDirection !== null);
 
   return (
     <main className="app-shell">
@@ -444,13 +556,9 @@ function RoomApp() {
         roomName={session.roomName}
         participantName={session.participantName}
         role={effectiveRole}
-        backendState="connected"
         webSocketState={roomSocket.connectionState}
-        liveKitState={liveKitRoom.connectionState}
         robotOnline={roomSocket.robotOnline}
         currentControllerName={roomSocket.currentControllerName}
-        participants={roomSocket.participants}
-        controlRequestCount={controlRequestQueue.length}
         controlRequestPending={controlRequestPending}
         controlActionsDisabled={controlActionsDisabled}
         onRequestControl={handleRequestControl}
@@ -459,19 +567,56 @@ function RoomApp() {
         actionPending={actionPending}
       />
 
-      {activeNotice ? <p className="notice">{activeNotice}</p> : null}
+      {activeNotice ? <p className="notice notice-toast">{activeNotice}</p> : null}
 
       <div className="workspace-grid">
         <div className="robot-area">
-          <RobotVideo
-            liveKitState={liveKitRoom.connectionState}
-            robotOnline={roomSocket.robotOnline}
-            stageVideoTrack={selectedStageVideoTrack}
-            stageParticipantRole={selectedStageRole}
-            stageParticipantName={selectedStageParticipantName}
-            stageParticipantIdentity={selectedStageParticipantIdentity}
-            robotActionCount={roomSocket.robotEvents.length}
-          />
+          <div className="main-stage">
+            <RobotVideo
+              liveKitState={liveKitRoom.connectionState}
+              robotOnline={roomSocket.robotOnline}
+              stageVideoTrack={selectedStageVideoTrack}
+              stageParticipantRole={selectedStageRole}
+              stageParticipantName={selectedStageParticipantName}
+              stageParticipantIdentity={selectedStageParticipantIdentity}
+              robotActionCount={roomSocket.robotEvents.length}
+              keyboardEnabled={keyboardControl.enabled || manualFeedbackDirection !== null}
+              keyboardAvailable={feedbackPadAvailable}
+              keyboardDirection={keyboardControl.activeDirection ?? manualFeedbackDirection}
+              keyboardStateText={keyboardControl.keyboardStateText}
+            />
+            <MediaControls
+              mediaPermissions={session.mediaPermissions}
+              tokenMode={session.tokenMode}
+              liveKitState={liveKitRoom.connectionState}
+              localAudioState={liveKitRoom.localAudioState}
+              localVideoState={liveKitRoom.localVideoState}
+              onToggleMicrophone={liveKitRoom.toggleMicrophone}
+              onToggleCamera={liveKitRoom.toggleCamera}
+            />
+            <div className="floating-dock" aria-label="Room tools">
+              <button
+                type="button"
+                className={dockButtonClassName(activeFloatingPanel === "chat", chatNotificationCount > 0)}
+                onClick={() => setActiveFloatingPanel((current) => (current === "chat" ? null : "chat"))}
+              >
+                Chat
+                {chatNotificationCount > 0 ? (
+                  <span className="dock-badge">{formatNotificationCount(chatNotificationCount)}</span>
+                ) : null}
+              </button>
+              <button
+                type="button"
+                className={dockButtonClassName(activeFloatingPanel === "control", controlNotificationCount > 0)}
+                onClick={() => setActiveFloatingPanel((current) => (current === "control" ? null : "control"))}
+              >
+                Control
+                {controlNotificationCount > 0 ? (
+                  <span className="dock-badge">{formatNotificationCount(controlNotificationCount)}</span>
+                ) : null}
+              </button>
+            </div>
+          </div>
         </div>
 
         <aside className="participants-sidebar" aria-label="Remote participants">
@@ -479,7 +624,12 @@ function RoomApp() {
             participants={liveKitRoom.remoteParticipants}
             roomParticipants={roomSocket.participants}
             currentParticipantId={session.participantId}
+            currentParticipantName={session.participantName}
             currentRole={effectiveRole}
+            localAudioState={liveKitRoom.localAudioState}
+            localSpeaking={liveKitRoom.localSpeaking}
+            localVideoState={liveKitRoom.localVideoState}
+            localVideoTrack={liveKitRoom.localVideoTrack}
             selectedStageParticipantId={selectedStageId}
             robotStageParticipantId={ROBOT_STAGE_PARTICIPANT_ID}
             robotOnline={roomSocket.robotOnline}
@@ -498,8 +648,17 @@ function RoomApp() {
             onStartPrivateChat={handleSelectPrivateChatParticipant}
           />
         </aside>
+      </div>
 
-        <div className="chat-area">
+      {activeFloatingPanel === "chat" ? (
+        <aside className="floating-panel-shell floating-panel-chat" role="dialog" aria-label="Chat panel">
+          <div className="floating-panel-top">
+            <h2>Chat</h2>
+            <button type="button" className="panel-close-button" onClick={() => setActiveFloatingPanel(null)}>
+              Close
+            </button>
+          </div>
+          <div className="floating-panel-body chat-panel-stack">
           <ChatPanel
             messages={roomSocket.chatMessages}
             onSend={roomSocket.sendChat}
@@ -517,9 +676,19 @@ function RoomApp() {
             onSelectParticipant={handleSelectPrivateChatParticipant}
             onSend={roomSocket.sendPrivateChat}
           />
-        </div>
+          </div>
+        </aside>
+      ) : null}
 
-        <div className="control-area">
+      {activeFloatingPanel === "control" ? (
+        <aside className="floating-panel-shell floating-panel-control" role="dialog" aria-label="Robot control panel">
+          <div className="floating-panel-top">
+            <h2>Control</h2>
+            <button type="button" className="panel-close-button" onClick={() => setActiveFloatingPanel(null)}>
+              Close
+            </button>
+          </div>
+          <div className="floating-panel-body">
           <ControlPanel
             role={effectiveRole}
             participantId={session.participantId}
@@ -527,30 +696,14 @@ function RoomApp() {
             robotOnline={roomSocket.robotOnline}
             connectionState={roomSocket.connectionState}
             actionPending={actionPending}
-            keyboardControlConfig={session.keyboardControl ?? FALLBACK_KEYBOARD_CONTROL_CONFIG}
-            keyboardStatus={roomSocket.keyboardStatus}
-            onControl={roomSocket.sendControl}
+            keyboardControlConfig={keyboardControlConfig}
+            keyboardControl={keyboardControl}
+            onControl={handleManualControl}
             onTransferControl={handleTransferControl}
-            onKeyboardStart={roomSocket.sendKeyboardControlStart}
-            onKeyboardKeepalive={roomSocket.sendKeyboardControlKeepalive}
-            onKeyboardStop={roomSocket.sendKeyboardControlStop}
           />
-        </div>
-
-        <div className="media-area">
-          <MediaControls
-            mediaPermissions={session.mediaPermissions}
-            tokenMode={session.tokenMode}
-            liveKitState={liveKitRoom.connectionState}
-            localAudioState={liveKitRoom.localAudioState}
-            localSpeaking={liveKitRoom.localSpeaking}
-            localVideoState={liveKitRoom.localVideoState}
-            localVideoTrack={liveKitRoom.localVideoTrack}
-            onToggleMicrophone={liveKitRoom.toggleMicrophone}
-            onToggleCamera={liveKitRoom.toggleCamera}
-          />
-        </div>
-      </div>
+          </div>
+        </aside>
+      ) : null}
     </main>
   );
 }

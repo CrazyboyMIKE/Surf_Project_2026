@@ -1,5 +1,5 @@
 import { useEffect, useRef, type CSSProperties } from "react";
-import type { Role } from "../types";
+import type { KeyboardDirection, Role } from "../types";
 import type { LiveKitConnectionState, RobotVideoTrackInfo } from "../useLiveKitRoom";
 
 type RobotVideoProps = {
@@ -10,6 +10,10 @@ type RobotVideoProps = {
   stageParticipantName: string;
   stageParticipantIdentity: string;
   robotActionCount: number;
+  keyboardEnabled: boolean;
+  keyboardAvailable: boolean;
+  keyboardDirection: DirectionFeedbackSignal;
+  keyboardStateText: string;
 };
 
 function getPlaceholderText(
@@ -77,6 +81,56 @@ function SpeakingBadge({
   );
 }
 
+type DirectionFeedbackKey = "forward" | "left" | "stop" | "right" | "backward";
+type DirectionFeedbackSignal = KeyboardDirection | "stop" | null;
+
+function getActiveFeedbackKeys(direction: DirectionFeedbackSignal): DirectionFeedbackKey[] {
+  if (!direction) {
+    return [];
+  }
+
+  if (direction === "stop") return ["stop"];
+  if (direction === "forward_left") return ["forward", "left"];
+  if (direction === "forward_right") return ["forward", "right"];
+  if (direction === "backward_left") return ["backward", "left"];
+  if (direction === "backward_right") return ["backward", "right"];
+  return [direction];
+}
+
+function DirectionFeedbackPad({
+  enabled,
+  available,
+  direction
+}: {
+  enabled: boolean;
+  available: boolean;
+  direction: DirectionFeedbackSignal;
+}) {
+  const activeKeys = getActiveFeedbackKeys(direction);
+  const className = ["direction-feedback-pad", enabled ? "enabled" : "", available ? "" : "unavailable"].filter(Boolean).join(" ");
+  const keys: Array<{ id: DirectionFeedbackKey; label: string; symbol: string }> = [
+    { id: "forward", label: "Forward", symbol: "↑" },
+    { id: "left", label: "Left", symbol: "←" },
+    { id: "stop", label: "Stop", symbol: "■" },
+    { id: "right", label: "Right", symbol: "→" },
+    { id: "backward", label: "Back", symbol: "↓" }
+  ];
+
+  return (
+    <div className={className} aria-label="Direction key feedback">
+      {keys.map((key) => (
+        <span
+          key={key.id}
+          className={`direction-feedback-key ${key.id}${activeKeys.includes(key.id) ? " active" : ""}`}
+          aria-label={key.label}
+        >
+          {key.symbol}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function RobotVideo({
   liveKitState,
   robotOnline,
@@ -84,7 +138,11 @@ export function RobotVideo({
   stageParticipantRole,
   stageParticipantName,
   stageParticipantIdentity,
-  robotActionCount
+  robotActionCount,
+  keyboardEnabled,
+  keyboardAvailable,
+  keyboardDirection,
+  keyboardStateText
 }: RobotVideoProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -126,7 +184,11 @@ export function RobotVideo({
       )}
 
       <div className="robot-status-strip" aria-label="Robot status">
-        <p>{robotOnline ? (robotActionCount > 0 ? "Last action sent" : "Robot ready") : "Robot offline"}</p>
+        <div className="robot-status-copy">
+          <p>{robotOnline ? (robotActionCount > 0 ? "Last action sent" : "Robot ready") : "Robot offline"}</p>
+          <span>{keyboardStateText}</span>
+        </div>
+        <DirectionFeedbackPad enabled={keyboardEnabled} available={keyboardAvailable} direction={keyboardDirection} />
       </div>
     </section>
   );

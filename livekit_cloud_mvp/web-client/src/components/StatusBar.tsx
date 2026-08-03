@@ -1,16 +1,13 @@
-import type { ParticipantSummary, WebRole } from "../types";
+import { useState } from "react";
+import type { WebRole } from "../types";
 
 type StatusBarProps = {
   roomName: string;
   participantName: string;
   role: WebRole | null;
-  backendState: string;
   webSocketState: string;
-  liveKitState: string;
   robotOnline: boolean;
   currentControllerName?: string;
-  participants: ParticipantSummary[];
-  controlRequestCount: number;
   controlRequestPending: boolean;
   controlActionsDisabled: boolean;
   onRequestControl: () => void;
@@ -23,13 +20,9 @@ export function StatusBar({
   roomName,
   participantName,
   role,
-  backendState,
   webSocketState,
-  liveKitState,
   robotOnline,
   currentControllerName,
-  participants,
-  controlRequestCount,
   controlRequestPending,
   controlActionsDisabled,
   onRequestControl,
@@ -38,42 +31,54 @@ export function StatusBar({
   actionPending
 }: StatusBarProps) {
   const isController = role === "controller";
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   return (
-    <header className="status-bar">
-      <div>
+    <header className="status-bar compact-status-bar">
+      <div className="room-title-block">
         <p className="eyebrow">Room</p>
         <h1>{roomName}</h1>
+        <span>{participantName}</span>
       </div>
 
-      <div className="status-grid" aria-label="Room status">
-        <span>
-          User <strong>{participantName}</strong>
+      <div className="compact-status-badges" aria-label="Room summary">
+        <span className="state-pill">{role ?? "viewer"}</span>
+        <span className={`state-pill ${webSocketState === "connected" ? "online" : "offline"}`}>
+          {webSocketState === "connected" ? "connected" : "reconnecting"}
         </span>
-        <span>
-          Role <strong>{role ?? "viewer"}</strong>
-        </span>
-        <span>
-          Backend <strong>{backendState}</strong>
-        </span>
-        <span>
-          WebSocket <strong>{webSocketState}</strong>
-        </span>
-        <span>
-          LiveKit <strong>{liveKitState}</strong>
-        </span>
-        <span>
-          Robot <strong>{robotOnline ? "online" : "offline"}</strong>
-        </span>
-        <span>
-          Controller <strong>{currentControllerName ?? "none"}</strong>
-        </span>
-        <span>
-          Participants <strong>{participants.length || 1}</strong>
-        </span>
-        <span>
-          Control queue <strong>{controlRequestCount}</strong>
-        </span>
+        <span className={`state-pill ${robotOnline ? "online" : "offline"}`}>{robotOnline ? "robot online" : "robot offline"}</span>
+      </div>
+
+      <div className="status-popover-wrap">
+        <button
+          type="button"
+          className="secondary-button compact-status-button"
+          aria-expanded={detailsOpen}
+          onClick={() => setDetailsOpen((current) => !current)}
+        >
+          Status
+        </button>
+        {detailsOpen ? (
+          <div className="status-popover" role="dialog" aria-label="Room status details">
+            <div className="floating-panel-top">
+              <h2>Status</h2>
+              <button type="button" className="panel-close-button" onClick={() => setDetailsOpen(false)}>
+                Close
+              </button>
+            </div>
+            <div className="status-grid" aria-label="Room status">
+              <span>
+                User <strong>{participantName}</strong>
+              </span>
+              <span>
+                Role <strong>{role ?? "viewer"}</strong>
+              </span>
+              <span>
+                Controller <strong>{currentControllerName ?? "none"}</strong>
+              </span>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="status-actions">

@@ -2,11 +2,10 @@ import type {
   ControlParameters,
   ControlRequestParticipant,
   KeyboardControlConfig,
-  KeyboardControlStatus,
-  KeyboardDirection,
   RobotCommand,
   WebRole
 } from "../types";
+import type { KeyboardDirectionControlState } from "../useKeyboardDirectionControl";
 import { KeyboardControlPanel } from "./KeyboardControlPanel";
 
 type ControlPanelProps = {
@@ -17,12 +16,9 @@ type ControlPanelProps = {
   connectionState: string;
   actionPending: boolean;
   keyboardControlConfig: KeyboardControlConfig;
-  keyboardStatus: KeyboardControlStatus | null;
+  keyboardControl: KeyboardDirectionControlState;
   onControl: (command: RobotCommand, parameters?: ControlParameters) => void;
   onTransferControl: (targetParticipantId: string) => void;
-  onKeyboardStart: (direction: KeyboardDirection, linearSpeed: number, angularSpeed: number) => void;
-  onKeyboardKeepalive: (direction: KeyboardDirection, linearSpeed: number, angularSpeed: number) => void;
-  onKeyboardStop: () => void;
 };
 
 export function ControlPanel({
@@ -33,12 +29,9 @@ export function ControlPanel({
   connectionState,
   actionPending,
   keyboardControlConfig,
-  keyboardStatus,
+  keyboardControl,
   onControl,
-  onTransferControl,
-  onKeyboardStart,
-  onKeyboardKeepalive,
-  onKeyboardStop
+  onTransferControl
 }: ControlPanelProps) {
   const disabled = role !== "controller" || !robotOnline || connectionState !== "connected";
   const pendingControlRequests = controlRequestQueue.filter((participant) => participant.id !== participantId && participant.connected);
@@ -78,10 +71,7 @@ export function ControlPanel({
         robotOnline={robotOnline}
         connectionState={connectionState}
         config={keyboardControlConfig}
-        status={keyboardStatus}
-        onStart={onKeyboardStart}
-        onKeepalive={onKeyboardKeepalive}
-        onStop={onKeyboardStop}
+        control={keyboardControl}
       />
 
       {role === "controller" ? (

@@ -1,13 +1,24 @@
-import { useEffect, useRef, type CSSProperties } from "react";
-import type { RemoteAudioTrack, RemoteVideoTrack } from "livekit-client";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import type { LocalVideoTrack, RemoteAudioTrack, RemoteVideoTrack } from "livekit-client";
 import type { ParticipantSummary, Role, SpeakerState, WebRole } from "../types";
-import type { RemoteParticipantMediaInfo, RobotAudioTrackInfo, RobotVideoTrackInfo } from "../useLiveKitRoom";
+import type {
+  LocalMediaState,
+  ParticipantSpeakingInfo,
+  RemoteParticipantMediaInfo,
+  RobotAudioTrackInfo,
+  RobotVideoTrackInfo
+} from "../useLiveKitRoom";
 
 type ParticipantsPanelProps = {
   participants: RemoteParticipantMediaInfo[];
   roomParticipants: ParticipantSummary[];
   currentParticipantId: string;
+  currentParticipantName: string;
   currentRole: WebRole | null;
+  localAudioState: LocalMediaState;
+  localSpeaking: ParticipantSpeakingInfo;
+  localVideoState: LocalMediaState;
+  localVideoTrack: LocalVideoTrack | null;
   selectedStageParticipantId: string | null;
   robotStageParticipantId: string;
   robotOnline: boolean;
@@ -123,6 +134,38 @@ function RemoteVideo({
   );
 }
 
+function LocalVideoPreview({
+  track,
+  speaking,
+  placeholder = "Local camera off"
+}: {
+  track: LocalVideoTrack | null;
+  speaking: ParticipantSpeakingInfo;
+  placeholder?: string;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    if (!track || !videoElement) {
+      return;
+    }
+
+    track.attach(videoElement);
+
+    return () => {
+      track.detach(videoElement);
+    };
+  }, [track]);
+
+  return (
+    <div className={`participant-video participant-video-local${speaking.hasAudioTrack && speaking.isSpeaking ? " is-speaking" : ""}`}>
+      {track ? <video ref={videoRef} autoPlay muted playsInline /> : <span>{placeholder}</span>}
+      <SpeakingBadge hasAudioTrack={speaking.hasAudioTrack} isSpeaking={speaking.isSpeaking} audioLevel={speaking.audioLevel} />
+    </div>
+  );
+}
+
 function getParticipantRole(participant: RemoteParticipantMediaInfo, roomParticipants: ParticipantSummary[]): Role | "unknown" {
   const roomParticipant = roomParticipants.find((candidate) => candidate.id === participant.identity);
   return participant.role !== "unknown" ? participant.role : (roomParticipant?.role ?? "unknown");
@@ -142,6 +185,88 @@ function canShowLocalMuteState(role: Role | "unknown"): boolean {
 
 function isRobotRole(role: Role | "unknown"): boolean {
   return role === "robot";
+}
+
+type ParticipantListItem =
+  | { kind: "robot"; identity: string; name: string; role: "robot"; hasAudioTrack: boolean; isSpeaking: boolean; audioLevel: number }
+  | {
+      kind: "local";
+      identity: string;
+      name: string;
+      role: WebRole;
+      hasAudioTrack: boolean;
+      isSpeaking: boolean;
+      audioLevel: number;
+    }
+  | {
+      kind: "remote";
+      participant: DisplayParticipant;
+      identity: string;
+      name: string;
+      role: Role | "unknown";
+      hasAudioTrack: boolean;
+      isSpeaking: boolean;
+      audioLevel: number;
+    };
+
+const SPEAKING_SORT_HOLD_MS = 1600;
+
+function getDefaultSortRank(item: ParticipantListItem, speaker: SpeakerState): number {
+  if (item.identity === speaker.currentSpeaker?.id) {
+    return 0;
+  }
+
+  if (item.role === "controller") {
+    return 1;
+  }
+
+  if (item.kind === "robot") {
+    return 2;
+  }
+
+  if (item.kind === "local") {
+    return 3;
+  }
+
+  if (item.role === "viewer") {
+    return 4;
+  }
+
+  return 5;
+}
+
+function sortParticipantItems(
+  items: ParticipantListItem[],
+  speaker: SpeakerState,
+  lastSpokeAtById: Record<string, number>,
+  now: number
+): ParticipantListItem[] {
+  return [...items].sort((left, right) => {
+    const leftLastSpokeAt = lastSpokeAtById[left.identity] ?? 0;
+    const rightLastSpokeAt = lastSpokeAtById[right.identity] ?? 0;
+    const leftSpeaking = left.hasAudioTrack && (left.isSpeaking || now - leftLastSpokeAt < SPEAKING_SORT_HOLD_MS);
+    const rightSpeaking = right.hasAudioTrack && (right.isSpeaking || now - rightLastSpokeAt < SPEAKING_SORT_HOLD_MS);
+
+    if (leftSpeaking !== rightSpeaking) {
+      return leftSpeaking ? -1 : 1;
+    }
+
+    if (leftSpeaking && rightSpeaking) {
+      const levelDifference = right.audioLevel - left.audioLevel;
+      if (Math.abs(levelDifference) > 0.04) {
+        return levelDifference;
+      }
+
+      return rightLastSpokeAt - leftLastSpokeAt;
+    }
+
+    const rankDifference = getDefaultSortRank(left, speaker) - getDefaultSortRank(right, speaker);
+    if (rankDifference !== 0) {
+      return rankDifference;
+    }
+
+    return left.name.localeCompare(right.name);
+  });
 }
 
 function AudioLocalMuteControl({
@@ -235,7 +360,12 @@ export function ParticipantsPanel({
   participants,
   roomParticipants,
   currentParticipantId,
+  currentParticipantName,
   currentRole,
+  localAudioState,
+  localSpeaking,
+  localVideoState,
+  localVideoTrack,
   selectedStageParticipantId,
   robotStageParticipantId,
   robotOnline,
@@ -253,6 +383,8 @@ export function ParticipantsPanel({
   onToggleLocalAudioMute,
   onStartPrivateChat
 }: ParticipantsPanelProps) {
+  const [lastSpokeAtById, setLastSpokeAtById] = useState<Record<string, number>>({});
+  const [speakingClock, setSpeakingClock] = useState(0);
   const displayParticipants: DisplayParticipant[] = participants.map((participant) => ({
     ...participant,
     role: getParticipantRole(participant, roomParticipants),
@@ -261,25 +393,6 @@ export function ParticipantsPanel({
   }));
   const robotMediaParticipant = displayParticipants.find((participant) => isRobotRole(participant.role));
   const webParticipants = displayParticipants.filter((participant) => !isRobotRole(participant.role));
-  const orderedParticipants = [...webParticipants].sort((left, right) => {
-    if (left.identity === speaker.currentSpeaker?.id && right.identity !== speaker.currentSpeaker.id) {
-      return -1;
-    }
-
-    if (left.identity !== speaker.currentSpeaker?.id && right.identity === speaker.currentSpeaker?.id) {
-      return 1;
-    }
-
-    if (left.role === "controller" && right.role !== "controller") {
-      return -1;
-    }
-
-    if (left.role !== "controller" && right.role === "controller") {
-      return 1;
-    }
-
-    return (left.name ?? left.identity).localeCompare(right.name ?? right.identity);
-  });
   const robotParticipant = roomParticipants.find((participant) => participant.role === "robot");
   const robotIdentity =
     robotMediaParticipant?.identity ??
@@ -302,8 +415,95 @@ export function ParticipantsPanel({
   const robotAudioLevel = robotMediaParticipant?.audioLevel ?? robotAudioTrack?.audioLevel ?? robotVideoTrack?.audioLevel ?? 0;
   const robotSelected = selectedStageParticipantId === robotStageParticipantId || selectedStageParticipantId === robotIdentity;
   const robotMuteParticipantId = robotAudioTrack?.participantIdentity ?? robotMediaParticipant?.identity ?? robotIdentity;
-  const participantCount = orderedParticipants.length + 1;
+  const localRole = currentRole ?? "viewer";
+  const localHasAudio = localSpeaking.hasAudioTrack || localAudioState === "on";
+  const localHasVideo = Boolean(localVideoTrack) || localVideoState === "on";
+  const participantItems = useMemo<ParticipantListItem[]>(
+    () => [
+      {
+        kind: "robot",
+        identity: robotIdentity,
+        name: robotName,
+        role: "robot",
+        hasAudioTrack: hasRobotAudio,
+        isSpeaking: robotIsSpeaking,
+        audioLevel: robotAudioLevel
+      },
+      {
+        kind: "local",
+        identity: currentParticipantId,
+        name: currentParticipantName,
+        role: localRole,
+        hasAudioTrack: localHasAudio,
+        isSpeaking: localSpeaking.hasAudioTrack && localSpeaking.isSpeaking,
+        audioLevel: localSpeaking.audioLevel
+      },
+      ...webParticipants.map((participant) => ({
+        kind: "remote" as const,
+        participant,
+        identity: participant.identity,
+        name: participant.name ?? participant.identity,
+        role: participant.role,
+        hasAudioTrack: participant.hasAudioTrack,
+        isSpeaking: participant.hasAudioTrack && participant.isSpeaking,
+        audioLevel: participant.audioLevel
+      }))
+    ],
+    [
+      currentParticipantId,
+      currentParticipantName,
+      hasRobotAudio,
+      localHasAudio,
+      localRole,
+      localSpeaking.audioLevel,
+      localSpeaking.hasAudioTrack,
+      localSpeaking.isSpeaking,
+      robotAudioLevel,
+      robotIdentity,
+      robotIsSpeaking,
+      robotName,
+      webParticipants
+    ]
+  );
+  const speakingSignature = participantItems
+    .map((item) => `${item.identity}:${item.hasAudioTrack ? "a" : "n"}:${item.isSpeaking ? "s" : "q"}:${item.audioLevel.toFixed(2)}`)
+    .join("|");
+  const orderedItems = useMemo(
+    () => sortParticipantItems(participantItems, speaker, lastSpokeAtById, Date.now()),
+    [lastSpokeAtById, participantItems, speaker, speakingClock]
+  );
+  const participantCount = participantItems.length;
   const robotVideoPlaceholder = robotOnline ? "Waiting for robot video" : "Robot camera unavailable";
+
+  useEffect(() => {
+    const now = Date.now();
+    const speakingUpdates = participantItems.filter((item) => item.hasAudioTrack && item.isSpeaking);
+    if (speakingUpdates.length === 0) {
+      return;
+    }
+
+    setLastSpokeAtById((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const item of speakingUpdates) {
+        if ((next[item.identity] ?? 0) !== now) {
+          next[item.identity] = now;
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [speakingSignature]);
+
+  useEffect(() => {
+    const hasRecentSpeaker = Object.values(lastSpokeAtById).some((lastSpokeAt) => Date.now() - lastSpokeAt < SPEAKING_SORT_HOLD_MS);
+    if (!hasRecentSpeaker) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setSpeakingClock((current) => current + 1), SPEAKING_SORT_HOLD_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [lastSpokeAtById, speakingClock]);
 
   return (
     <section className="tool-panel participants-panel" aria-labelledby="participants-title">
@@ -330,49 +530,75 @@ export function ParticipantsPanel({
       />
 
       <div className="participants-list">
-        <article className={`participant-tile participant-robot${robotIsSpeaking ? " is-speaking" : ""}`} key={robotIdentity}>
-          <div className="participant-header">
-            <strong>{robotName}</strong>
-            <span>robot</span>
-          </div>
-          <RemoteVideo
-            track={robotVideo}
-            hasAudioTrack={hasRobotAudio}
-            isSpeaking={robotIsSpeaking}
-            audioLevel={robotAudioLevel}
-            placeholder={robotVideoPlaceholder}
-          />
-          <RemoteAudio track={robotAudio} muted={Boolean(locallyMutedAudio[robotMuteParticipantId])} />
-          <div className="participant-media-state">
-            <span>Audio {hasRobotAudio ? "on" : "off"}</span>
-            <span>Video {hasRobotVideo ? "on" : "off"}</span>
-            <span>{locallyMutedAudio[robotMuteParticipantId] ? "Muted for you" : "Unmuted for you"}</span>
-          </div>
-          <div className="participant-actions">
-            <button
-              type="button"
-              className="stage-select-button"
-              disabled={robotSelected}
-              title={hasRobotVideo ? "Show robot camera on the main screen" : "Show robot camera placeholder on the main screen"}
-              onClick={() => onSelectStageParticipant(robotStageParticipantId)}
-            >
-              {robotSelected ? "On main" : "Show main"}
-            </button>
-            <AudioLocalMuteControl
-              currentRole={currentRole}
-              participantRole="robot"
-              participantId={robotMuteParticipantId}
-              hasAudio={hasRobotAudio}
-              locallyMuted={Boolean(locallyMutedAudio[robotMuteParticipantId])}
-              onToggleLocalAudioMute={onToggleLocalAudioMute}
-            />
-          </div>
-        </article>
+        {orderedItems.map((item) => {
+          if (item.kind === "robot") {
+            return (
+              <article className={`participant-tile participant-robot${robotIsSpeaking ? " is-speaking" : ""}`} key={robotIdentity}>
+                <div className="participant-header">
+                  <strong>{robotName}</strong>
+                  <span>robot</span>
+                </div>
+                <RemoteVideo
+                  track={robotVideo}
+                  hasAudioTrack={hasRobotAudio}
+                  isSpeaking={robotIsSpeaking}
+                  audioLevel={robotAudioLevel}
+                  placeholder={robotVideoPlaceholder}
+                />
+                <RemoteAudio track={robotAudio} muted={Boolean(locallyMutedAudio[robotMuteParticipantId])} />
+                <div className="participant-media-state">
+                  <span>Audio {hasRobotAudio ? "on" : "off"}</span>
+                  <span>Video {hasRobotVideo ? "on" : "off"}</span>
+                  <span>{locallyMutedAudio[robotMuteParticipantId] ? "Muted for you" : "Unmuted for you"}</span>
+                </div>
+                <div className="participant-actions">
+                  <button
+                    type="button"
+                    className="stage-select-button"
+                    disabled={robotSelected}
+                    title={hasRobotVideo ? "Show robot camera on the main screen" : "Show robot camera placeholder on the main screen"}
+                    onClick={() => onSelectStageParticipant(robotStageParticipantId)}
+                  >
+                    {robotSelected ? "On main" : "Show main"}
+                  </button>
+                  <AudioLocalMuteControl
+                    currentRole={currentRole}
+                    participantRole="robot"
+                    participantId={robotMuteParticipantId}
+                    hasAudio={hasRobotAudio}
+                    locallyMuted={Boolean(locallyMutedAudio[robotMuteParticipantId])}
+                    onToggleLocalAudioMute={onToggleLocalAudioMute}
+                  />
+                </div>
+              </article>
+            );
+          }
 
-        {orderedParticipants.length === 0 ? (
-          <p className="empty-state">No remote Web participants yet</p>
-        ) : (
-          orderedParticipants.map((participant) => (
+          if (item.kind === "local") {
+            return (
+              <article
+                className={`participant-tile participant-local participant-${localRole}${
+                  localSpeaking.hasAudioTrack && localSpeaking.isSpeaking ? " is-speaking" : ""
+                }`}
+                key={currentParticipantId}
+              >
+                <div className="participant-header">
+                  <strong>{currentParticipantName}</strong>
+                  <span>{localRole}</span>
+                  <em>You</em>
+                </div>
+                <LocalVideoPreview track={localVideoTrack} speaking={localSpeaking} />
+                <div className="participant-media-state">
+                  <span>Mic {localHasAudio ? "on" : "off"}</span>
+                  <span>Camera {localHasVideo ? "on" : "off"}</span>
+                  <span>Local preview</span>
+                </div>
+              </article>
+            );
+          }
+
+          const { participant } = item;
+          return (
             <article
               className={`participant-tile participant-${participant.role}${
                 participant.hasAudioTrack && participant.isSpeaking ? " is-speaking" : ""
@@ -426,8 +652,8 @@ export function ParticipantsPanel({
                 ) : null}
               </div>
             </article>
-          ))
-        )}
+          );
+        })}
       </div>
     </section>
   );
