@@ -131,15 +131,9 @@ type RoomSession = JoinRobotResponse & {
   publishAudio: boolean;
   microphoneDeviceId: string;
   selectedMicrophoneDeviceId: string;
-  selectedCameraDeviceId: string;
 };
 
 type MicrophoneDeviceInfo = {
-  deviceId: string;
-  label: string;
-};
-
-type CameraDeviceInfo = {
   deviceId: string;
   label: string;
 };
@@ -359,7 +353,12 @@ function normalizeStoredRobotSession(value: unknown): RoomSession | null {
     return null;
   }
 
-  const publishAudio = typeof parsed.publishAudio === "boolean" ? parsed.publishAudio : Boolean(parsed.publishMicrophone);
+  const publishAudio =
+    typeof parsed.publishAudio === "boolean"
+      ? parsed.publishAudio
+      : typeof parsed.publishMicrophone === "boolean"
+        ? parsed.publishMicrophone
+        : true;
   const selectedMicrophoneDeviceId =
     typeof parsed.selectedMicrophoneDeviceId === "string"
       ? parsed.selectedMicrophoneDeviceId
@@ -374,8 +373,7 @@ function normalizeStoredRobotSession(value: unknown): RoomSession | null {
     publishMicrophone: publishAudio,
     publishAudio,
     microphoneDeviceId: selectedMicrophoneDeviceId,
-    selectedMicrophoneDeviceId,
-    selectedCameraDeviceId: typeof parsed.selectedCameraDeviceId === "string" ? parsed.selectedCameraDeviceId : ""
+    selectedMicrophoneDeviceId
   } as RoomSession;
 }
 
@@ -541,15 +539,6 @@ function collectMicrophoneDevices(devices: MediaDeviceInfo[]): MicrophoneDeviceI
     }));
 }
 
-function collectCameraDevices(devices: MediaDeviceInfo[]): CameraDeviceInfo[] {
-  return devices
-    .filter((device) => device.kind === "videoinput")
-    .map((device, index) => ({
-      deviceId: device.deviceId,
-      label: device.label.trim() || (device.deviceId === "default" ? "Default camera" : `Camera ${index + 1}`)
-    }));
-}
-
 function describeMicrophoneState(state: RobotMicrophoneState): string {
   switch (state) {
     case "idle":
@@ -570,25 +559,6 @@ function describeMicrophoneState(state: RobotMicrophoneState): string {
       return "Microphone unsupported";
     case "publish-failed":
       return "Microphone failed";
-  }
-}
-
-function describeCameraDeviceState(state: MicrophoneDeviceListState, deviceCount: number): string {
-  switch (state) {
-    case "idle":
-      return "Click Refresh cameras to choose a camera.";
-    case "checking":
-      return "Checking camera devices...";
-    case "ready":
-      return deviceCount === 1 ? "1 camera available." : `${deviceCount} cameras available.`;
-    case "permission-denied":
-      return "Camera permission denied.";
-    case "not-found":
-      return "No camera devices found.";
-    case "unsupported":
-      return "Camera device selection is not supported by this browser.";
-    case "error":
-      return "Could not refresh camera devices.";
   }
 }
 
@@ -615,8 +585,8 @@ function createMicrophoneAudioOptions(deviceId: string) {
   return deviceId ? { deviceId } : undefined;
 }
 
-function createRobotCameraOptions(cameraProfile: ReturnType<typeof getRobotCameraProfile>, deviceId: string) {
-  return deviceId ? { ...cameraProfile.capture, deviceId } : cameraProfile.capture;
+function createRobotCameraOptions(cameraProfile: ReturnType<typeof getRobotCameraProfile>) {
+  return cameraProfile.capture;
 }
 
 function classifyMicrophoneError(error: unknown): { state: RobotMicrophoneState; message: string } {
@@ -1473,55 +1443,10 @@ function MicrophoneDevicePanel({
   );
 }
 
-function CameraDevicePanel({
-  devices,
-  selectedDeviceId,
-  deviceListState,
-  pending,
-  onRefresh,
-  onDeviceChange
-}: {
-  devices: CameraDeviceInfo[];
-  selectedDeviceId: string;
-  deviceListState: MicrophoneDeviceListState;
-  pending: boolean;
-  onRefresh: () => void;
-  onDeviceChange: (deviceId: string) => void;
-}) {
-  return (
-    <div className="microphone-device-panel" aria-label="Camera device selection">
-      <div className="microphone-device-header">
-        <strong>Select camera</strong>
-        <span>{devices.length === 0 ? "Camera default" : `${devices.length} available`}</span>
-      </div>
-      <div className="microphone-device-controls">
-        <label>
-          Camera
-          <select value={selectedDeviceId} disabled={pending || devices.length === 0} onChange={(event) => onDeviceChange(event.target.value)}>
-            <option value="">Default camera</option>
-            {devices.map((device, index) => (
-              <option key={`${device.deviceId}-${index}`} value={device.deviceId}>
-                {device.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="button" className="ghost-button" disabled={pending || deviceListState === "checking"} onClick={onRefresh}>
-          {deviceListState === "checking" ? "Refreshing..." : "Refresh cameras"}
-        </button>
-      </div>
-      <p className="microphone-device-status">{describeCameraDeviceState(deviceListState, devices.length)}</p>
-    </div>
-  );
-}
-
 function EntryView({
   robotName,
   roomName,
   publishMicrophone,
-  cameraDevices,
-  selectedCameraDeviceId,
-  cameraDeviceState,
   microphoneDevices,
   selectedMicrophoneDeviceId,
   microphoneDeviceState,
@@ -1531,8 +1456,6 @@ function EntryView({
   onRobotNameChange,
   onRoomNameChange,
   onPublishMicrophoneChange,
-  onRefreshCameras,
-  onCameraDeviceChange,
   onRefreshMicrophones,
   onMicrophoneDeviceChange,
   onEnter
@@ -1540,9 +1463,6 @@ function EntryView({
   robotName: string;
   roomName: string;
   publishMicrophone: boolean;
-  cameraDevices: CameraDeviceInfo[];
-  selectedCameraDeviceId: string;
-  cameraDeviceState: MicrophoneDeviceListState;
   microphoneDevices: MicrophoneDeviceInfo[];
   selectedMicrophoneDeviceId: string;
   microphoneDeviceState: MicrophoneDeviceListState;
@@ -1552,8 +1472,6 @@ function EntryView({
   onRobotNameChange: (value: string) => void;
   onRoomNameChange: (value: string) => void;
   onPublishMicrophoneChange: (value: boolean) => void;
-  onRefreshCameras: () => void;
-  onCameraDeviceChange: (deviceId: string) => void;
   onRefreshMicrophones: () => void;
   onMicrophoneDeviceChange: (deviceId: string) => void;
   onEnter: (mode: "create" | "join") => void;
@@ -1594,15 +1512,6 @@ function EntryView({
             />
             Publish microphone audio
           </label>
-
-          <CameraDevicePanel
-            devices={cameraDevices}
-            selectedDeviceId={selectedCameraDeviceId}
-            deviceListState={cameraDeviceState}
-            pending={pending}
-            onRefresh={onRefreshCameras}
-            onDeviceChange={onCameraDeviceChange}
-          />
 
           <MicrophoneDevicePanel
             devices={microphoneDevices}
@@ -1758,11 +1667,8 @@ function App() {
   const [webSocketState, setWebSocketState] = useState("idle");
   const [liveKitState, setLiveKitState] = useState("idle");
   const [publishState, setPublishState] = useState("idle");
-  const [publishMicrophone, setPublishMicrophone] = useState(() => Boolean(initialStoredSession?.publishMicrophone));
+  const [publishMicrophone, setPublishMicrophone] = useState(() => initialStoredSession?.publishAudio ?? true);
   const [microphoneState, setMicrophoneState] = useState<RobotMicrophoneState>("idle");
-  const [cameraDevices, setCameraDevices] = useState<CameraDeviceInfo[]>([]);
-  const [selectedCameraDeviceId, setSelectedCameraDeviceId] = useState(() => initialStoredSession?.selectedCameraDeviceId ?? "");
-  const [cameraDeviceState, setCameraDeviceState] = useState<MicrophoneDeviceListState>("idle");
   const [microphoneDevices, setMicrophoneDevices] = useState<MicrophoneDeviceInfo[]>([]);
   const [selectedMicrophoneDeviceId, setSelectedMicrophoneDeviceId] = useState(() => initialStoredSession?.microphoneDeviceId ?? "");
   const [microphoneDeviceState, setMicrophoneDeviceState] = useState<MicrophoneDeviceListState>("idle");
@@ -1901,62 +1807,6 @@ function App() {
     sessionRef.current = nextSession;
     setSession(nextSession);
     saveStoredRobotSession(nextSession);
-  }
-
-  function updateStoredCameraDevice(nextDeviceId: string) {
-    setSelectedCameraDeviceId(nextDeviceId);
-    const currentSession = sessionRef.current ?? session;
-    if (!currentSession) {
-      return;
-    }
-
-    const nextSession = {
-      ...currentSession,
-      selectedCameraDeviceId: nextDeviceId
-    };
-    sessionRef.current = nextSession;
-    setSession(nextSession);
-    saveStoredRobotSession(nextSession);
-  }
-
-  async function refreshCameraDevices() {
-    if (!navigator.mediaDevices?.enumerateDevices) {
-      setCameraDevices([]);
-      setCameraDeviceState("unsupported");
-      setError("Camera device selection is not supported by this browser.");
-      return;
-    }
-
-    setCameraDeviceState("checking");
-    setError("");
-    let permissionStream: MediaStream | null = null;
-
-    try {
-      if (navigator.mediaDevices.getUserMedia) {
-        permissionStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      }
-
-      const nextDevices = collectCameraDevices(await navigator.mediaDevices.enumerateDevices());
-      setCameraDevices(nextDevices);
-      setCameraDeviceState(nextDevices.length > 0 ? "ready" : "not-found");
-      if (selectedCameraDeviceId && !nextDevices.some((device) => device.deviceId === selectedCameraDeviceId)) {
-        updateStoredCameraDevice("");
-      }
-    } catch (error) {
-      const cameraMessage = describeCameraError(error);
-      setCameraDevices([]);
-      setCameraDeviceState(
-        error instanceof DOMException &&
-          (error.name === "NotAllowedError" || error.name === "SecurityError" || error.name === "PermissionDeniedError")
-          ? "permission-denied"
-          : error instanceof DOMException && (error.name === "NotFoundError" || error.name === "DevicesNotFoundError")
-            ? "not-found"
-            : "error"
-      );
-      setError(cameraMessage);
-    } finally {
-      permissionStream?.getTracks().forEach((track) => track.stop());
-    }
   }
 
   async function refreshMicrophoneDevices() {
@@ -2119,7 +1969,6 @@ function App() {
     const savedPublishMicrophone = restoredSession?.publishAudio ?? restoredSession?.publishMicrophone ?? publishMicrophone;
     const savedMicrophoneDeviceId =
       restoredSession?.selectedMicrophoneDeviceId ?? restoredSession?.microphoneDeviceId ?? selectedMicrophoneDeviceId;
-    const savedCameraDeviceId = restoredSession?.selectedCameraDeviceId ?? selectedCameraDeviceId;
     const shouldPublishMicrophone = savedPublishMicrophone;
     if (!trimmedRobotName) {
       setError("用户名不能为空");
@@ -2137,7 +1986,6 @@ function App() {
     setRobotName(trimmedRobotName);
     setPublishMicrophone(savedPublishMicrophone);
     setSelectedMicrophoneDeviceId(savedMicrophoneDeviceId);
-    setSelectedCameraDeviceId(savedCameraDeviceId);
     setBackendState("joining");
     setWebSocketState("idle");
     setLiveKitState("idle");
@@ -2157,8 +2005,7 @@ function App() {
         publishMicrophone: shouldPublishMicrophone,
         publishAudio: shouldPublishMicrophone,
         microphoneDeviceId: savedMicrophoneDeviceId,
-        selectedMicrophoneDeviceId: savedMicrophoneDeviceId,
-        selectedCameraDeviceId: savedCameraDeviceId
+        selectedMicrophoneDeviceId: savedMicrophoneDeviceId
       };
       setSession(nextSession);
       sessionRef.current = nextSession;
@@ -2284,7 +2131,7 @@ function App() {
       let videoTrack: LocalVideoTrack;
       const cameraProfile = getRobotCameraProfile();
       try {
-        videoTrack = await createLocalVideoTrack(createRobotCameraOptions(cameraProfile, savedCameraDeviceId));
+        videoTrack = await createLocalVideoTrack(createRobotCameraOptions(cameraProfile));
       } catch (error) {
         throw new Error(describeCameraError(error));
       }
@@ -2419,9 +2266,6 @@ function App() {
         robotName={robotName}
         roomName={roomName}
         publishMicrophone={publishMicrophone}
-        cameraDevices={cameraDevices}
-        selectedCameraDeviceId={selectedCameraDeviceId}
-        cameraDeviceState={cameraDeviceState}
         microphoneDevices={microphoneDevices}
         selectedMicrophoneDeviceId={selectedMicrophoneDeviceId}
         microphoneDeviceState={microphoneDeviceState}
@@ -2431,8 +2275,6 @@ function App() {
         onRobotNameChange={setRobotName}
         onRoomNameChange={setRoomName}
         onPublishMicrophoneChange={setPublishMicrophone}
-        onRefreshCameras={refreshCameraDevices}
-        onCameraDeviceChange={updateStoredCameraDevice}
         onRefreshMicrophones={refreshMicrophoneDevices}
         onMicrophoneDeviceChange={(deviceId) => void handleMicrophoneDeviceChange(deviceId)}
         onEnter={enterRoom}

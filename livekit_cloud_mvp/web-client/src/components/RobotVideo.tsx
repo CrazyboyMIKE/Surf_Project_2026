@@ -265,7 +265,6 @@ export function RobotVideo({
       {stageVideoTrack ? (
         <div className={`video-live${stageVideoTrack.hasAudioTrack && stageVideoTrack.isSpeaking ? " is-speaking" : ""}`}>
           <video ref={videoRef} autoPlay playsInline muted className="robot-video" />
-          <div className="video-role-badge">{stageParticipantRole}</div>
           <SpeakingBadge
             hasAudioTrack={stageVideoTrack.hasAudioTrack}
             isSpeaking={stageVideoTrack.isSpeaking}

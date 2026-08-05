@@ -39,6 +39,7 @@ const FALLBACK_KEYBOARD_CONTROL_CONFIG: KeyboardControlConfig = {
 
 const SESSION_STORAGE_KEY = "livekitCloudWebSession";
 const CLIENT_SESSION_STORAGE_KEY = "livekitCloudWebClientSessionId";
+const ROOM_NOTICE_STORAGE_KEY = "livekitCloudWebRoomNotice";
 const LEGACY_SESSION_STORAGE_KEY = "livekit-cloud-mvp.room-session";
 const LEGACY_CLIENT_SESSION_STORAGE_KEY = "livekit-cloud-mvp.client-session-id";
 const STORED_SESSION_VERSION = 2;
@@ -129,6 +130,7 @@ function saveStoredSession(session: JoinRoomResponse): void {
 
 function clearStoredSession(): void {
   sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  sessionStorage.removeItem(ROOM_NOTICE_STORAGE_KEY);
   sessionStorage.removeItem(LEGACY_SESSION_STORAGE_KEY);
 }
 
@@ -167,6 +169,20 @@ function getOrCreateClientSessionId(): string {
   const next = createClientSessionId();
   sessionStorage.setItem(CLIENT_SESSION_STORAGE_KEY, next);
   return next;
+}
+
+function savePendingRoomNotice(message: string): void {
+  if (!message) {
+    return;
+  }
+
+  sessionStorage.setItem(ROOM_NOTICE_STORAGE_KEY, message);
+}
+
+function consumePendingRoomNotice(): string {
+  const message = sessionStorage.getItem(ROOM_NOTICE_STORAGE_KEY) ?? "";
+  sessionStorage.removeItem(ROOM_NOTICE_STORAGE_KEY);
+  return message;
 }
 
 function getCurrentWebRoute(): WebRoute {
@@ -300,6 +316,7 @@ export function App() {
         notice={loginNotice}
         onNoticeChange={setLoginNotice}
         onJoined={(message) => {
+          savePendingRoomNotice(message);
           setLoginNotice(message);
           navigateToWebRoute("/room");
         }}
@@ -408,7 +425,7 @@ function RoomApp({
 }) {
   const [session, setSession] = useState<JoinRoomResponse | null>(initialSession);
   const [actionPending, setActionPending] = useState(false);
-  const [notice, setNotice] = useState(initialNotice);
+  const [notice, setNotice] = useState(() => consumePendingRoomNotice() || initialNotice);
   const [activeFloatingPanel, setActiveFloatingPanel] = useState<"chat" | "control" | null>(null);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [locallyMutedAudio, setLocallyMutedAudio] = useState<Record<string, boolean>>({});
