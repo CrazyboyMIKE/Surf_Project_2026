@@ -34,10 +34,10 @@ export function KeyboardControlPanel({
           disabled={controlsDisabled}
           onChange={(event) => control.setEnabled(event.target.checked)}
         />
-        启用方向键控制
+        Enable arrow-key control
       </label>
 
-      <p className="risk-note">请低速测试，松开方向键自动停止，空格急停。</p>
+      <p className="risk-note">Test at low speed. Releasing the keys stops movement; Space stops immediately.</p>
 
       <div
         className="keyboard-help"
@@ -61,49 +61,49 @@ export function KeyboardControlPanel({
             <div className="keyboard-help-grid">
               <span>
                 <kbd>W</kbd> / <kbd>↑</kbd>
-                <strong>前进</strong>
+                <strong>Forward</strong>
               </span>
               <span>
                 <kbd>S</kbd> / <kbd>↓</kbd>
-                <strong>后退</strong>
+                <strong>Back</strong>
               </span>
               <span>
                 <kbd>A</kbd> / <kbd>←</kbd>
-                <strong>左转</strong>
+                <strong>Left</strong>
               </span>
               <span>
                 <kbd>D</kbd> / <kbd>→</kbd>
-                <strong>右转</strong>
+                <strong>Right</strong>
               </span>
               <span>
                 <kbd>W</kbd> + <kbd>A</kbd>
-                <strong>左前</strong>
+                <strong>Forward left</strong>
               </span>
               <span>
                 <kbd>W</kbd> + <kbd>D</kbd>
-                <strong>右前</strong>
+                <strong>Forward right</strong>
               </span>
               <span>
                 <kbd>S</kbd> + <kbd>A</kbd>
-                <strong>左后</strong>
+                <strong>Back left</strong>
               </span>
               <span>
                 <kbd>S</kbd> + <kbd>D</kbd>
-                <strong>右后</strong>
+                <strong>Back right</strong>
               </span>
               <span className="keyboard-help-stop">
                 <kbd>Space</kbd>
-                <strong>急停</strong>
+                <strong>Emergency stop</strong>
               </span>
             </div>
-            <p>按住移动，松开停止。空格立即停止。聊天输入框聚焦时不会触发移动，页面失焦或断线会自动停止。</p>
+            <p>Hold to move, release to stop. Space stops immediately. Chat focus, page blur, or disconnect will not keep movement running.</p>
           </div>
         ) : null}
       </div>
 
       <div className="keyboard-settings">
         <label>
-          线速度 {control.linearSpeed}
+          Linear speed {control.linearSpeed}
           <input
             type="range"
             min={1}
@@ -113,7 +113,7 @@ export function KeyboardControlPanel({
           />
         </label>
         <label>
-          角速度 {control.angularSpeed}
+          Angular speed {control.angularSpeed}
           <input
             type="range"
             min={1}

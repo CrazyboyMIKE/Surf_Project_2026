@@ -186,6 +186,44 @@ function controlQueueIds(store: RoomStore): string[] {
 
 {
   const { store, controller, viewerA } = createRoomWithControllerViewers();
+  const room = store.getRoom("robot-room-001");
+  const staleParticipant = room?.participants.get(viewerA.id);
+  if (staleParticipant) {
+    staleParticipant.role = "controller";
+  }
+
+  const snapshot = store.getRoomSnapshot("robot-room-001");
+  assert.equal(snapshot?.currentControllerId, controller.id);
+  assert.deepEqual(
+    snapshot?.participants.filter((participant) => participant.role === "controller").map((participant) => participant.id),
+    [controller.id]
+  );
+}
+
+{
+  const { store, controller, viewerA } = createRoomWithControllerViewers();
+  const release = store.releaseControl("robot-room-001", controller.id);
+  assert.equal(release.ok, true);
+  const staleController = store.getRoom("robot-room-001")?.participants.get(controller.id);
+  if (staleController) {
+    staleController.role = "controller";
+  }
+
+  const renewedRequest = store.requestControl("robot-room-001", viewerA.id);
+  assert.equal(renewedRequest.ok, true);
+  if (renewedRequest.ok) {
+    assert.equal(renewedRequest.granted, true);
+  }
+  const snapshot = store.getRoomSnapshot("robot-room-001");
+  assert.equal(snapshot?.currentControllerId, viewerA.id);
+  assert.deepEqual(
+    snapshot?.participants.filter((participant) => participant.role === "controller").map((participant) => participant.id),
+    [viewerA.id]
+  );
+}
+
+{
+  const { store, controller, viewerA } = createRoomWithControllerViewers();
   store.requestControl("robot-room-001", viewerA.id);
   store.markParticipantDisconnected("robot-room-001", controller.id);
 

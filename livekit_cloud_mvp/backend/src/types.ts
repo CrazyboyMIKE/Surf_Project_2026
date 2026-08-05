@@ -236,6 +236,7 @@ export type RoomRecordDetail = RoomRecordSummary & {
 
 export type ApiErrorCode =
   | "INVALID_REQUEST"
+  | "ROOM_EXISTS"
   | "ROOM_NOT_FOUND"
   | "PARTICIPANT_NOT_FOUND"
   | "NOT_CONTROLLER"

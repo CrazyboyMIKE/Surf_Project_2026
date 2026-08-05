@@ -68,6 +68,14 @@ function readRequestedRole(value: unknown): WebRole | undefined {
   return value === "viewer" || value === "controller" ? value : undefined;
 }
 
+function readRoomIntent(value: unknown): "create" | "join" | undefined {
+  if (value === undefined) {
+    return "join";
+  }
+
+  return value === "create" || value === "join" ? value : undefined;
+}
+
 function isSafeRoomName(value: string): boolean {
   return /^[A-Za-z0-9._:-]+$/.test(value);
 }
@@ -113,9 +121,15 @@ export function createApiRouter(dependencies: RouterDependencies): Router {
     const previousParticipantId = readTrimmedString(body, "previousParticipantId", MAX_NAME_LENGTH);
     const clientSessionId = readTrimmedString(body, "clientSessionId", MAX_SESSION_ID_LENGTH);
     const requestedRole = readRequestedRole(body.requestedRole ?? "viewer");
+    const intent = readRoomIntent(body.intent);
 
-    if (!roomName || !participantName || !requestedRole) {
-      sendError(res, 400, "INVALID_REQUEST", "roomName, participantName, and requestedRole are required");
+    if (!roomName || !participantName || !requestedRole || !intent) {
+      sendError(res, 400, "INVALID_REQUEST", "roomName, participantName, requestedRole, and intent are required");
+      return;
+    }
+
+    if (intent === "create" && roomStore.getRoom(roomName)) {
+      sendError(res, 409, "ROOM_EXISTS", "Room already exists. Use Join room to enter it.");
       return;
     }
 

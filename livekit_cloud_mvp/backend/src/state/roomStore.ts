@@ -235,6 +235,7 @@ export class RoomStore {
     options: { previousParticipantId?: string; clientSessionId?: string } = {}
   ): JoinWebParticipantResult {
     const room = this.getOrCreateRoom(roomName);
+    this.normalizeControllerRoleState(room);
     this.normalizeControllerRequestQueue(room);
     const now = Date.now();
     const reusableParticipant = this.findReusableWebParticipant(room, participantName, options);
@@ -249,6 +250,7 @@ export class RoomStore {
       reusableParticipant.clientSessionId = options.clientSessionId ?? reusableParticipant.clientSessionId;
       reusableParticipant.lastSeenAt = now;
       reusableParticipant.disconnectedAt = undefined;
+      this.normalizeControllerRoleState(room);
       this.touchRoom(room, now);
       this.persistParticipant(room, reusableParticipant, "participant_joined", now);
 
@@ -279,6 +281,7 @@ export class RoomStore {
       this.removeControlRequest(room, participantId);
       room.currentControllerId = participantId;
     }
+    this.normalizeControllerRoleState(room);
     this.touchRoom(room);
     this.persistParticipant(room, participant, "participant_joined", now);
     if (role === "controller") {
@@ -350,6 +353,7 @@ export class RoomStore {
       };
     }
 
+    this.normalizeControllerRoleState(room);
     this.normalizeControllerRequestQueue(room);
     const participant = room.participants.get(participantId);
     if (!participant) {
@@ -392,6 +396,7 @@ export class RoomStore {
         room.controllerRequestQueue.push(participantId);
       }
       participant.lastSeenAt = Date.now();
+      this.normalizeControllerRoleState(room);
       this.touchRoom(room, participant.lastSeenAt);
       this.persistParticipant(room, participant, undefined, participant.lastSeenAt);
 
@@ -422,6 +427,7 @@ export class RoomStore {
     this.removeControlRequest(room, participantId);
     participant.role = "controller";
     room.currentControllerId = participantId;
+    this.normalizeControllerRoleState(room);
     this.normalizeSpeakerState(room);
     participant.lastSeenAt = Date.now();
     this.touchRoom(room);
@@ -468,6 +474,7 @@ export class RoomStore {
     }
     this.removeControlRequest(room, participantId);
     participant.role = "viewer";
+    this.normalizeControllerRoleState(room);
     this.normalizeSpeakerState(room);
     this.normalizeControllerRequestQueue(room);
     participant.lastSeenAt = Date.now();
@@ -497,6 +504,7 @@ export class RoomStore {
       };
     }
 
+    this.normalizeControllerRoleState(room);
     this.normalizeControllerRequestQueue(room);
     const fromParticipant = room.participants.get(fromParticipantId);
     if (!fromParticipant) {
@@ -744,6 +752,7 @@ export class RoomStore {
         room.robotOnline = true;
       }
       if (room) {
+        this.normalizeControllerRoleState(room);
         this.touchRoom(room, now);
         this.persistParticipant(room, participant, undefined, now);
       }
@@ -773,6 +782,7 @@ export class RoomStore {
     participant.connected = false;
     participant.lastSeenAt = now;
     participant.disconnectedAt = now;
+    this.normalizeControllerRoleState(room);
     this.normalizeControllerRequestQueue(room);
     this.normalizeSpeakerState(room);
     this.touchRoom(room, now);
@@ -830,6 +840,7 @@ export class RoomStore {
       };
     }
 
+    this.normalizeControllerRoleState(room);
     this.normalizeControllerRequestQueue(room);
     this.normalizeSpeakerState(room);
     this.touchRoom(room, now);
@@ -891,6 +902,8 @@ export class RoomStore {
       return undefined;
     }
 
+    this.normalizeControllerRoleState(room);
+    this.normalizeControllerRequestQueue(room);
     const currentController = room.currentControllerId ? room.participants.get(room.currentControllerId) : undefined;
 
     return {
@@ -973,6 +986,7 @@ export class RoomStore {
     }
     this.removeControlRequest(room, controllerId);
     room.currentControllerId = undefined;
+    this.normalizeControllerRoleState(room);
     this.normalizeControllerRequestQueue(room);
     this.normalizeSpeakerState(room);
     this.touchRoom(room);
@@ -1026,6 +1040,7 @@ export class RoomStore {
     }
 
     if (removedCount > 0) {
+      this.normalizeControllerRoleState(room);
       this.normalizeControllerRequestQueue(room);
       this.normalizeSpeakerState(room);
       this.touchRoom(room, now);
@@ -1162,6 +1177,29 @@ export class RoomStore {
     }
 
     room.controllerRequestQueue = nextQueue;
+  }
+
+  private normalizeControllerRoleState(room: RoomState): void {
+    const currentController = room.currentControllerId ? room.participants.get(room.currentControllerId) : undefined;
+    if (!currentController || currentController.role === "robot") {
+      room.currentControllerId = undefined;
+    }
+
+    for (const participant of room.participants.values()) {
+      if (participant.role !== "controller") {
+        continue;
+      }
+
+      if (room.currentControllerId !== participant.id) {
+        participant.role = "viewer";
+      }
+    }
+
+    const normalizedController = room.currentControllerId ? room.participants.get(room.currentControllerId) : undefined;
+    if (normalizedController && normalizedController.role !== "robot") {
+      normalizedController.role = "controller";
+      this.removeControlRequest(room, normalizedController.id);
+    }
   }
 
   private removeControlRequest(room: RoomState, participantId: string): void {
@@ -1453,6 +1491,8 @@ export class RoomStore {
   }
 
   private toAdminRoomSummary(room: RoomState): AdminRoomSummary {
+    this.normalizeControllerRoleState(room);
+    this.normalizeControllerRequestQueue(room);
     const participants = Array.from(room.participants.values());
     const currentController = room.currentControllerId ? room.participants.get(room.currentControllerId) : undefined;
     const connectedParticipantCount = participants.filter((participant) => participant.connected).length;

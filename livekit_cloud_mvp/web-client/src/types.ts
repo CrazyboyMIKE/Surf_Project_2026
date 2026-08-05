@@ -59,6 +59,7 @@ export type JoinRoomRequest = {
   roomName: string;
   participantName: string;
   requestedRole: WebRole;
+  intent?: "create" | "join";
   previousParticipantId?: string;
   clientSessionId?: string;
 };

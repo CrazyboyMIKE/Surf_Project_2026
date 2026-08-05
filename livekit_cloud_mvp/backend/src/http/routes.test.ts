@@ -169,6 +169,46 @@ try {
   assert.equal(beaconLeave.body.roomDeleted, true);
   assert.equal(Object.prototype.hasOwnProperty.call(beaconLeave.body, "token"), false);
 
+  const createRoom = await requestJson(server.baseUrl, "/api/rooms/join", {
+    method: "POST",
+    body: JSON.stringify({
+      roomName: "create-intent-room",
+      participantName: "Creator",
+      requestedRole: "controller",
+      intent: "create",
+      clientSessionId: "creator-session"
+    })
+  });
+  assert.equal(createRoom.status, 201);
+  assert.equal(createRoom.body.role, "controller");
+
+  const duplicateCreate = await requestJson(server.baseUrl, "/api/rooms/join", {
+    method: "POST",
+    body: JSON.stringify({
+      roomName: "create-intent-room",
+      participantName: "Duplicate Creator",
+      requestedRole: "viewer",
+      intent: "create",
+      clientSessionId: "duplicate-creator-session"
+    })
+  });
+  assert.equal(duplicateCreate.status, 409);
+  assert.equal(duplicateCreate.body.code, "ROOM_EXISTS");
+  assert.equal(Object.prototype.hasOwnProperty.call(duplicateCreate.body, "token"), false);
+
+  const joinExistingRoom = await requestJson(server.baseUrl, "/api/rooms/join", {
+    method: "POST",
+    body: JSON.stringify({
+      roomName: "create-intent-room",
+      participantName: "Joiner",
+      requestedRole: "viewer",
+      intent: "join",
+      clientSessionId: "joiner-session"
+    })
+  });
+  assert.equal(joinExistingRoom.status, 201);
+  assert.equal(joinExistingRoom.body.role, "viewer");
+
   const robotJoin = await requestJson(server.baseUrl, "/api/robots/join", {
     method: "POST",
     body: JSON.stringify({

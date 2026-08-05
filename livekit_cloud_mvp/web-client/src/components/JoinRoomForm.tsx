@@ -25,7 +25,8 @@ export function JoinRoomForm({ onJoin, notice }: JoinRoomFormProps) {
       await onJoin({
         roomName,
         participantName,
-        requestedRole
+        requestedRole,
+        intent
       });
     } catch (error) {
       setError(error instanceof Error ? error.message : "Join failed");
@@ -66,7 +67,7 @@ export function JoinRoomForm({ onJoin, notice }: JoinRoomFormProps) {
               value={participantName}
               maxLength={80}
               onChange={(event) => setParticipantName(event.target.value)}
-              placeholder="请输入用户名"
+              placeholder="Enter your name"
               required
             />
           </label>
@@ -84,10 +85,10 @@ export function JoinRoomForm({ onJoin, notice }: JoinRoomFormProps) {
 
           <div className="join-actions">
             <button type="button" className="secondary-button" disabled={isSubmitting} onClick={() => void submitRoom("create")}>
-              {submittingIntent === "create" ? "Creating..." : "创建房间"}
+              {submittingIntent === "create" ? "Creating..." : "Create room"}
             </button>
             <button type="submit" className="primary-button" disabled={isSubmitting}>
-              {submittingIntent === "join" ? "Joining..." : "加入房间"}
+              {submittingIntent === "join" ? "Joining..." : "Join room"}
             </button>
           </div>
         </form>

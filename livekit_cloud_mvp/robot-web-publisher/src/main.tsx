@@ -1491,11 +1491,11 @@ function EntryView({
 
         <form className="entry-form" onSubmit={handleSubmit}>
           <label>
-            用户名
+            Robot name
             <input
               value={robotName}
               onChange={(event) => onRobotNameChange(event.target.value)}
-              placeholder="请输入用户名"
+              placeholder="Enter robot name"
               required
               maxLength={80}
             />
@@ -1525,10 +1525,10 @@ function EntryView({
 
           <div className="entry-actions">
             <button type="button" disabled={pending} onClick={() => onEnter("create")}>
-              创建房间
+              Create room
             </button>
             <button type="submit" disabled={pending}>
-              加入房间
+              Join room
             </button>
           </div>
         </form>
@@ -1971,7 +1971,7 @@ function App() {
       restoredSession?.selectedMicrophoneDeviceId ?? restoredSession?.microphoneDeviceId ?? selectedMicrophoneDeviceId;
     const shouldPublishMicrophone = savedPublishMicrophone;
     if (!trimmedRobotName) {
-      setError("用户名不能为空");
+      setError("Robot name is required");
       return;
     }
     if (!trimmedRoomName) {

@@ -98,7 +98,7 @@ export function ControlPanel({
                       }
                     }}
                   >
-                    批准
+                    Approve
                   </button>
                 </div>
               ))}
