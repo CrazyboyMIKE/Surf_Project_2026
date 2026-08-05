@@ -5,6 +5,7 @@ type StatusBarProps = {
   roomName: string;
   participantName: string;
   role: WebRole | null;
+  isSpeaker: boolean;
   webSocketState: string;
   robotOnline: boolean;
   currentControllerName?: string;
@@ -20,6 +21,7 @@ export function StatusBar({
   roomName,
   participantName,
   role,
+  isSpeaker,
   webSocketState,
   robotOnline,
   currentControllerName,
@@ -38,11 +40,11 @@ export function StatusBar({
       <div className="room-title-block">
         <p className="eyebrow">Room</p>
         <h1>{roomName}</h1>
-        <span>{participantName}</span>
       </div>
 
       <div className="compact-status-badges" aria-label="Room summary">
         <span className="state-pill">{role ?? "viewer"}</span>
+        {isSpeaker ? <span className="state-pill speaker">Speaker</span> : null}
         <span className={`state-pill ${webSocketState === "connected" ? "online" : "offline"}`}>
           {webSocketState === "connected" ? "connected" : "reconnecting"}
         </span>

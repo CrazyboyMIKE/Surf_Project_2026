@@ -69,12 +69,14 @@ type SpeakerParticipant = {
   name: string;
   role: "controller" | "viewer";
   connected: boolean;
+  requestedAt?: number;
 };
 
 type SpeakerState = {
   currentSpeaker?: SpeakerParticipant;
   currentSpeakerId?: string;
   currentSpeakerName?: string;
+  currentSpeakerStartedAt?: number;
   queue: SpeakerParticipant[];
 };
 
@@ -84,6 +86,7 @@ type SpeakerUpdateMessage = {
   currentSpeaker?: SpeakerParticipant;
   currentSpeakerId?: string;
   currentSpeakerName?: string;
+  currentSpeakerStartedAt?: number;
   queue: SpeakerParticipant[];
   timestamp: number;
 };
@@ -174,6 +177,8 @@ const API_BASE_URL = resolveApiBaseUrl();
 const WS_URL = resolveWebSocketUrl(API_BASE_URL);
 const ROBOT_SESSION_STORAGE_KEY = "livekit-cloud-mvp.robot-session";
 const ROBOT_CLIENT_SESSION_STORAGE_KEY = "livekit-cloud-mvp.robot-client-session-id";
+const ROBOT_STORED_SESSION_VERSION = 2;
+const ROBOT_STORED_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const EMPTY_SPEAKING: ParticipantSpeakingInfo = {
   hasAudioTrack: false,
   isSpeaking: false,
@@ -186,6 +191,49 @@ const REMOTE_VIDEO_SYNC_DELAY_MS = 160;
 const MIN_ROBOT_VIEWPORT_HEIGHT = 280;
 const MIN_ROBOT_TOP_STRIP_HEIGHT = 88;
 const MAX_ROBOT_TOP_STRIP_HEIGHT = 230;
+const ROBOT_CAMERA_LOW_POWER_PROFILE = {
+  capture: {
+    resolution: {
+      width: 640,
+      height: 480,
+      frameRate: 15,
+      aspectRatio: 4 / 3
+    }
+  },
+  encoding: {
+    maxBitrate: 500_000,
+    maxFramerate: 15
+  }
+};
+const ROBOT_CAMERA_DEFAULT_PROFILE = {
+  capture: {
+    resolution: {
+      width: 960,
+      height: 540,
+      frameRate: 20,
+      aspectRatio: 16 / 9
+    }
+  },
+  encoding: {
+    maxBitrate: 800_000,
+    maxFramerate: 20
+  }
+};
+
+type StoredRobotSessionEnvelope = {
+  version: number;
+  savedAt: number;
+  session: RoomSession;
+};
+
+function isAndroidFirefoxBrowser(): boolean {
+  const userAgent = navigator.userAgent.toLowerCase();
+  return userAgent.includes("android") && (userAgent.includes("firefox") || userAgent.includes("fennec"));
+}
+
+function getRobotCameraProfile() {
+  return isAndroidFirefoxBrowser() ? ROBOT_CAMERA_LOW_POWER_PROFILE : ROBOT_CAMERA_DEFAULT_PROFILE;
+}
 
 function readPersistentValue(key: string): string | null {
   try {
@@ -288,6 +336,36 @@ function validateRuntimeConfig() {
   }
 }
 
+function isFreshStoredRobotSession(savedAt: number): boolean {
+  const now = Date.now();
+  return Number.isFinite(savedAt) && savedAt <= now + 60_000 && now - savedAt <= ROBOT_STORED_SESSION_TTL_MS;
+}
+
+function normalizeStoredRobotSession(value: unknown): RoomSession | null {
+  const parsed = value as Partial<RoomSession>;
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    typeof parsed.roomName !== "string" ||
+    typeof parsed.robotName !== "string" ||
+    typeof parsed.robotId !== "string" ||
+    typeof parsed.participantId !== "string" ||
+    typeof parsed.liveKitUrl !== "string" ||
+    typeof parsed.token !== "string" ||
+    parsed.role !== "robot"
+  ) {
+    return null;
+  }
+
+  return {
+    ...parsed,
+    online: Boolean(parsed.online),
+    tokenMode: parsed.tokenMode === "livekit" ? "livekit" : "mock",
+    publishMicrophone: Boolean(parsed.publishMicrophone),
+    microphoneDeviceId: typeof parsed.microphoneDeviceId === "string" ? parsed.microphoneDeviceId : ""
+  } as RoomSession;
+}
+
 function readStoredRobotSession(): RoomSession | null {
   try {
     const raw = readPersistentValue(ROBOT_SESSION_STORAGE_KEY);
@@ -295,33 +373,46 @@ function readStoredRobotSession(): RoomSession | null {
       return null;
     }
 
-    const parsed = JSON.parse(raw) as Partial<RoomSession>;
+    const parsed = JSON.parse(raw) as unknown;
+    const envelope = parsed as Partial<StoredRobotSessionEnvelope>;
     if (
-      typeof parsed.roomName !== "string" ||
-      typeof parsed.robotName !== "string" ||
-      typeof parsed.robotId !== "string" ||
-      typeof parsed.participantId !== "string" ||
-      typeof parsed.liveKitUrl !== "string" ||
-      typeof parsed.token !== "string" ||
-      parsed.role !== "robot"
+      typeof envelope === "object" &&
+      envelope !== null &&
+      envelope.version === ROBOT_STORED_SESSION_VERSION &&
+      typeof envelope.savedAt === "number"
     ) {
+      const storedSession = normalizeStoredRobotSession(envelope.session);
+      if (storedSession && isFreshStoredRobotSession(envelope.savedAt)) {
+        return storedSession;
+      }
+
+      clearStoredRobotSession();
+      clearRobotClientSessionId();
       return null;
     }
 
-    return {
-      ...parsed,
-      online: Boolean(parsed.online),
-      tokenMode: parsed.tokenMode === "livekit" ? "livekit" : "mock",
-      publishMicrophone: Boolean(parsed.publishMicrophone),
-      microphoneDeviceId: typeof parsed.microphoneDeviceId === "string" ? parsed.microphoneDeviceId : ""
-    } as RoomSession;
+    if (normalizeStoredRobotSession(parsed)) {
+      clearStoredRobotSession();
+      clearRobotClientSessionId();
+    }
+
+    return null;
   } catch {
+    clearStoredRobotSession();
+    clearRobotClientSessionId();
     return null;
   }
 }
 
 function saveStoredRobotSession(session: RoomSession): void {
-  writePersistentValue(ROBOT_SESSION_STORAGE_KEY, JSON.stringify(session));
+  writePersistentValue(
+    ROBOT_SESSION_STORAGE_KEY,
+    JSON.stringify({
+      version: ROBOT_STORED_SESSION_VERSION,
+      savedAt: Date.now(),
+      session
+    } satisfies StoredRobotSessionEnvelope)
+  );
   if (session.clientSessionId) {
     writePersistentValue(ROBOT_CLIENT_SESSION_STORAGE_KEY, session.clientSessionId);
   }
@@ -574,6 +665,27 @@ async function leaveRobot(roomName: string, participantId: string, clientSession
   });
 }
 
+function sendRobotLeaveBeacon(roomName: string, participantId: string, clientSessionId: string): void {
+  const payload = JSON.stringify({ roomName, participantId, clientSessionId });
+  const url = `${API_BASE_URL}/api/rooms/leave`;
+
+  if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+    const blob = new Blob([payload], { type: "application/json" });
+    if (navigator.sendBeacon(url, blob)) {
+      return;
+    }
+  }
+
+  void fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: payload,
+    keepalive: true
+  }).catch(() => undefined);
+}
+
 function parseParticipantRole(participant: RemoteParticipant): Role | undefined {
   if (!participant.metadata) {
     return undefined;
@@ -643,7 +755,8 @@ function areSpeakerParticipantsEqual(left?: SpeakerParticipant, right?: SpeakerP
     left?.id === right?.id &&
     left?.name === right?.name &&
     left?.role === right?.role &&
-    left?.connected === right?.connected
+    left?.connected === right?.connected &&
+    left?.requestedAt === right?.requestedAt
   );
 }
 
@@ -651,6 +764,7 @@ function areSpeakerStatesEqual(left: SpeakerState, right: SpeakerState): boolean
   return (
     left.currentSpeakerId === right.currentSpeakerId &&
     left.currentSpeakerName === right.currentSpeakerName &&
+    left.currentSpeakerStartedAt === right.currentSpeakerStartedAt &&
     areSpeakerParticipantsEqual(left.currentSpeaker, right.currentSpeaker) &&
     left.queue.length === right.queue.length &&
     left.queue.every((item, index) => areSpeakerParticipantsEqual(item, right.queue[index]))
@@ -1377,8 +1491,7 @@ function RobotRoomView({
   localSpeaking,
   speaker,
   remoteVideos,
-  error,
-  onLeave
+  error
 }: {
   session: RoomSession;
   localTrack: LocalVideoTrack | null;
@@ -1386,7 +1499,6 @@ function RobotRoomView({
   speaker: SpeakerState;
   remoteVideos: RemoteVideoInfo[];
   error: string;
-  onLeave: () => void;
 }) {
   const controllerVideos = remoteVideos.filter((participant) => participant.role === "controller");
   const currentController = controllerVideos[0] ?? null;
@@ -1422,9 +1534,6 @@ function RobotRoomView({
           <h1>{session.roomName}</h1>
           <p className="subtle">Robot user: {session.robotName}</p>
         </div>
-        <button type="button" className="ghost-button" onClick={onLeave}>
-          Disconnect
-        </button>
       </header>
 
       <div className="room-alerts" aria-live="polite">
@@ -1524,6 +1633,7 @@ function App() {
   const participantsByIdRef = useRef<Map<string, ParticipantPresence>>(new Map());
   const sessionRef = useRef<RoomSession | null>(null);
   const restoringSessionRef = useRef(false);
+  const pageLeaveSentRef = useRef(false);
   const remoteVideosRef = useRef<RemoteVideoInfo[]>([]);
   const localSpeakingRef = useRef<ParticipantSpeakingInfo>(EMPTY_SPEAKING);
   const remoteVideoSyncTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
@@ -1698,6 +1808,7 @@ function App() {
 
   async function leaveRoom() {
     const currentSession = sessionRef.current ?? session;
+    pageLeaveSentRef.current = true;
     if (currentSession?.clientSessionId) {
       await leaveRobot(currentSession.roomName, currentSession.participantId, currentSession.clientSessionId).catch(() => undefined);
     }
@@ -1890,6 +2001,7 @@ function App() {
             currentSpeaker: message.currentSpeaker,
             currentSpeakerId: message.currentSpeakerId,
             currentSpeakerName: message.currentSpeakerName,
+            currentSpeakerStartedAt: message.currentSpeakerStartedAt,
             queue: message.queue
           };
           setSpeaker((current) => (areSpeakerStatesEqual(current, nextSpeaker) ? current : nextSpeaker));
@@ -1914,6 +2026,7 @@ function App() {
       }
 
       const room = new Room({
+        adaptiveStream: true,
         dynacast: true
       });
       roomRef.current = room;
@@ -1955,8 +2068,9 @@ function App() {
       }
 
       let videoTrack: LocalVideoTrack;
+      const cameraProfile = getRobotCameraProfile();
       try {
-        videoTrack = await createLocalVideoTrack();
+        videoTrack = await createLocalVideoTrack(cameraProfile.capture);
       } catch (error) {
         throw new Error(describeCameraError(error));
       }
@@ -1967,7 +2081,9 @@ function App() {
       try {
         await room.localParticipant.publishTrack(videoTrack, {
           source: Track.Source.Camera,
-          name: `${joinResponse.robotId}-camera`
+          name: `${joinResponse.robotId}-camera`,
+          simulcast: false,
+          videoEncoding: cameraProfile.encoding
         });
       } catch (error) {
         throw new Error(describeLiveKitPublishError(error));
@@ -1977,17 +2093,28 @@ function App() {
       updateRemoteVideos();
     } catch (error) {
       if (restoredSession) {
-        const fallbackSession = sessionRef.current ?? restoredSession;
-        sessionRef.current = fallbackSession;
-        setSession(fallbackSession);
-        saveStoredRobotSession(fallbackSession);
-        setView("room");
-        setBackendState((current) => (current === "joining" ? "restore failed" : current));
-        setWebSocketState((current) => (current === "idle" ? "closed" : current));
-        setLiveKitState((current) => (current === "idle" ? "disconnected" : current));
+        const failedSession = sessionRef.current ?? restoredSession;
+        if (failedSession.clientSessionId) {
+          await leaveRobot(failedSession.roomName, failedSession.participantId, failedSession.clientSessionId).catch(() => undefined);
+        }
+        resetConnections();
+        clearStoredRobotSession();
+        clearRobotClientSessionId();
+        setSession(null);
+        setView("entry");
+        setBackendState("idle");
+        setWebSocketState("idle");
+        setLiveKitState("idle");
+        setTokenMode("none");
       }
-      setError(error instanceof Error ? error.message : "Robot publisher failed");
-      setPublishState("error");
+      setError(
+        restoredSession
+          ? `Saved room could not be restored. Please join again. ${error instanceof Error ? error.message : ""}`.trim()
+          : error instanceof Error
+            ? error.message
+            : "Robot publisher failed"
+      );
+      setPublishState(restoredSession ? "idle" : "error");
     } finally {
       setPending(false);
     }
@@ -2004,6 +2131,38 @@ function App() {
       restoringSessionRef.current = false;
     });
   }, []);
+
+  useEffect(() => {
+    if (!session?.clientSessionId) {
+      pageLeaveSentRef.current = false;
+      return;
+    }
+
+    pageLeaveSentRef.current = false;
+    const roomName = session.roomName;
+    const participantId = session.participantId;
+    const clientSessionId = session.clientSessionId;
+    const leaveOnPageExit = () => {
+      if (pageLeaveSentRef.current) {
+        return;
+      }
+
+      pageLeaveSentRef.current = true;
+      sendRobotLeaveBeacon(roomName, participantId, clientSessionId);
+      resetConnections();
+      clearStoredRobotSession();
+      clearRobotClientSessionId();
+      setSession(null);
+      setView("entry");
+    };
+
+    window.addEventListener("pagehide", leaveOnPageExit);
+    window.addEventListener("beforeunload", leaveOnPageExit);
+    return () => {
+      window.removeEventListener("pagehide", leaveOnPageExit);
+      window.removeEventListener("beforeunload", leaveOnPageExit);
+    };
+  }, [session?.clientSessionId, session?.participantId, session?.roomName]);
 
   useEffect(() => resetConnections, []);
 
@@ -2037,7 +2196,6 @@ function App() {
       speaker={speaker}
       remoteVideos={remoteVideos}
       error={error}
-      onLeave={leaveRoom}
     />
   );
 }

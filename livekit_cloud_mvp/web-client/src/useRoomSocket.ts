@@ -34,6 +34,8 @@ function getReconnectDelayMs(attempt: number): number {
 export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconnect?: (message: string) => void) {
   const socketRef = useRef<WebSocket | null>(null);
   const onForcedDisconnectRef = useRef(onForcedDisconnect);
+  const roomName = session?.roomName;
+  const participantId = session?.participantId;
   const [connectionState, setConnectionState] = useState<ConnectionState>("idle");
   const [role, setRole] = useState<WebRole | null>(session?.role ?? null);
   const [currentControllerName, setCurrentControllerName] = useState<string | undefined>(session?.currentControllerName);
@@ -174,6 +176,7 @@ export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconne
             currentSpeaker: message.currentSpeaker,
             currentSpeakerId: message.currentSpeakerId,
             currentSpeakerName: message.currentSpeakerName,
+            currentSpeakerStartedAt: message.currentSpeakerStartedAt,
             queue: message.queue
           });
           return;
@@ -264,138 +267,138 @@ export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconne
 
   const sendChat = useCallback(
     (message: string) => {
-      if (!session || socketRef.current?.readyState !== WebSocket.OPEN) {
+      if (!roomName || !participantId || socketRef.current?.readyState !== WebSocket.OPEN) {
         return;
       }
 
       socketRef.current.send(
         JSON.stringify({
           type: "chat",
-          roomName: session.roomName,
-          senderId: session.participantId,
+          roomName,
+          senderId: participantId,
           message
         })
       );
     },
-    [session]
+    [participantId, roomName]
   );
 
   const sendPrivateChat = useCallback(
     (recipientId: string, message: string) => {
-      if (!session || socketRef.current?.readyState !== WebSocket.OPEN) {
+      if (!roomName || !participantId || socketRef.current?.readyState !== WebSocket.OPEN) {
         return;
       }
 
       socketRef.current.send(
         JSON.stringify({
           type: "private_chat",
-          roomName: session.roomName,
-          senderId: session.participantId,
+          roomName,
+          senderId: participantId,
           recipientId,
           message
         })
       );
     },
-    [session]
+    [participantId, roomName]
   );
 
   const sendControl = useCallback(
     (command: RobotCommand, parameters: ControlParameters = {}) => {
-      if (!session || role !== "controller" || socketRef.current?.readyState !== WebSocket.OPEN) {
+      if (!roomName || !participantId || role !== "controller" || socketRef.current?.readyState !== WebSocket.OPEN) {
         return;
       }
 
       socketRef.current.send(
         JSON.stringify({
           type: "robot_control",
-          roomName: session.roomName,
-          senderId: session.participantId,
+          roomName,
+          senderId: participantId,
           command,
           parameters
         })
       );
     },
-    [role, session]
+    [participantId, role, roomName]
   );
 
   const sendKeyboardControlStart = useCallback(
     (direction: KeyboardDirection, linearSpeed: number, angularSpeed: number) => {
-      if (!session || role !== "controller" || socketRef.current?.readyState !== WebSocket.OPEN) {
+      if (!roomName || role !== "controller" || socketRef.current?.readyState !== WebSocket.OPEN) {
         return;
       }
 
       socketRef.current.send(
         JSON.stringify({
           type: "keyboard_control_start",
-          roomName: session.roomName,
+          roomName,
           direction,
           linearSpeed,
           angularSpeed
         })
       );
     },
-    [role, session]
+    [role, roomName]
   );
 
   const sendKeyboardControlKeepalive = useCallback(
     (direction: KeyboardDirection, linearSpeed: number, angularSpeed: number) => {
-      if (!session || role !== "controller" || socketRef.current?.readyState !== WebSocket.OPEN) {
+      if (!roomName || role !== "controller" || socketRef.current?.readyState !== WebSocket.OPEN) {
         return;
       }
 
       socketRef.current.send(
         JSON.stringify({
           type: "keyboard_control_keepalive",
-          roomName: session.roomName,
+          roomName,
           direction,
           linearSpeed,
           angularSpeed
         })
       );
     },
-    [role, session]
+    [role, roomName]
   );
 
   const sendKeyboardControlStop = useCallback(() => {
-    if (!session || socketRef.current?.readyState !== WebSocket.OPEN) {
+    if (!roomName || socketRef.current?.readyState !== WebSocket.OPEN) {
       return;
     }
 
     socketRef.current.send(
       JSON.stringify({
         type: "keyboard_control_stop",
-        roomName: session.roomName
+        roomName
       })
     );
-  }, [session]);
+  }, [roomName]);
 
   const sendSpeakerRequest = useCallback(() => {
-    if (!session || role !== "viewer" || socketRef.current?.readyState !== WebSocket.OPEN) {
+    if (!roomName || !participantId || role !== "viewer" || socketRef.current?.readyState !== WebSocket.OPEN) {
       return;
     }
 
     socketRef.current.send(
       JSON.stringify({
         type: "speaker_request",
-        roomName: session.roomName,
-        senderId: session.participantId
+        roomName,
+        senderId: participantId
       })
     );
-  }, [role, session]);
+  }, [participantId, role, roomName]);
 
   const sendSpeakerEnd = useCallback(() => {
-    if (!session || socketRef.current?.readyState !== WebSocket.OPEN) {
+    if (!roomName || !participantId || socketRef.current?.readyState !== WebSocket.OPEN) {
       return;
     }
 
     socketRef.current.send(
       JSON.stringify({
         type: "speaker_end",
-        roomName: session.roomName,
-        senderId: session.participantId
+        roomName,
+        senderId: participantId
       })
     );
-  }, [session]);
+  }, [participantId, roomName]);
 
   return useMemo(
     () => ({

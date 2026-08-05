@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { joinRoom, leaveRoom, releaseControl, requestControl, transferControl } from "./api";
+import { joinRoom, leaveRoom, releaseControl, requestControl, sendLeaveRoomBeacon, transferControl } from "./api";
 import { AdminConsole } from "./components/AdminConsole";
 import { ChatPanel } from "./components/ChatPanel";
 import { ControlPanel } from "./components/ControlPanel";
@@ -39,8 +39,35 @@ const FALLBACK_KEYBOARD_CONTROL_CONFIG: KeyboardControlConfig = {
 
 const SESSION_STORAGE_KEY = "livekit-cloud-mvp.room-session";
 const CLIENT_SESSION_STORAGE_KEY = "livekit-cloud-mvp.client-session-id";
+const STORED_SESSION_VERSION = 2;
+const STORED_SESSION_TTL_MS = 6 * 60 * 60 * 1000;
 const ROBOT_STAGE_PARTICIPANT_ID = "__robot_stage__";
 type DirectionFeedbackSignal = KeyboardDirection | "stop";
+
+type StoredSessionEnvelope = {
+  version: number;
+  savedAt: number;
+  session: JoinRoomResponse;
+};
+
+function isJoinRoomResponseLike(value: unknown): value is JoinRoomResponse {
+  const parsed = value as Partial<JoinRoomResponse>;
+  return (
+    typeof parsed === "object" &&
+    parsed !== null &&
+    typeof parsed.roomName === "string" &&
+    typeof parsed.participantName === "string" &&
+    typeof parsed.participantId === "string" &&
+    (parsed.role === "controller" || parsed.role === "viewer") &&
+    typeof parsed.liveKitUrl === "string" &&
+    typeof parsed.token === "string"
+  );
+}
+
+function isFreshStoredSession(savedAt: number): boolean {
+  const now = Date.now();
+  return Number.isFinite(savedAt) && savedAt <= now + 60_000 && now - savedAt <= STORED_SESSION_TTL_MS;
+}
 
 function readStoredSession(): JoinRoomResponse | null {
   try {
@@ -49,26 +76,47 @@ function readStoredSession(): JoinRoomResponse | null {
       return null;
     }
 
-    const parsed = JSON.parse(raw) as Partial<JoinRoomResponse>;
+    const parsed = JSON.parse(raw) as unknown;
+    const envelope = parsed as Partial<StoredSessionEnvelope>;
+
     if (
-      typeof parsed.roomName !== "string" ||
-      typeof parsed.participantName !== "string" ||
-      typeof parsed.participantId !== "string" ||
-      (parsed.role !== "controller" && parsed.role !== "viewer") ||
-      typeof parsed.liveKitUrl !== "string" ||
-      typeof parsed.token !== "string"
+      typeof envelope === "object" &&
+      envelope !== null &&
+      envelope.version === STORED_SESSION_VERSION &&
+      typeof envelope.savedAt === "number" &&
+      isJoinRoomResponseLike(envelope.session)
     ) {
+      if (isFreshStoredSession(envelope.savedAt)) {
+        return envelope.session;
+      }
+
+      clearStoredSession();
+      clearClientSessionId();
       return null;
     }
 
-    return parsed as JoinRoomResponse;
+    if (isJoinRoomResponseLike(parsed)) {
+      clearStoredSession();
+      clearClientSessionId();
+    }
+
+    return null;
   } catch {
+    clearStoredSession();
+    clearClientSessionId();
     return null;
   }
 }
 
 function saveStoredSession(session: JoinRoomResponse): void {
-  sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+  sessionStorage.setItem(
+    SESSION_STORAGE_KEY,
+    JSON.stringify({
+      version: STORED_SESSION_VERSION,
+      savedAt: Date.now(),
+      session
+    } satisfies StoredSessionEnvelope)
+  );
   if (session.clientSessionId) {
     sessionStorage.setItem(CLIENT_SESSION_STORAGE_KEY, session.clientSessionId);
   }
@@ -231,6 +279,10 @@ function RoomApp() {
   const seenChatMessageCountRef = useRef(0);
   const seenPrivateMessageIdsRef = useRef(new Set<string>());
   const manualFeedbackTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const lastParticipantRecoveryErrorRef = useRef("");
+  const lastLiveKitRecoveryErrorRef = useRef("");
+  const pageLeaveSentRef = useRef(false);
+  const [speakerClock, setSpeakerClock] = useState(() => Date.now());
   const handleForcedDisconnect = useCallback((message: string) => {
     clearStoredSession();
     setSession(null);
@@ -344,9 +396,6 @@ function RoomApp() {
       const nextSession = {
         ...session,
         role: (response.role ?? "viewer") as WebRole,
-        liveKitUrl: response.liveKitUrl ?? session.liveKitUrl,
-        token: response.token ?? session.token,
-        tokenMode: response.tokenMode ?? session.tokenMode,
         mediaPermissions: response.mediaPermissions ?? session.mediaPermissions,
         robotOnline: response.robotOnline ?? session.robotOnline,
         currentControllerId: response.controlRequests
@@ -379,9 +428,6 @@ function RoomApp() {
       const nextSession: JoinRoomResponse = {
         ...session,
         role: "viewer",
-        liveKitUrl: response.liveKitUrl ?? session.liveKitUrl,
-        token: response.token ?? session.token,
-        tokenMode: response.tokenMode ?? session.tokenMode,
         mediaPermissions: response.mediaPermissions ?? session.mediaPermissions,
         robotOnline: response.robotOnline ?? session.robotOnline,
         currentControllerId: response.controlRequests
@@ -426,16 +472,19 @@ function RoomApp() {
 
     setNotice("");
     setActionPending(true);
+    let leaveError = "";
+    pageLeaveSentRef.current = true;
     try {
       if (session.clientSessionId) {
         await leaveRoom(session.roomName, session.participantId, session.clientSessionId);
       }
+    } catch (error) {
+      leaveError = error instanceof Error ? error.message : "Leave room failed";
+    } finally {
       clearStoredSession();
       clearClientSessionId();
       setSession(null);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Leave room failed");
-    } finally {
+      setNotice(leaveError ? `Left locally; ${leaveError}` : "");
       setActionPending(false);
     }
   }
@@ -459,7 +508,58 @@ function RoomApp() {
     setActiveFloatingPanel(null);
     seenChatMessageCountRef.current = 0;
     seenPrivateMessageIdsRef.current.clear();
+    pageLeaveSentRef.current = false;
   }, [session?.participantId]);
+
+  useEffect(() => {
+    if (!session?.clientSessionId) {
+      return;
+    }
+
+    const roomName = session.roomName;
+    const participantId = session.participantId;
+    const clientSessionId = session.clientSessionId;
+    const leaveOnPageExit = () => {
+      if (pageLeaveSentRef.current) {
+        return;
+      }
+
+      pageLeaveSentRef.current = true;
+      sendLeaveRoomBeacon(roomName, participantId, clientSessionId);
+      clearStoredSession();
+      clearClientSessionId();
+      setActiveFloatingPanel(null);
+      setSession(null);
+    };
+
+    window.addEventListener("pagehide", leaveOnPageExit);
+    window.addEventListener("beforeunload", leaveOnPageExit);
+    return () => {
+      window.removeEventListener("pagehide", leaveOnPageExit);
+      window.removeEventListener("beforeunload", leaveOnPageExit);
+    };
+  }, [session?.clientSessionId, session?.participantId, session?.roomName]);
+
+  useEffect(() => {
+    const nextRole = roomSocket.role ?? session?.role ?? null;
+    if (nextRole !== "controller" && activeFloatingPanel === "control") {
+      setActiveFloatingPanel(null);
+    }
+  }, [activeFloatingPanel, roomSocket.role, session?.role]);
+
+  useEffect(() => {
+    const isSpeaker =
+      Boolean(session) &&
+      roomSocket.speaker.currentSpeakerId === session?.participantId &&
+      Boolean(roomSocket.speaker.currentSpeakerStartedAt);
+    if (!isSpeaker) {
+      return;
+    }
+
+    setSpeakerClock(Date.now());
+    const intervalId = window.setInterval(() => setSpeakerClock(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, [roomSocket.speaker.currentSpeakerId, roomSocket.speaker.currentSpeakerStartedAt, session?.participantId]);
 
   useEffect(() => {
     if (!notice) {
@@ -533,17 +633,29 @@ function RoomApp() {
 
   useEffect(() => {
     if (!roomSocket.lastError.startsWith("PARTICIPANT_NOT_FOUND")) {
+      lastParticipantRecoveryErrorRef.current = "";
       return;
     }
 
+    if (lastParticipantRecoveryErrorRef.current === roomSocket.lastError) {
+      return;
+    }
+
+    lastParticipantRecoveryErrorRef.current = roomSocket.lastError;
     void recoverSession("Session restored");
   }, [recoverSession, roomSocket.lastError]);
 
   useEffect(() => {
     if (!liveKitRoom.lastError || !shouldRefreshLiveKitToken(liveKitRoom.lastError)) {
+      lastLiveKitRecoveryErrorRef.current = "";
       return;
     }
 
+    if (lastLiveKitRecoveryErrorRef.current === liveKitRoom.lastError) {
+      return;
+    }
+
+    lastLiveKitRecoveryErrorRef.current = liveKitRoom.lastError;
     void recoverSession("LiveKit token refreshed");
   }, [liveKitRoom.lastError, recoverSession]);
 
@@ -599,6 +711,9 @@ function RoomApp() {
   }
 
   const effectiveRole = roomSocket.role ?? session.role;
+  const isController = effectiveRole === "controller";
+  const isActualSpeaker =
+    roomSocket.speaker.currentSpeakerId === session.participantId && Boolean(roomSocket.speaker.currentSpeakerStartedAt);
   const controlRequestQueue = roomSocket.controlRequests.queue;
   const hasCurrentController = Boolean(roomSocket.controlRequests.currentControllerId);
   const controlRequestPending =
@@ -606,10 +721,18 @@ function RoomApp() {
   const controlActionsDisabled = roomSocket.connectionState !== "connected";
   const privateUnreadTotal = Object.values(privateUnreadCounts).reduce((total, count) => total + count, 0);
   const chatNotificationCount = activeFloatingPanel === "chat" ? 0 : chatUnreadCount + privateUnreadTotal;
-  const controlNotificationCount = controlRequestQueue.length;
+  const controlNotificationCount = isController ? controlRequestQueue.length : 0;
   const manualControlAvailable =
-    effectiveRole === "controller" && roomSocket.robotOnline && roomSocket.connectionState === "connected";
+    isController && roomSocket.robotOnline && roomSocket.connectionState === "connected";
   const feedbackPadAvailable = manualControlAvailable && (keyboardControl.backendEnabled || manualFeedbackDirection !== null);
+  const speakerPanel =
+    isActualSpeaker && roomSocket.speaker.currentSpeakerStartedAt
+      ? {
+          speakerStartedAt: roomSocket.speaker.currentSpeakerStartedAt,
+          queue: roomSocket.speaker.queue,
+          now: speakerClock
+        }
+      : null;
 
   return (
     <main className="app-shell">
@@ -617,6 +740,7 @@ function RoomApp() {
         roomName={session.roomName}
         participantName={session.participantName}
         role={effectiveRole}
+        isSpeaker={isActualSpeaker}
         webSocketState={roomSocket.connectionState}
         robotOnline={roomSocket.robotOnline}
         currentControllerName={roomSocket.currentControllerName}
@@ -652,10 +776,12 @@ function RoomApp() {
               stageParticipantName={selectedStageParticipantName}
               stageParticipantIdentity={selectedStageParticipantIdentity}
               robotActionCount={roomSocket.robotEvents.length}
-              keyboardEnabled={keyboardControl.enabled || manualFeedbackDirection !== null}
+              keyboardEnabled={isController && (keyboardControl.enabled || manualFeedbackDirection !== null)}
               keyboardAvailable={feedbackPadAvailable}
               keyboardDirection={keyboardControl.activeDirection ?? manualFeedbackDirection}
               keyboardStateText={keyboardControl.keyboardStateText}
+              showKeyboardFeedback={isController}
+              speakerPanel={speakerPanel}
             />
             <MediaControls
               mediaPermissions={session.mediaPermissions}
@@ -677,16 +803,18 @@ function RoomApp() {
                   <span className="dock-badge">{formatNotificationCount(chatNotificationCount)}</span>
                 ) : null}
               </button>
-              <button
-                type="button"
-                className={dockButtonClassName(activeFloatingPanel === "control", controlNotificationCount > 0)}
-                onClick={() => setActiveFloatingPanel((current) => (current === "control" ? null : "control"))}
-              >
-                Control
-                {controlNotificationCount > 0 ? (
-                  <span className="dock-badge">{formatNotificationCount(controlNotificationCount)}</span>
-                ) : null}
-              </button>
+              {isController ? (
+                <button
+                  type="button"
+                  className={dockButtonClassName(activeFloatingPanel === "control", controlNotificationCount > 0)}
+                  onClick={() => setActiveFloatingPanel((current) => (current === "control" ? null : "control"))}
+                >
+                  Control
+                  {controlNotificationCount > 0 ? (
+                    <span className="dock-badge">{formatNotificationCount(controlNotificationCount)}</span>
+                  ) : null}
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
@@ -752,7 +880,7 @@ function RoomApp() {
         </aside>
       ) : null}
 
-      {activeFloatingPanel === "control" ? (
+      {activeFloatingPanel === "control" && isController ? (
         <aside className="floating-panel-shell floating-panel-control" role="dialog" aria-label="Robot control panel">
           <div className="floating-panel-top">
             <h2>Control</h2>

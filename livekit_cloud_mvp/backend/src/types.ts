@@ -78,13 +78,20 @@ export type SpeakerParticipantSnapshot = {
   name: string;
   role: WebRole;
   connected: boolean;
+  requestedAt?: number;
 };
 
 export type SpeakerStateSnapshot = {
   currentSpeaker?: SpeakerParticipantSnapshot;
   currentSpeakerId?: string;
   currentSpeakerName?: string;
+  currentSpeakerStartedAt?: number;
   queue: SpeakerParticipantSnapshot[];
+};
+
+export type SpeakerQueueEntry = {
+  participantId: string;
+  requestedAt: number;
 };
 
 export type ControlRequestParticipantSnapshot = {
@@ -109,7 +116,8 @@ export type RoomState = {
   currentControllerId?: string;
   controllerRequestQueue: string[];
   currentSpeakerId?: string;
-  speakerQueue: string[];
+  currentSpeakerStartedAt?: number;
+  speakerQueue: SpeakerQueueEntry[];
   updatedAt: number;
   lastRobotControl?: {
     command: RobotControlEventCommand;

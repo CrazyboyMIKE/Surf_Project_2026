@@ -61,6 +61,27 @@ export function leaveRoom(roomName: string, participantId: string, clientSession
   });
 }
 
+export function sendLeaveRoomBeacon(roomName: string, participantId: string, clientSessionId: string): void {
+  const payload = JSON.stringify({ roomName, participantId, clientSessionId });
+  const url = `${API_BASE_URL}/api/rooms/leave`;
+
+  if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+    const blob = new Blob([payload], { type: "application/json" });
+    if (navigator.sendBeacon(url, blob)) {
+      return;
+    }
+  }
+
+  void fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: payload,
+    keepalive: true
+  }).catch(() => undefined);
+}
+
 export function requestControl(roomName: string, participantId: string): Promise<ControlResponse> {
   return requestJson<ControlResponse>("/api/rooms/control/request", {
     method: "POST",

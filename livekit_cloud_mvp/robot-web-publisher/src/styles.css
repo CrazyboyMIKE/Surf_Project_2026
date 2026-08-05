@@ -445,6 +445,7 @@ button:focus-visible {
 .local-preview video {
   display: block;
   position: relative;
+  z-index: 0;
   width: 100%;
   height: 100%;
   max-width: 100%;
@@ -504,6 +505,8 @@ button:focus-visible {
 
 .remote-video-tile video {
   display: block;
+  position: relative;
+  z-index: 0;
   width: 100%;
   height: 100%;
   max-width: 100%;
@@ -544,6 +547,8 @@ button:focus-visible {
 
 .controller-video-frame video {
   display: block;
+  position: relative;
+  z-index: 0;
   width: 100%;
   height: 100%;
   background: #10191c;
@@ -560,6 +565,7 @@ button:focus-visible {
 .role-badge,
 .name-badge {
   position: absolute;
+  z-index: 3;
   max-width: calc(100% - 20px);
   overflow: hidden;
   border-radius: 999px;
@@ -667,9 +673,14 @@ button:focus-visible {
 
 .fullscreen-button {
   position: absolute;
+  z-index: 4;
   right: 10px;
   top: 10px;
   max-width: calc(100% - 20px);
+}
+
+.compact-video-tile .fullscreen-button {
+  display: none;
 }
 
 .stage-fullscreen-button {
@@ -823,12 +834,21 @@ button:focus-visible {
   }
 
   .room-shell {
+    max-width: none;
     gap: 7px;
     padding: 8px;
   }
 
   .room-topbar {
     min-height: 46px;
+  }
+
+  .room-topbar h1 {
+    font-size: 1.34rem;
+  }
+
+  .room-topbar .subtle {
+    font-size: 0.86rem;
   }
 
   .microphone-device-controls {
@@ -852,6 +872,20 @@ button:focus-visible {
 
   .meeting-video-card {
     flex: 0 0 min(220px, 58vw);
+  }
+
+  .video-card-header strong {
+    font-size: 0.86rem;
+  }
+
+  .video-card-header span {
+    font-size: 0.7rem;
+  }
+
+  .stage-fullscreen-button {
+    min-height: 40px;
+    padding: 0 12px;
+    font-size: 0.78rem;
   }
 
   .speaker-queue-panel {

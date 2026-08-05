@@ -12,6 +12,7 @@ import type {
   RoomRecordDetail,
   RoomRecordSummary,
   RoomState,
+  SpeakerQueueEntry,
   SpeakerStateSnapshot,
   WebRole
 } from "../types.js";
@@ -639,7 +640,7 @@ export class RoomStore {
       };
     }
 
-    if (room.currentSpeakerId === participantId || room.speakerQueue.includes(participantId)) {
+    if (room.currentSpeakerId === participantId || this.isParticipantInSpeakerQueue(room, participantId)) {
       return {
         ok: true,
         room,
@@ -648,10 +649,12 @@ export class RoomStore {
       };
     }
 
+    const now = Date.now();
     if (!room.currentSpeakerId) {
       room.currentSpeakerId = participantId;
-      participant.lastSeenAt = Date.now();
-      this.touchRoom(room, participant.lastSeenAt);
+      room.currentSpeakerStartedAt = now;
+      participant.lastSeenAt = now;
+      this.touchRoom(room, now);
       return {
         ok: true,
         room,
@@ -660,9 +663,9 @@ export class RoomStore {
       };
     }
 
-    room.speakerQueue.push(participantId);
-    participant.lastSeenAt = Date.now();
-    this.touchRoom(room, participant.lastSeenAt);
+    room.speakerQueue.push({ participantId, requestedAt: now });
+    participant.lastSeenAt = now;
+    this.touchRoom(room, now);
     return {
       ok: true,
       room,
@@ -714,10 +717,12 @@ export class RoomStore {
       };
     }
 
+    const now = Date.now();
     room.currentSpeakerId = undefined;
-    participant.lastSeenAt = Date.now();
-    this.normalizeSpeakerState(room);
-    this.touchRoom(room, participant.lastSeenAt);
+    room.currentSpeakerStartedAt = undefined;
+    participant.lastSeenAt = now;
+    this.normalizeSpeakerState(room, now);
+    this.touchRoom(room, now);
 
     return {
       ok: true,
@@ -1191,16 +1196,24 @@ export class RoomStore {
     };
   }
 
-  private normalizeSpeakerState(room: RoomState): void {
+  private isParticipantInSpeakerQueue(room: RoomState, participantId: string): boolean {
+    return room.speakerQueue.some((queueEntry) => queueEntry.participantId === participantId);
+  }
+
+  private normalizeSpeakerState(room: RoomState, timestamp = Date.now()): void {
     room.speakerQueue = room.speakerQueue ?? [];
     const currentSpeaker = room.currentSpeakerId ? room.participants.get(room.currentSpeakerId) : undefined;
     if (!currentSpeaker || currentSpeaker.role !== "viewer" || !currentSpeaker.connected) {
       room.currentSpeakerId = undefined;
+      room.currentSpeakerStartedAt = undefined;
+    } else if (!room.currentSpeakerStartedAt) {
+      room.currentSpeakerStartedAt = timestamp;
     }
 
-    const nextQueue: string[] = [];
+    const nextQueue: SpeakerQueueEntry[] = [];
     const seen = new Set<string>();
-    for (const participantId of room.speakerQueue) {
+    for (const queueEntry of room.speakerQueue) {
+      const participantId = queueEntry.participantId;
       if (participantId === room.currentSpeakerId || seen.has(participantId)) {
         continue;
       }
@@ -1211,26 +1224,37 @@ export class RoomStore {
       }
 
       seen.add(participantId);
-      nextQueue.push(participantId);
+      nextQueue.push(queueEntry);
     }
 
     room.speakerQueue = nextQueue;
     if (!room.currentSpeakerId) {
-      room.currentSpeakerId = room.speakerQueue.shift();
+      const promotedSpeaker = room.speakerQueue.shift();
+      room.currentSpeakerId = promotedSpeaker?.participantId;
+      room.currentSpeakerStartedAt = promotedSpeaker ? timestamp : undefined;
     }
   }
 
-  private toSpeakerParticipantSnapshot(participant: Participant | undefined): SpeakerStateSnapshot["currentSpeaker"] {
+  private toSpeakerParticipantSnapshot(
+    participant: Participant | undefined,
+    requestedAt?: number
+  ): SpeakerStateSnapshot["currentSpeaker"] {
     if (!participant || (participant.role !== "controller" && participant.role !== "viewer")) {
       return undefined;
     }
 
-    return {
+    const snapshot: NonNullable<SpeakerStateSnapshot["currentSpeaker"]> = {
       id: participant.id,
       name: participant.name,
       role: participant.role,
       connected: participant.connected
     };
+
+    if (requestedAt) {
+      snapshot.requestedAt = requestedAt;
+    }
+
+    return snapshot;
   }
 
   private getSpeakerStateSnapshot(room: RoomState): SpeakerStateSnapshot {
@@ -1243,8 +1267,9 @@ export class RoomStore {
       currentSpeaker,
       currentSpeakerId: currentSpeaker?.id,
       currentSpeakerName: currentSpeaker?.name,
+      currentSpeakerStartedAt: viewerSpeaker ? room.currentSpeakerStartedAt : undefined,
       queue: room.speakerQueue
-        .map((participantId) => this.toSpeakerParticipantSnapshot(room.participants.get(participantId)))
+        .map((queueEntry) => this.toSpeakerParticipantSnapshot(room.participants.get(queueEntry.participantId), queueEntry.requestedAt))
         .filter((participant): participant is NonNullable<typeof participant> => Boolean(participant))
     };
   }

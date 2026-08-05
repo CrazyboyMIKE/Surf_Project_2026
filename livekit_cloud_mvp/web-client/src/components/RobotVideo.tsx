@@ -14,6 +14,18 @@ type RobotVideoProps = {
   keyboardAvailable: boolean;
   keyboardDirection: DirectionFeedbackSignal;
   keyboardStateText: string;
+  showKeyboardFeedback: boolean;
+  speakerPanel?: SpeakerSelfPanelInfo | null;
+};
+
+export type SpeakerSelfPanelInfo = {
+  speakerStartedAt: number;
+  queue: Array<{
+    id: string;
+    name: string;
+    requestedAt?: number;
+  }>;
+  now: number;
 };
 
 function getPlaceholderText(
@@ -78,6 +90,42 @@ function SpeakingBadge({
     >
       <span className="speaking-icon" aria-hidden="true" />
     </span>
+  );
+}
+
+function formatElapsedTime(startedAt: number | undefined, now: number): string {
+  if (!startedAt || !Number.isFinite(startedAt)) {
+    return "00:00";
+  }
+
+  const totalSeconds = Math.max(0, Math.floor((now - startedAt) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const parts = hours > 0 ? [hours, minutes, seconds] : [minutes, seconds];
+  return parts.map((part) => part.toString().padStart(2, "0")).join(":");
+}
+
+function SpeakerSelfPanel({ info }: { info: SpeakerSelfPanelInfo }) {
+  return (
+    <aside className="speaker-self-overlay" aria-label="Speaker timing">
+      <div>
+        <span>You are Speaker</span>
+        <strong>{formatElapsedTime(info.speakerStartedAt, info.now)}</strong>
+      </div>
+      <div className="speaker-self-queue" aria-label="Speaker queue wait times">
+        {info.queue.length === 0 ? (
+          <p>Queue empty</p>
+        ) : (
+          info.queue.map((participant) => (
+            <p key={participant.id}>
+              <span>{participant.name}</span>
+              <strong>{formatElapsedTime(participant.requestedAt, info.now)}</strong>
+            </p>
+          ))
+        )}
+      </div>
+    </aside>
   );
 }
 
@@ -196,7 +244,9 @@ export function RobotVideo({
   keyboardEnabled,
   keyboardAvailable,
   keyboardDirection,
-  keyboardStateText
+  keyboardStateText,
+  showKeyboardFeedback,
+  speakerPanel
 }: RobotVideoProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const stageTrack = stageVideoTrack?.track ?? null;
@@ -234,12 +284,16 @@ export function RobotVideo({
         </div>
       )}
 
+      {speakerPanel ? <SpeakerSelfPanel info={speakerPanel} /> : null}
+
       <div className="robot-status-strip" aria-label="Robot status">
         <div className="robot-status-copy">
           <p>{robotOnline ? (robotActionCount > 0 ? "Last action sent" : "Robot ready") : "Robot offline"}</p>
           <span>{keyboardStateText}</span>
         </div>
-        <DirectionFeedbackPad enabled={keyboardEnabled} available={keyboardAvailable} direction={keyboardDirection} />
+        {showKeyboardFeedback ? (
+          <DirectionFeedbackPad enabled={keyboardEnabled} available={keyboardAvailable} direction={keyboardDirection} />
+        ) : null}
       </div>
     </section>
   );

@@ -133,12 +133,14 @@ export type SpeakerParticipant = {
   name: string;
   role: WebRole;
   connected: boolean;
+  requestedAt?: number;
 };
 
 export type SpeakerState = {
   currentSpeaker?: SpeakerParticipant;
   currentSpeakerId?: string;
   currentSpeakerName?: string;
+  currentSpeakerStartedAt?: number;
   queue: SpeakerParticipant[];
 };
 
@@ -353,6 +355,7 @@ export type SpeakerUpdateMessage = {
   currentSpeaker?: SpeakerParticipant;
   currentSpeakerId?: string;
   currentSpeakerName?: string;
+  currentSpeakerStartedAt?: number;
   queue: SpeakerParticipant[];
   timestamp: number;
 };

@@ -158,6 +158,7 @@ try {
   const viewerASpeakerUpdate = await socketController.waitForNewMessage(
     (message) => message.type === "speaker_update" && (message.currentSpeaker as Record<string, unknown>)?.id === viewerA.id
   );
+  assert.equal(typeof viewerASpeakerUpdate.currentSpeakerStartedAt, "number");
   assert.deepEqual(viewerASpeakerUpdate.queue, []);
 
   socketA.socket.send(
@@ -184,6 +185,7 @@ try {
     return message.type === "speaker_update" && queue?.[0]?.id === viewerB.id;
   });
   assert.equal((queuedUpdate.currentSpeaker as Record<string, unknown>).id, viewerA.id);
+  assert.equal(typeof (queuedUpdate.queue as Array<Record<string, unknown>>)[0]?.requestedAt, "number");
 
   socketRobot.socket.send(
     JSON.stringify({
@@ -216,12 +218,14 @@ try {
   const promotedUpdate = await socketController.waitForNewMessage(
     (message) => message.type === "speaker_update" && (message.currentSpeaker as Record<string, unknown>)?.id === viewerB.id
   );
+  assert.equal(typeof promotedUpdate.currentSpeakerStartedAt, "number");
   assert.deepEqual(promotedUpdate.queue, []);
 
   socketB.socket.close(1000, "speaker left");
   const fallbackUpdate = await socketController.waitForNewMessage(
     (message) => message.type === "speaker_update" && (message.currentSpeaker as Record<string, unknown>)?.id === controller.id
   );
+  assert.equal(fallbackUpdate.currentSpeakerStartedAt, undefined);
   assert.deepEqual(fallbackUpdate.queue, []);
 } finally {
   for (const harness of sockets) {

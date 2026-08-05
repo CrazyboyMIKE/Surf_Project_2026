@@ -245,6 +245,7 @@ export function attachWebSocketServer(
       currentSpeaker: snapshot.speaker.currentSpeaker,
       currentSpeakerId: snapshot.speaker.currentSpeakerId,
       currentSpeakerName: snapshot.speaker.currentSpeakerName,
+      currentSpeakerStartedAt: snapshot.speaker.currentSpeakerStartedAt,
       queue: snapshot.speaker.queue,
       timestamp: Date.now()
     });
