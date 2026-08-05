@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { joinRoom, leaveRoom, releaseControl, requestControl, sendLeaveRoomBeacon, transferControl } from "./api";
+import { joinRoom, leaveRoom, releaseControl, requestControl, transferControl } from "./api";
 import { AdminConsole } from "./components/AdminConsole";
 import { ChatPanel } from "./components/ChatPanel";
 import { ControlPanel } from "./components/ControlPanel";
@@ -439,7 +439,6 @@ function RoomApp({
   const manualFeedbackTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const lastParticipantRecoveryErrorRef = useRef("");
   const lastLiveKitRecoveryErrorRef = useRef("");
-  const pageLeaveSentRef = useRef(false);
   const [speakerClock, setSpeakerClock] = useState(() => Date.now());
   const handleForcedDisconnect = useCallback(
     (message: string) => {
@@ -626,7 +625,6 @@ function RoomApp({
     setNotice("");
     setActionPending(true);
     let leaveError = "";
-    pageLeaveSentRef.current = true;
     try {
       if (session.clientSessionId) {
         await leaveRoom(session.roomName, session.participantId, session.clientSessionId);
@@ -673,37 +671,7 @@ function RoomApp({
     setActiveFloatingPanel(null);
     seenChatMessageCountRef.current = 0;
     seenPrivateMessageIdsRef.current.clear();
-    pageLeaveSentRef.current = false;
   }, [session?.participantId]);
-
-  useEffect(() => {
-    if (!session?.clientSessionId) {
-      return;
-    }
-
-    const roomName = session.roomName;
-    const participantId = session.participantId;
-    const clientSessionId = session.clientSessionId;
-    const leaveOnPageExit = () => {
-      if (pageLeaveSentRef.current) {
-        return;
-      }
-
-      pageLeaveSentRef.current = true;
-      sendLeaveRoomBeacon(roomName, participantId, clientSessionId);
-      clearStoredSession();
-      clearClientSessionId();
-      setActiveFloatingPanel(null);
-      setSession(null);
-    };
-
-    window.addEventListener("pagehide", leaveOnPageExit);
-    window.addEventListener("beforeunload", leaveOnPageExit);
-    return () => {
-      window.removeEventListener("pagehide", leaveOnPageExit);
-      window.removeEventListener("beforeunload", leaveOnPageExit);
-    };
-  }, [session?.clientSessionId, session?.participantId, session?.roomName]);
 
   useEffect(() => {
     const nextRole = roomSocket.role ?? session?.role ?? null;

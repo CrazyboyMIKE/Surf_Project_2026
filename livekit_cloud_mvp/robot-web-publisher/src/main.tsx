@@ -719,27 +719,6 @@ async function leaveRobot(roomName: string, participantId: string, clientSession
   });
 }
 
-function sendRobotLeaveBeacon(roomName: string, participantId: string, clientSessionId: string): void {
-  const payload = JSON.stringify({ roomName, participantId, clientSessionId });
-  const url = `${API_BASE_URL}/api/rooms/leave`;
-
-  if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
-    const blob = new Blob([payload], { type: "application/json" });
-    if (navigator.sendBeacon(url, blob)) {
-      return;
-    }
-  }
-
-  void fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: payload,
-    keepalive: true
-  }).catch(() => undefined);
-}
-
 function parseParticipantRole(participant: RemoteParticipant): Role | undefined {
   if (!participant.metadata) {
     return undefined;
@@ -1689,7 +1668,6 @@ function App() {
   const participantsByIdRef = useRef<Map<string, ParticipantPresence>>(new Map());
   const sessionRef = useRef<RoomSession | null>(null);
   const restoringSessionRef = useRef(false);
-  const pageLeaveSentRef = useRef(false);
   const remoteVideosRef = useRef<RemoteVideoInfo[]>([]);
   const localSpeakingRef = useRef<ParticipantSpeakingInfo>(EMPTY_SPEAKING);
   const remoteVideoSyncTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
@@ -1866,7 +1844,6 @@ function App() {
 
   async function leaveRoom() {
     const currentSession = sessionRef.current ?? session;
-    pageLeaveSentRef.current = true;
     if (currentSession?.clientSessionId) {
       await leaveRobot(currentSession.roomName, currentSession.participantId, currentSession.clientSessionId).catch(() => undefined);
     }
@@ -2215,44 +2192,12 @@ function App() {
   }, [pending, route]);
 
   useEffect(() => {
-    if (route === "/room" || !sessionRef.current || pageLeaveSentRef.current) {
+    if (route === "/room" || !sessionRef.current) {
       return;
     }
 
     void leaveRoom();
   }, [route]);
-
-  useEffect(() => {
-    if (!session?.clientSessionId) {
-      pageLeaveSentRef.current = false;
-      return;
-    }
-
-    pageLeaveSentRef.current = false;
-    const roomName = session.roomName;
-    const participantId = session.participantId;
-    const clientSessionId = session.clientSessionId;
-    const leaveOnPageExit = () => {
-      if (pageLeaveSentRef.current) {
-        return;
-      }
-
-      pageLeaveSentRef.current = true;
-      sendRobotLeaveBeacon(roomName, participantId, clientSessionId);
-      resetConnections();
-      clearStoredRobotSession();
-      clearRobotClientSessionId();
-      setSession(null);
-      navigateToRobotRoute("/login", { replace: true });
-    };
-
-    window.addEventListener("pagehide", leaveOnPageExit);
-    window.addEventListener("beforeunload", leaveOnPageExit);
-    return () => {
-      window.removeEventListener("pagehide", leaveOnPageExit);
-      window.removeEventListener("beforeunload", leaveOnPageExit);
-    };
-  }, [session?.clientSessionId, session?.participantId, session?.roomName]);
 
   useEffect(() => resetConnections, []);
 
