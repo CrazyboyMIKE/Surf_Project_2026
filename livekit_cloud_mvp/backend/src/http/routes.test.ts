@@ -51,6 +51,7 @@ async function createTestServer(): Promise<TestServer> {
   const roomStore = new RoomStore({ mockRobotOnline: false });
   const stopCalls: Array<{ roomName: string; reason: string }> = [];
   const app = express();
+  app.use(express.text({ type: "text/plain", limit: "32kb" }));
   app.use(express.json());
   app.use(
     createApiRouter({
@@ -137,7 +138,36 @@ try {
   });
   assert.equal(correctSessionLeave.status, 200);
   assert.equal(correctSessionLeave.body.roomDeleted, true);
+  assert.equal(Object.prototype.hasOwnProperty.call(correctSessionLeave.body, "token"), false);
   assert.equal(server.roomStore.getRoom("robot-room-001"), undefined);
+
+  const beaconJoin = await requestJson(server.baseUrl, "/api/rooms/join", {
+    method: "POST",
+    body: JSON.stringify({
+      roomName: "beacon-room",
+      participantName: "Beacon User",
+      requestedRole: "viewer",
+      clientSessionId: "client-session-beacon"
+    })
+  });
+  assert.equal(beaconJoin.status, 201);
+  const beaconParticipantId = beaconJoin.body.participantId as string;
+  server.roomStore.markParticipantConnected("beacon-room", beaconParticipantId);
+
+  const beaconLeave = await requestJson(server.baseUrl, "/api/rooms/leave", {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain"
+    },
+    body: JSON.stringify({
+      roomName: "beacon-room",
+      participantId: beaconParticipantId,
+      clientSessionId: "client-session-beacon"
+    })
+  });
+  assert.equal(beaconLeave.status, 200);
+  assert.equal(beaconLeave.body.roomDeleted, true);
+  assert.equal(Object.prototype.hasOwnProperty.call(beaconLeave.body, "token"), false);
 
   const robotJoin = await requestJson(server.baseUrl, "/api/robots/join", {
     method: "POST",

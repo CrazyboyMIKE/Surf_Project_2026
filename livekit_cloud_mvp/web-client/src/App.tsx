@@ -37,12 +37,15 @@ const FALLBACK_KEYBOARD_CONTROL_CONFIG: KeyboardControlConfig = {
   requireFocus: true
 };
 
-const SESSION_STORAGE_KEY = "livekit-cloud-mvp.room-session";
-const CLIENT_SESSION_STORAGE_KEY = "livekit-cloud-mvp.client-session-id";
+const SESSION_STORAGE_KEY = "livekitCloudWebSession";
+const CLIENT_SESSION_STORAGE_KEY = "livekitCloudWebClientSessionId";
+const LEGACY_SESSION_STORAGE_KEY = "livekit-cloud-mvp.room-session";
+const LEGACY_CLIENT_SESSION_STORAGE_KEY = "livekit-cloud-mvp.client-session-id";
 const STORED_SESSION_VERSION = 2;
 const STORED_SESSION_TTL_MS = 6 * 60 * 60 * 1000;
 const ROBOT_STAGE_PARTICIPANT_ID = "__robot_stage__";
 type DirectionFeedbackSignal = KeyboardDirection | "stop";
+type WebRoute = "/" | "/login" | "/room" | "/admin";
 
 type StoredSessionEnvelope = {
   version: number;
@@ -73,6 +76,8 @@ function readStoredSession(): JoinRoomResponse | null {
   try {
     const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
     if (!raw) {
+      sessionStorage.removeItem(LEGACY_SESSION_STORAGE_KEY);
+      sessionStorage.removeItem(LEGACY_CLIENT_SESSION_STORAGE_KEY);
       return null;
     }
 
@@ -124,10 +129,12 @@ function saveStoredSession(session: JoinRoomResponse): void {
 
 function clearStoredSession(): void {
   sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  sessionStorage.removeItem(LEGACY_SESSION_STORAGE_KEY);
 }
 
 function clearClientSessionId(): void {
   sessionStorage.removeItem(CLIENT_SESSION_STORAGE_KEY);
+  sessionStorage.removeItem(LEGACY_CLIENT_SESSION_STORAGE_KEY);
 }
 
 function createClientSessionId(): string {
@@ -160,6 +167,41 @@ function getOrCreateClientSessionId(): string {
   const next = createClientSessionId();
   sessionStorage.setItem(CLIENT_SESSION_STORAGE_KEY, next);
   return next;
+}
+
+function getCurrentWebRoute(): WebRoute {
+  const pathname = window.location.pathname;
+  if (pathname === "/login" || pathname === "/room" || pathname === "/admin") {
+    return pathname;
+  }
+
+  return "/";
+}
+
+function navigateToWebRoute(route: Exclude<WebRoute, "/">, options: { replace?: boolean } = {}): void {
+  if (window.location.pathname === route) {
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    return;
+  }
+
+  if (options.replace) {
+    window.history.replaceState(null, "", route);
+  } else {
+    window.history.pushState(null, "", route);
+  }
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+function useWebRoute(): WebRoute {
+  const [route, setRoute] = useState<WebRoute>(() => getCurrentWebRoute());
+
+  useEffect(() => {
+    const syncRoute = () => setRoute(getCurrentWebRoute());
+    window.addEventListener("popstate", syncRoute);
+    return () => window.removeEventListener("popstate", syncRoute);
+  }, []);
+
+  return route;
 }
 
 function shouldRefreshLiveKitToken(lastError: string): boolean {
@@ -200,11 +242,91 @@ function getManualFeedbackDirection(command: RobotCommand, parameters: ControlPa
 }
 
 export function App() {
-  if (window.location.pathname === "/admin") {
+  const route = useWebRoute();
+  const [loginNotice, setLoginNotice] = useState("");
+
+  useEffect(() => {
+    if (route === "/") {
+      navigateToWebRoute(readStoredSession() ? "/room" : "/login", { replace: true });
+      return;
+    }
+
+    if (route === "/room" && !readStoredSession()) {
+      setLoginNotice("Please join a room first");
+      navigateToWebRoute("/login", { replace: true });
+      return;
+    }
+
+    if (route === "/login" && readStoredSession()) {
+      navigateToWebRoute("/room", { replace: true });
+    }
+  }, [route]);
+
+  if (route === "/admin") {
     return <AdminConsole />;
   }
 
-  return <RoomApp />;
+  if (route === "/room") {
+    const storedSession = readStoredSession();
+    if (!storedSession) {
+      return null;
+    }
+
+    return (
+      <RoomApp
+        initialSession={storedSession}
+        onLeaveComplete={(message) => {
+          setLoginNotice(message);
+          navigateToWebRoute("/login", { replace: true });
+        }}
+      />
+    );
+  }
+
+  if (route === "/login") {
+    return (
+      <LoginPage
+        notice={loginNotice}
+        onNoticeChange={setLoginNotice}
+        onJoined={(message) => {
+          setLoginNotice(message);
+          navigateToWebRoute("/room");
+        }}
+      />
+    );
+  }
+
+  return null;
+}
+
+function LoginPage({
+  notice,
+  onNoticeChange,
+  onJoined
+}: {
+  notice: string;
+  onNoticeChange: (message: string) => void;
+  onJoined: (message: string) => void;
+}) {
+  async function handleJoin(payload: JoinRoomRequest) {
+    const response = await joinRoom({
+      ...payload,
+      clientSessionId: getOrCreateClientSessionId()
+    });
+    saveStoredSession(response);
+    onJoined(response.role === "controller" ? "Control granted" : "Joined as viewer");
+  }
+
+  useEffect(() => {
+    if (!notice) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => onNoticeChange(""), 5000);
+    return () => window.clearTimeout(timeoutId);
+  }, [notice, onNoticeChange]);
+
+  return <JoinRoomForm onJoin={handleJoin} notice={notice} />;
 }
 
 function MobileRoomActions({
@@ -264,8 +386,14 @@ function MobileRoomActions({
   );
 }
 
-function RoomApp() {
-  const [session, setSession] = useState<JoinRoomResponse | null>(() => readStoredSession());
+function RoomApp({
+  initialSession,
+  onLeaveComplete
+}: {
+  initialSession: JoinRoomResponse;
+  onLeaveComplete: (message: string) => void;
+}) {
+  const [session, setSession] = useState<JoinRoomResponse | null>(initialSession);
   const [actionPending, setActionPending] = useState(false);
   const [notice, setNotice] = useState("");
   const [activeFloatingPanel, setActiveFloatingPanel] = useState<"chat" | "control" | null>(null);
@@ -283,11 +411,15 @@ function RoomApp() {
   const lastLiveKitRecoveryErrorRef = useRef("");
   const pageLeaveSentRef = useRef(false);
   const [speakerClock, setSpeakerClock] = useState(() => Date.now());
-  const handleForcedDisconnect = useCallback((message: string) => {
-    clearStoredSession();
-    setSession(null);
-    setNotice(message);
-  }, []);
+  const handleForcedDisconnect = useCallback(
+    (message: string) => {
+      clearStoredSession();
+      clearClientSessionId();
+      setSession(null);
+      onLeaveComplete(message);
+    },
+    [onLeaveComplete]
+  );
   const roomSocket = useRoomSocket(session, handleForcedDisconnect);
   const liveKitRoom = useLiveKitRoom(session);
   const keyboardControlConfig = session?.keyboardControl ?? FALLBACK_KEYBOARD_CONTROL_CONFIG;
@@ -365,24 +497,15 @@ function RoomApp() {
         setNotice(response.reusedParticipant ? successMessage : "Session recreated");
       } catch (error) {
         clearStoredSession();
+        clearClientSessionId();
         setSession(null);
-        setNotice(error instanceof Error ? error.message : "Session restore failed; please join again");
+        onLeaveComplete(error instanceof Error ? error.message : "Session restore failed; please join again");
       } finally {
         recoveringSessionRef.current = false;
       }
     },
-    [session]
+    [onLeaveComplete, session]
   );
-
-  async function handleJoin(payload: JoinRoomRequest) {
-    const response = await joinRoom({
-      ...payload,
-      clientSessionId: getOrCreateClientSessionId()
-    });
-    setSession(response);
-    saveStoredSession(response);
-    setNotice(response.role === "controller" ? "Control granted" : "Joined as viewer");
-  }
 
   async function handleRequestControl() {
     if (!session) {
@@ -484,7 +607,7 @@ function RoomApp() {
       clearStoredSession();
       clearClientSessionId();
       setSession(null);
-      setNotice(leaveError ? `Left locally; ${leaveError}` : "");
+      onLeaveComplete(leaveError ? `Left locally; ${leaveError}` : "");
       setActionPending(false);
     }
   }
@@ -707,7 +830,7 @@ function RoomApp() {
   }, [robotParticipantId, selectedStageParticipantId]);
 
   if (!session) {
-    return <JoinRoomForm onJoin={handleJoin} notice={notice} />;
+    return null;
   }
 
   const effectiveRole = roomSocket.role ?? session.role;

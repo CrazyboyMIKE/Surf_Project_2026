@@ -45,6 +45,17 @@ function sendError(res: Response, status: number, code: ApiErrorCode, message: s
 }
 
 function readBody(req: Request, res: Response): Record<string, unknown> | undefined {
+  if (typeof req.body === "string") {
+    try {
+      const parsed = JSON.parse(req.body) as unknown;
+      if (isRecord(parsed)) {
+        return parsed;
+      }
+    } catch {
+      // Fall through to the standard invalid request response.
+    }
+  }
+
   if (!isRecord(req.body)) {
     sendError(res, 400, "INVALID_REQUEST", "Request body must be a JSON object");
     return undefined;

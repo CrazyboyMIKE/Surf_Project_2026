@@ -99,7 +99,7 @@ VITE_API_BASE_URL=https://api.example.com
 VITE_WS_BASE_URL=wss://api.example.com/ws
 ```
 
-Serve `dist/` through Nginx.
+Serve `dist/` through Nginx. The web client is a static SPA; `/login`, `/room`, and `/admin` must all fall back to `index.html` on refresh.
 
 ## Nginx
 
@@ -110,7 +110,7 @@ Use:
 
 Backend Nginx must support WebSocket `/ws` with `Upgrade` and `Connection` headers.
 
-Web Nginx serves the static SPA with `try_files $uri /index.html`.
+Web Nginx serves the static SPA with `try_files $uri /index.html`. Use the same SPA fallback for the robot web publisher so `/login` and `/room` refreshes do not return 404.
 
 ## Robot Web Publisher
 
@@ -123,7 +123,7 @@ cp .env.livekit-cloud.example .env.production
 npm run dev
 ```
 
-It can also be built and served as static files.
+It can also be built and served as static files. When served through Nginx, configure the robot web publisher host with `try_files $uri /index.html` so `/login` and `/room` routes load the same built `index.html`.
 
 ## Android Robot
 

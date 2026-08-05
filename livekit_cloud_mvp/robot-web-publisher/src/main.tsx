@@ -128,10 +128,18 @@ type ServerErrorMessage = {
 type RoomSession = JoinRobotResponse & {
   robotName: string;
   publishMicrophone: boolean;
+  publishAudio: boolean;
   microphoneDeviceId: string;
+  selectedMicrophoneDeviceId: string;
+  selectedCameraDeviceId: string;
 };
 
 type MicrophoneDeviceInfo = {
+  deviceId: string;
+  label: string;
+};
+
+type CameraDeviceInfo = {
   deviceId: string;
   label: string;
 };
@@ -175,8 +183,10 @@ function resolveApiBaseUrl(): string {
 
 const API_BASE_URL = resolveApiBaseUrl();
 const WS_URL = resolveWebSocketUrl(API_BASE_URL);
-const ROBOT_SESSION_STORAGE_KEY = "livekit-cloud-mvp.robot-session";
-const ROBOT_CLIENT_SESSION_STORAGE_KEY = "livekit-cloud-mvp.robot-client-session-id";
+const ROBOT_SESSION_STORAGE_KEY = "livekitCloudRobotSession";
+const ROBOT_CLIENT_SESSION_STORAGE_KEY = "livekitCloudRobotClientSessionId";
+const LEGACY_ROBOT_SESSION_STORAGE_KEY = "livekit-cloud-mvp.robot-session";
+const LEGACY_ROBOT_CLIENT_SESSION_STORAGE_KEY = "livekit-cloud-mvp.robot-client-session-id";
 const ROBOT_STORED_SESSION_VERSION = 2;
 const ROBOT_STORED_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const EMPTY_SPEAKING: ParticipantSpeakingInfo = {
@@ -226,6 +236,8 @@ type StoredRobotSessionEnvelope = {
   session: RoomSession;
 };
 
+type RobotRoute = "/" | "/login" | "/room";
+
 function isAndroidFirefoxBrowser(): boolean {
   const userAgent = navigator.userAgent.toLowerCase();
   return userAgent.includes("android") && (userAgent.includes("firefox") || userAgent.includes("fennec"));
@@ -237,23 +249,13 @@ function getRobotCameraProfile() {
 
 function readPersistentValue(key: string): string | null {
   try {
-    return localStorage.getItem(key) ?? sessionStorage.getItem(key);
+    return sessionStorage.getItem(key);
   } catch {
-    try {
-      return sessionStorage.getItem(key);
-    } catch {
-      return null;
-    }
+    return null;
   }
 }
 
 function writePersistentValue(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Session storage keeps the page refresh path working when localStorage is unavailable.
-  }
-
   try {
     sessionStorage.setItem(key, value);
   } catch {
@@ -263,15 +265,15 @@ function writePersistentValue(key: string, value: string): void {
 
 function removePersistentValue(key: string): void {
   try {
-    localStorage.removeItem(key);
+    sessionStorage.removeItem(key);
   } catch {
     // Ignore storage cleanup failures.
   }
 
   try {
-    sessionStorage.removeItem(key);
+    localStorage.removeItem(key);
   } catch {
-    // Ignore storage cleanup failures.
+    // Ignore legacy storage cleanup failures.
   }
 }
 
@@ -357,12 +359,23 @@ function normalizeStoredRobotSession(value: unknown): RoomSession | null {
     return null;
   }
 
+  const publishAudio = typeof parsed.publishAudio === "boolean" ? parsed.publishAudio : Boolean(parsed.publishMicrophone);
+  const selectedMicrophoneDeviceId =
+    typeof parsed.selectedMicrophoneDeviceId === "string"
+      ? parsed.selectedMicrophoneDeviceId
+      : typeof parsed.microphoneDeviceId === "string"
+        ? parsed.microphoneDeviceId
+        : "";
+
   return {
     ...parsed,
     online: Boolean(parsed.online),
     tokenMode: parsed.tokenMode === "livekit" ? "livekit" : "mock",
-    publishMicrophone: Boolean(parsed.publishMicrophone),
-    microphoneDeviceId: typeof parsed.microphoneDeviceId === "string" ? parsed.microphoneDeviceId : ""
+    publishMicrophone: publishAudio,
+    publishAudio,
+    microphoneDeviceId: selectedMicrophoneDeviceId,
+    selectedMicrophoneDeviceId,
+    selectedCameraDeviceId: typeof parsed.selectedCameraDeviceId === "string" ? parsed.selectedCameraDeviceId : ""
   } as RoomSession;
 }
 
@@ -370,6 +383,8 @@ function readStoredRobotSession(): RoomSession | null {
   try {
     const raw = readPersistentValue(ROBOT_SESSION_STORAGE_KEY);
     if (!raw) {
+      removePersistentValue(LEGACY_ROBOT_SESSION_STORAGE_KEY);
+      removePersistentValue(LEGACY_ROBOT_CLIENT_SESSION_STORAGE_KEY);
       return null;
     }
 
@@ -420,10 +435,12 @@ function saveStoredRobotSession(session: RoomSession): void {
 
 function clearStoredRobotSession(): void {
   removePersistentValue(ROBOT_SESSION_STORAGE_KEY);
+  removePersistentValue(LEGACY_ROBOT_SESSION_STORAGE_KEY);
 }
 
 function clearRobotClientSessionId(): void {
   removePersistentValue(ROBOT_CLIENT_SESSION_STORAGE_KEY);
+  removePersistentValue(LEGACY_ROBOT_CLIENT_SESSION_STORAGE_KEY);
 }
 
 function createClientSessionId(): string {
@@ -458,6 +475,41 @@ function getOrCreateRobotClientSessionId(): string {
   return next;
 }
 
+function getCurrentRobotRoute(): RobotRoute {
+  const pathname = window.location.pathname;
+  if (pathname === "/login" || pathname === "/room") {
+    return pathname;
+  }
+
+  return "/";
+}
+
+function navigateToRobotRoute(route: Exclude<RobotRoute, "/">, options: { replace?: boolean } = {}): void {
+  if (window.location.pathname === route) {
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    return;
+  }
+
+  if (options.replace) {
+    window.history.replaceState(null, "", route);
+  } else {
+    window.history.pushState(null, "", route);
+  }
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+function useRobotRoute(): RobotRoute {
+  const [route, setRoute] = useState<RobotRoute>(() => getCurrentRobotRoute());
+
+  useEffect(() => {
+    const syncRoute = () => setRoute(getCurrentRobotRoute());
+    window.addEventListener("popstate", syncRoute);
+    return () => window.removeEventListener("popstate", syncRoute);
+  }, []);
+
+  return route;
+}
+
 function describeUnknownError(error: unknown): string {
   return error instanceof Error ? error.message : "unknown error";
 }
@@ -489,6 +541,15 @@ function collectMicrophoneDevices(devices: MediaDeviceInfo[]): MicrophoneDeviceI
     }));
 }
 
+function collectCameraDevices(devices: MediaDeviceInfo[]): CameraDeviceInfo[] {
+  return devices
+    .filter((device) => device.kind === "videoinput")
+    .map((device, index) => ({
+      deviceId: device.deviceId,
+      label: device.label.trim() || (device.deviceId === "default" ? "Default camera" : `Camera ${index + 1}`)
+    }));
+}
+
 function describeMicrophoneState(state: RobotMicrophoneState): string {
   switch (state) {
     case "idle":
@@ -509,6 +570,25 @@ function describeMicrophoneState(state: RobotMicrophoneState): string {
       return "Microphone unsupported";
     case "publish-failed":
       return "Microphone failed";
+  }
+}
+
+function describeCameraDeviceState(state: MicrophoneDeviceListState, deviceCount: number): string {
+  switch (state) {
+    case "idle":
+      return "Click Refresh cameras to choose a camera.";
+    case "checking":
+      return "Checking camera devices...";
+    case "ready":
+      return deviceCount === 1 ? "1 camera available." : `${deviceCount} cameras available.`;
+    case "permission-denied":
+      return "Camera permission denied.";
+    case "not-found":
+      return "No camera devices found.";
+    case "unsupported":
+      return "Camera device selection is not supported by this browser.";
+    case "error":
+      return "Could not refresh camera devices.";
   }
 }
 
@@ -533,6 +613,10 @@ function describeMicrophoneDeviceState(state: MicrophoneDeviceListState, deviceC
 
 function createMicrophoneAudioOptions(deviceId: string) {
   return deviceId ? { deviceId } : undefined;
+}
+
+function createRobotCameraOptions(cameraProfile: ReturnType<typeof getRobotCameraProfile>, deviceId: string) {
+  return deviceId ? { ...cameraProfile.capture, deviceId } : cameraProfile.capture;
 }
 
 function classifyMicrophoneError(error: unknown): { state: RobotMicrophoneState; message: string } {
@@ -1389,10 +1473,55 @@ function MicrophoneDevicePanel({
   );
 }
 
+function CameraDevicePanel({
+  devices,
+  selectedDeviceId,
+  deviceListState,
+  pending,
+  onRefresh,
+  onDeviceChange
+}: {
+  devices: CameraDeviceInfo[];
+  selectedDeviceId: string;
+  deviceListState: MicrophoneDeviceListState;
+  pending: boolean;
+  onRefresh: () => void;
+  onDeviceChange: (deviceId: string) => void;
+}) {
+  return (
+    <div className="microphone-device-panel" aria-label="Camera device selection">
+      <div className="microphone-device-header">
+        <strong>Select camera</strong>
+        <span>{devices.length === 0 ? "Camera default" : `${devices.length} available`}</span>
+      </div>
+      <div className="microphone-device-controls">
+        <label>
+          Camera
+          <select value={selectedDeviceId} disabled={pending || devices.length === 0} onChange={(event) => onDeviceChange(event.target.value)}>
+            <option value="">Default camera</option>
+            {devices.map((device, index) => (
+              <option key={`${device.deviceId}-${index}`} value={device.deviceId}>
+                {device.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="button" className="ghost-button" disabled={pending || deviceListState === "checking"} onClick={onRefresh}>
+          {deviceListState === "checking" ? "Refreshing..." : "Refresh cameras"}
+        </button>
+      </div>
+      <p className="microphone-device-status">{describeCameraDeviceState(deviceListState, devices.length)}</p>
+    </div>
+  );
+}
+
 function EntryView({
   robotName,
   roomName,
   publishMicrophone,
+  cameraDevices,
+  selectedCameraDeviceId,
+  cameraDeviceState,
   microphoneDevices,
   selectedMicrophoneDeviceId,
   microphoneDeviceState,
@@ -1402,6 +1531,8 @@ function EntryView({
   onRobotNameChange,
   onRoomNameChange,
   onPublishMicrophoneChange,
+  onRefreshCameras,
+  onCameraDeviceChange,
   onRefreshMicrophones,
   onMicrophoneDeviceChange,
   onEnter
@@ -1409,6 +1540,9 @@ function EntryView({
   robotName: string;
   roomName: string;
   publishMicrophone: boolean;
+  cameraDevices: CameraDeviceInfo[];
+  selectedCameraDeviceId: string;
+  cameraDeviceState: MicrophoneDeviceListState;
   microphoneDevices: MicrophoneDeviceInfo[];
   selectedMicrophoneDeviceId: string;
   microphoneDeviceState: MicrophoneDeviceListState;
@@ -1418,6 +1552,8 @@ function EntryView({
   onRobotNameChange: (value: string) => void;
   onRoomNameChange: (value: string) => void;
   onPublishMicrophoneChange: (value: boolean) => void;
+  onRefreshCameras: () => void;
+  onCameraDeviceChange: (deviceId: string) => void;
   onRefreshMicrophones: () => void;
   onMicrophoneDeviceChange: (deviceId: string) => void;
   onEnter: (mode: "create" | "join") => void;
@@ -1458,6 +1594,15 @@ function EntryView({
             />
             Publish microphone audio
           </label>
+
+          <CameraDevicePanel
+            devices={cameraDevices}
+            selectedDeviceId={selectedCameraDeviceId}
+            deviceListState={cameraDeviceState}
+            pending={pending}
+            onRefresh={onRefreshCameras}
+            onDeviceChange={onCameraDeviceChange}
+          />
 
           <MicrophoneDevicePanel
             devices={microphoneDevices}
@@ -1602,19 +1747,24 @@ function RobotRoomView({
 function App() {
   useRobotViewportCssVariables();
 
-  const storedSession = readStoredRobotSession();
-  const [view, setView] = useState<"entry" | "room">(() => (storedSession ? "room" : "entry"));
-  const [roomName, setRoomName] = useState(() => storedSession?.roomName ?? "robot-room-001");
-  const [robotName, setRobotName] = useState(() => storedSession?.robotName ?? "robot-001");
-  const [session, setSession] = useState<RoomSession | null>(() => storedSession);
+  const route = useRobotRoute();
+  const [initialStoredSession] = useState<RoomSession | null>(() =>
+    getCurrentRobotRoute() === "/room" ? readStoredRobotSession() : null
+  );
+  const [roomName, setRoomName] = useState(() => initialStoredSession?.roomName ?? "robot-room-001");
+  const [robotName, setRobotName] = useState(() => initialStoredSession?.robotName ?? "robot-001");
+  const [session, setSession] = useState<RoomSession | null>(null);
   const [backendState, setBackendState] = useState("idle");
   const [webSocketState, setWebSocketState] = useState("idle");
   const [liveKitState, setLiveKitState] = useState("idle");
   const [publishState, setPublishState] = useState("idle");
-  const [publishMicrophone, setPublishMicrophone] = useState(() => Boolean(storedSession?.publishMicrophone));
+  const [publishMicrophone, setPublishMicrophone] = useState(() => Boolean(initialStoredSession?.publishMicrophone));
   const [microphoneState, setMicrophoneState] = useState<RobotMicrophoneState>("idle");
+  const [cameraDevices, setCameraDevices] = useState<CameraDeviceInfo[]>([]);
+  const [selectedCameraDeviceId, setSelectedCameraDeviceId] = useState(() => initialStoredSession?.selectedCameraDeviceId ?? "");
+  const [cameraDeviceState, setCameraDeviceState] = useState<MicrophoneDeviceListState>("idle");
   const [microphoneDevices, setMicrophoneDevices] = useState<MicrophoneDeviceInfo[]>([]);
-  const [selectedMicrophoneDeviceId, setSelectedMicrophoneDeviceId] = useState(() => storedSession?.microphoneDeviceId ?? "");
+  const [selectedMicrophoneDeviceId, setSelectedMicrophoneDeviceId] = useState(() => initialStoredSession?.microphoneDeviceId ?? "");
   const [microphoneDeviceState, setMicrophoneDeviceState] = useState<MicrophoneDeviceListState>("idle");
   const [tokenMode, setTokenMode] = useState<"mock" | "livekit" | "none">("none");
   const [localTrack, setLocalTrack] = useState<LocalVideoTrack | null>(null);
@@ -1728,7 +1878,8 @@ function App() {
 
     const nextSession = {
       ...currentSession,
-      publishMicrophone: nextPublishMicrophone
+      publishMicrophone: nextPublishMicrophone,
+      publishAudio: nextPublishMicrophone
     };
     sessionRef.current = nextSession;
     setSession(nextSession);
@@ -1744,11 +1895,68 @@ function App() {
 
     const nextSession = {
       ...currentSession,
-      microphoneDeviceId: nextDeviceId
+      microphoneDeviceId: nextDeviceId,
+      selectedMicrophoneDeviceId: nextDeviceId
     };
     sessionRef.current = nextSession;
     setSession(nextSession);
     saveStoredRobotSession(nextSession);
+  }
+
+  function updateStoredCameraDevice(nextDeviceId: string) {
+    setSelectedCameraDeviceId(nextDeviceId);
+    const currentSession = sessionRef.current ?? session;
+    if (!currentSession) {
+      return;
+    }
+
+    const nextSession = {
+      ...currentSession,
+      selectedCameraDeviceId: nextDeviceId
+    };
+    sessionRef.current = nextSession;
+    setSession(nextSession);
+    saveStoredRobotSession(nextSession);
+  }
+
+  async function refreshCameraDevices() {
+    if (!navigator.mediaDevices?.enumerateDevices) {
+      setCameraDevices([]);
+      setCameraDeviceState("unsupported");
+      setError("Camera device selection is not supported by this browser.");
+      return;
+    }
+
+    setCameraDeviceState("checking");
+    setError("");
+    let permissionStream: MediaStream | null = null;
+
+    try {
+      if (navigator.mediaDevices.getUserMedia) {
+        permissionStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
+
+      const nextDevices = collectCameraDevices(await navigator.mediaDevices.enumerateDevices());
+      setCameraDevices(nextDevices);
+      setCameraDeviceState(nextDevices.length > 0 ? "ready" : "not-found");
+      if (selectedCameraDeviceId && !nextDevices.some((device) => device.deviceId === selectedCameraDeviceId)) {
+        updateStoredCameraDevice("");
+      }
+    } catch (error) {
+      const cameraMessage = describeCameraError(error);
+      setCameraDevices([]);
+      setCameraDeviceState(
+        error instanceof DOMException &&
+          (error.name === "NotAllowedError" || error.name === "SecurityError" || error.name === "PermissionDeniedError")
+          ? "permission-denied"
+          : error instanceof DOMException && (error.name === "NotFoundError" || error.name === "DevicesNotFoundError")
+            ? "not-found"
+            : "error"
+      );
+      setError(cameraMessage);
+    } finally {
+      permissionStream?.getTracks().forEach((track) => track.stop());
+    }
   }
 
   async function refreshMicrophoneDevices() {
@@ -1816,7 +2024,7 @@ function App() {
     clearStoredRobotSession();
     clearRobotClientSessionId();
     setSession(null);
-    setView("entry");
+    navigateToRobotRoute("/login", { replace: true });
     setError("");
     setBackendState("idle");
     setWebSocketState("idle");
@@ -1830,7 +2038,7 @@ function App() {
     clearStoredRobotSession();
     clearRobotClientSessionId();
     setSession(null);
-    setView("entry");
+    navigateToRobotRoute("/login", { replace: true });
     setBackendState("idle");
     setWebSocketState("idle");
     setLiveKitState("idle");
@@ -1908,9 +2116,11 @@ function App() {
     const restoredSession = options.restoreSession;
     const trimmedRoomName = (restoredSession?.roomName ?? roomName).trim();
     const trimmedRobotName = (restoredSession?.robotName ?? robotName).trim();
-    const savedPublishMicrophone = restoredSession?.publishMicrophone ?? publishMicrophone;
-    const savedMicrophoneDeviceId = restoredSession?.microphoneDeviceId ?? selectedMicrophoneDeviceId;
-    const shouldPublishMicrophone = restoredSession ? false : savedPublishMicrophone;
+    const savedPublishMicrophone = restoredSession?.publishAudio ?? restoredSession?.publishMicrophone ?? publishMicrophone;
+    const savedMicrophoneDeviceId =
+      restoredSession?.selectedMicrophoneDeviceId ?? restoredSession?.microphoneDeviceId ?? selectedMicrophoneDeviceId;
+    const savedCameraDeviceId = restoredSession?.selectedCameraDeviceId ?? selectedCameraDeviceId;
+    const shouldPublishMicrophone = savedPublishMicrophone;
     if (!trimmedRobotName) {
       setError("用户名不能为空");
       return;
@@ -1927,6 +2137,7 @@ function App() {
     setRobotName(trimmedRobotName);
     setPublishMicrophone(savedPublishMicrophone);
     setSelectedMicrophoneDeviceId(savedMicrophoneDeviceId);
+    setSelectedCameraDeviceId(savedCameraDeviceId);
     setBackendState("joining");
     setWebSocketState("idle");
     setLiveKitState("idle");
@@ -1944,12 +2155,15 @@ function App() {
         ...joinResponse,
         robotName: trimmedRobotName,
         publishMicrophone: shouldPublishMicrophone,
-        microphoneDeviceId: savedMicrophoneDeviceId
+        publishAudio: shouldPublishMicrophone,
+        microphoneDeviceId: savedMicrophoneDeviceId,
+        selectedMicrophoneDeviceId: savedMicrophoneDeviceId,
+        selectedCameraDeviceId: savedCameraDeviceId
       };
       setSession(nextSession);
       sessionRef.current = nextSession;
       saveStoredRobotSession(nextSession);
-      setView("room");
+      navigateToRobotRoute("/room");
       setBackendState(joinResponse.online ? "robot online" : "joined");
       setTokenMode(joinResponse.tokenMode);
 
@@ -2070,7 +2284,7 @@ function App() {
       let videoTrack: LocalVideoTrack;
       const cameraProfile = getRobotCameraProfile();
       try {
-        videoTrack = await createLocalVideoTrack(cameraProfile.capture);
+        videoTrack = await createLocalVideoTrack(createRobotCameraOptions(cameraProfile, savedCameraDeviceId));
       } catch (error) {
         throw new Error(describeCameraError(error));
       }
@@ -2101,7 +2315,7 @@ function App() {
         clearStoredRobotSession();
         clearRobotClientSessionId();
         setSession(null);
-        setView("entry");
+        navigateToRobotRoute("/login", { replace: true });
         setBackendState("idle");
         setWebSocketState("idle");
         setLiveKitState("idle");
@@ -2121,6 +2335,27 @@ function App() {
   }
 
   useEffect(() => {
+    if (route === "/") {
+      navigateToRobotRoute(readStoredRobotSession() ? "/room" : "/login", { replace: true });
+      return;
+    }
+
+    if (route === "/room" && !sessionRef.current && !readStoredRobotSession()) {
+      setError("Please join a room first.");
+      navigateToRobotRoute("/login", { replace: true });
+      return;
+    }
+
+    if (route === "/login" && !sessionRef.current && readStoredRobotSession()) {
+      navigateToRobotRoute("/room", { replace: true });
+    }
+  }, [route]);
+
+  useEffect(() => {
+    if (route !== "/room" || pending || roomRef.current || socketRef.current) {
+      return;
+    }
+
     const stored = readStoredRobotSession();
     if (!stored || restoringSessionRef.current) {
       return;
@@ -2130,7 +2365,15 @@ function App() {
     void enterRoom("join", { restoreSession: stored }).finally(() => {
       restoringSessionRef.current = false;
     });
-  }, []);
+  }, [pending, route]);
+
+  useEffect(() => {
+    if (route === "/room" || !sessionRef.current || pageLeaveSentRef.current) {
+      return;
+    }
+
+    void leaveRoom();
+  }, [route]);
 
   useEffect(() => {
     if (!session?.clientSessionId) {
@@ -2153,7 +2396,7 @@ function App() {
       clearStoredRobotSession();
       clearRobotClientSessionId();
       setSession(null);
-      setView("entry");
+      navigateToRobotRoute("/login", { replace: true });
     };
 
     window.addEventListener("pagehide", leaveOnPageExit);
@@ -2166,12 +2409,19 @@ function App() {
 
   useEffect(() => resetConnections, []);
 
-  if (view === "entry" || !session) {
+  if (route === "/" || (route === "/room" && !session)) {
+    return null;
+  }
+
+  if (route === "/login") {
     return (
       <EntryView
         robotName={robotName}
         roomName={roomName}
         publishMicrophone={publishMicrophone}
+        cameraDevices={cameraDevices}
+        selectedCameraDeviceId={selectedCameraDeviceId}
+        cameraDeviceState={cameraDeviceState}
         microphoneDevices={microphoneDevices}
         selectedMicrophoneDeviceId={selectedMicrophoneDeviceId}
         microphoneDeviceState={microphoneDeviceState}
@@ -2181,11 +2431,17 @@ function App() {
         onRobotNameChange={setRobotName}
         onRoomNameChange={setRoomName}
         onPublishMicrophoneChange={setPublishMicrophone}
+        onRefreshCameras={refreshCameraDevices}
+        onCameraDeviceChange={updateStoredCameraDevice}
         onRefreshMicrophones={refreshMicrophoneDevices}
         onMicrophoneDeviceChange={(deviceId) => void handleMicrophoneDeviceChange(deviceId)}
         onEnter={enterRoom}
       />
     );
+  }
+
+  if (route !== "/room" || !session) {
+    return null;
   }
 
   return (

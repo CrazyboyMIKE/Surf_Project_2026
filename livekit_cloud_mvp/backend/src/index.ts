@@ -48,6 +48,7 @@ app.use(
     }
   })
 );
+app.use(express.text({ type: "text/plain", limit: "32kb" }));
 app.use(express.json({ limit: "32kb" }));
 
 app.use(
