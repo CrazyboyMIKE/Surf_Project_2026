@@ -369,9 +369,11 @@ function SpeakerPanel({
   onEndSpeaker: () => void;
 }) {
   const queueIndex = speaker.queue.findIndex((participant) => participant.id === currentParticipantId);
-  const currentParticipantIsSpeaker = speaker.currentSpeaker?.id === currentParticipantId && currentRole === "viewer";
+  const canUseSpeakerQueue = currentRole === "viewer" || currentRole === "controller";
+  const currentParticipantIsSpeaker =
+    speaker.currentSpeaker?.id === currentParticipantId && canUseSpeakerQueue && Boolean(speaker.currentSpeakerStartedAt);
   const currentParticipantIsQueued = queueIndex >= 0;
-  const canRequestSpeaker = currentRole === "viewer" && !currentParticipantIsSpeaker && !currentParticipantIsQueued;
+  const canRequestSpeaker = canUseSpeakerQueue && !currentParticipantIsSpeaker && !currentParticipantIsQueued;
 
   return (
     <section className="speaker-panel" aria-labelledby="speaker-title">
@@ -384,7 +386,7 @@ function SpeakerPanel({
           <button type="button" className="speaker-action-button" disabled={disabled} onClick={onEndSpeaker}>
             End Speaker
           </button>
-        ) : currentRole === "viewer" ? (
+        ) : canUseSpeakerQueue ? (
           <button type="button" className="speaker-action-button" disabled={disabled || !canRequestSpeaker} onClick={onRequestSpeaker}>
             {currentParticipantIsQueued ? `Queued #${queueIndex + 1}` : "Request Speaker"}
           </button>

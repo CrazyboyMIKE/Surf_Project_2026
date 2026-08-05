@@ -630,13 +630,13 @@ export class RoomStore {
       };
     }
 
-    if (participant.role !== "viewer") {
+    if (participant.role !== "viewer" && participant.role !== "controller") {
       return {
         ok: false,
         room,
         status: 403,
         code: "FORBIDDEN",
-        message: "Only viewers can request Speaker"
+        message: "Only web participants can request Speaker"
       };
     }
 
@@ -1203,7 +1203,7 @@ export class RoomStore {
   private normalizeSpeakerState(room: RoomState, timestamp = Date.now()): void {
     room.speakerQueue = room.speakerQueue ?? [];
     const currentSpeaker = room.currentSpeakerId ? room.participants.get(room.currentSpeakerId) : undefined;
-    if (!currentSpeaker || currentSpeaker.role !== "viewer" || !currentSpeaker.connected) {
+    if (!currentSpeaker || (currentSpeaker.role !== "viewer" && currentSpeaker.role !== "controller") || !currentSpeaker.connected) {
       room.currentSpeakerId = undefined;
       room.currentSpeakerStartedAt = undefined;
     } else if (!room.currentSpeakerStartedAt) {
@@ -1219,7 +1219,7 @@ export class RoomStore {
       }
 
       const participant = room.participants.get(participantId);
-      if (!participant || participant.role !== "viewer" || !participant.connected) {
+      if (!participant || (participant.role !== "viewer" && participant.role !== "controller") || !participant.connected) {
         continue;
       }
 

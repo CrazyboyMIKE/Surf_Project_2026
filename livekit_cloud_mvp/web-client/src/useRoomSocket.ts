@@ -373,7 +373,12 @@ export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconne
   }, [roomName]);
 
   const sendSpeakerRequest = useCallback(() => {
-    if (!roomName || !participantId || role !== "viewer" || socketRef.current?.readyState !== WebSocket.OPEN) {
+    if (
+      !roomName ||
+      !participantId ||
+      (role !== "viewer" && role !== "controller") ||
+      socketRef.current?.readyState !== WebSocket.OPEN
+    ) {
       return;
     }
 

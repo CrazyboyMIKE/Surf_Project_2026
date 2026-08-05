@@ -123,4 +123,37 @@ function createRoom() {
   }
 }
 
+{
+  const originalDateNow = Date.now;
+  let now = 3_000_000;
+  Date.now = () => now;
+  const { store, controller, viewerA } = createRoom();
+
+  try {
+    assert.equal(store.getRoomSnapshot("robot-room-001")?.speaker.currentSpeaker?.id, controller.id);
+    assert.equal(store.getRoomSnapshot("robot-room-001")?.speaker.currentSpeakerStartedAt, undefined);
+
+    now += 1_000;
+    const controllerRequest = store.requestSpeaker("robot-room-001", controller.id);
+    assert.equal(controllerRequest.ok, true);
+    assert.equal(store.getRoomSnapshot("robot-room-001")?.speaker.currentSpeaker?.id, controller.id);
+    assert.equal(store.getRoomSnapshot("robot-room-001")?.speaker.currentSpeakerStartedAt, now);
+
+    now += 1_000;
+    store.requestSpeaker("robot-room-001", viewerA.id);
+    assert.deepEqual(
+      store.getRoomSnapshot("robot-room-001")?.speaker.queue.map((participant) => participant.id),
+      [viewerA.id]
+    );
+
+    now += 1_000;
+    const controllerEnd = store.endSpeaker("robot-room-001", controller.id);
+    assert.equal(controllerEnd.ok, true);
+    assert.equal(store.getRoomSnapshot("robot-room-001")?.speaker.currentSpeaker?.id, viewerA.id);
+    assert.equal(store.getRoomSnapshot("robot-room-001")?.speaker.currentSpeakerStartedAt, now);
+  } finally {
+    Date.now = originalDateNow;
+  }
+}
+
 console.log("speakerQueue tests passed");

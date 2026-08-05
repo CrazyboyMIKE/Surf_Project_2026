@@ -286,15 +286,15 @@ export function RobotVideo({
 
       {speakerPanel ? <SpeakerSelfPanel info={speakerPanel} /> : null}
 
-      <div className="robot-status-strip" aria-label="Robot status">
-        <div className="robot-status-copy">
-          <p>{robotOnline ? (robotActionCount > 0 ? "Last action sent" : "Robot ready") : "Robot offline"}</p>
-          <span>{keyboardStateText}</span>
-        </div>
-        {showKeyboardFeedback ? (
+      {showKeyboardFeedback ? (
+        <div className="robot-status-strip" aria-label="Robot status">
+          <div className="robot-status-copy">
+            <p>{robotOnline ? (robotActionCount > 0 ? "Last action sent" : "Robot ready") : "Robot offline"}</p>
+            <span>{keyboardStateText}</span>
+          </div>
           <DirectionFeedbackPad enabled={keyboardEnabled} available={keyboardAvailable} direction={keyboardDirection} />
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </section>
   );
 }
