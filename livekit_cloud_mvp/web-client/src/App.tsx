@@ -402,9 +402,9 @@ function MobileRoomActions({
           type="button"
           className={mobileActionClassName("secondary")}
           onClick={onReleaseControl}
-          disabled={!isController || actionPending || controlActionsDisabled}
+          disabled={(!isController && !controlRequestPending) || actionPending || controlActionsDisabled}
         >
-          Release
+          {controlRequestPending ? "Cancel" : "Release"}
         </button>
         <button type="button" className={mobileActionClassName("danger")} onClick={onLeaveRoom} disabled={actionPending}>
           Leave
@@ -642,15 +642,27 @@ function RoomApp({
     }
   }
 
+  const currentRoomParticipantRole = session
+    ? roomSocket.participants.find((participant) => participant.id === session.participantId)?.role
+    : undefined;
+  const authoritativeRole =
+    currentRoomParticipantRole === "controller" || currentRoomParticipantRole === "viewer" ? currentRoomParticipantRole : roomSocket.role;
+
   useEffect(() => {
-    if (!session || !roomSocket.role || roomSocket.role === session.role) {
+    if (!authoritativeRole) {
       return;
     }
 
-    const nextSession = { ...session, role: roomSocket.role };
-    setSession(nextSession);
-    saveStoredSession(nextSession);
-  }, [roomSocket.role, session]);
+    setSession((current) => {
+      if (!current || current.role === authoritativeRole) {
+        return current;
+      }
+
+      const nextSession = { ...current, role: authoritativeRole };
+      saveStoredSession(nextSession);
+      return nextSession;
+    });
+  }, [authoritativeRole]);
 
   useEffect(() => {
     setLocallyMutedAudio({});
@@ -862,7 +874,7 @@ function RoomApp({
     return null;
   }
 
-  const effectiveRole = roomSocket.role ?? session.role;
+  const effectiveRole = authoritativeRole ?? session.role;
   const isController = effectiveRole === "controller";
   const isActualSpeaker =
     roomSocket.speaker.currentSpeakerId === session.participantId && Boolean(roomSocket.speaker.currentSpeakerStartedAt);

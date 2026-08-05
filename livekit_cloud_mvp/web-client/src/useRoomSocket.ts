@@ -59,7 +59,7 @@ export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconne
 
   useEffect(() => {
     setRole(session?.role ?? null);
-  }, [session?.participantId, session?.role]);
+  }, [session?.participantId]);
 
   useEffect(() => {
     setCurrentControllerName(session?.currentControllerName);

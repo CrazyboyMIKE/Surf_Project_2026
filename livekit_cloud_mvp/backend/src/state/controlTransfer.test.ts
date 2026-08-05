@@ -59,6 +59,22 @@ function controlQueueIds(store: RoomStore): string[] {
 }
 
 {
+  const { store, controller, viewerA } = createRoomWithControllerViewers();
+  const request = store.requestControl("robot-room-001", viewerA.id);
+  assert.equal(request.ok, true);
+  assert.deepEqual(controlQueueIds(store), [viewerA.id]);
+
+  const cancel = store.releaseControl("robot-room-001", viewerA.id);
+  assert.equal(cancel.ok, true);
+  if (cancel.ok) {
+    assert.equal(cancel.released, false);
+    assert.equal(cancel.message, "Control request canceled");
+  }
+  assert.equal(store.getRoomSnapshot("robot-room-001")?.currentControllerId, controller.id);
+  assert.deepEqual(controlQueueIds(store), []);
+}
+
+{
   const { store, controller, viewerA, viewerB } = createRoomWithControllerViewers();
   store.requestControl("robot-room-001", viewerA.id);
   store.requestControl("robot-room-001", viewerB.id);

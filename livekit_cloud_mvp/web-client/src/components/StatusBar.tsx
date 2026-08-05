@@ -96,9 +96,9 @@ export function StatusBar({
           type="button"
           className="secondary-button"
           onClick={onReleaseControl}
-          disabled={!isController || actionPending || controlActionsDisabled}
+          disabled={(!isController && !controlRequestPending) || actionPending || controlActionsDisabled}
         >
-          Release
+          {controlRequestPending ? "Cancel" : "Release"}
         </button>
         <button type="button" className="secondary-button" onClick={onLeaveRoom} disabled={actionPending}>
           Leave room

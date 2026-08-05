@@ -161,6 +161,21 @@ try {
   });
   assert.equal(duplicateUpdate.currentControllerId, controller.id);
 
+  roomStore.releaseControl(roomName, viewerA.id);
+  webSocketHub.broadcastRoleUpdate(roomName);
+  const canceledUpdate = await socketController.waitForNewMessage((message) => {
+    const queue = message.queue as Array<Record<string, unknown>> | undefined;
+    return message.type === "control_request_update" && message.currentControllerId === controller.id && queue?.length === 0;
+  });
+  assert.deepEqual(canceledUpdate.queue, []);
+
+  roomStore.requestControl(roomName, viewerA.id);
+  webSocketHub.broadcastRoleUpdate(roomName);
+  await socketController.waitForNewMessage((message) => {
+    const queue = message.queue as Array<Record<string, unknown>> | undefined;
+    return message.type === "control_request_update" && queue?.[0]?.id === viewerA.id;
+  });
+
   roomStore.requestControl(roomName, viewerB.id);
   roomStore.transferControl(roomName, controller.id, viewerA.id);
   webSocketHub.broadcastRoleUpdate(roomName);

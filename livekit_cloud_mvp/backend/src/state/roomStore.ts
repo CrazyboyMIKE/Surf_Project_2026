@@ -469,6 +469,7 @@ export class RoomStore {
     }
 
     const released = room.currentControllerId === participantId;
+    const canceled = !released && (room.controllerRequestQueue ?? []).includes(participantId);
     if (released) {
       room.currentControllerId = undefined;
     }
@@ -489,7 +490,7 @@ export class RoomStore {
       ok: true,
       room,
       released,
-      message: released ? "Control released" : "Participant was not the active controller"
+      message: released ? "Control released" : canceled ? "Control request canceled" : "Participant was not the active controller"
     };
   }
 
