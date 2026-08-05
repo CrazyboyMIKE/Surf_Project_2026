@@ -241,6 +241,16 @@ function getManualFeedbackDirection(command: RobotCommand, parameters: ControlPa
   return (parameters.angleDeg ?? 0) < 0 ? "right" : "left";
 }
 
+function getJoinNotice(payload: JoinRoomRequest, response: JoinRoomResponse): string {
+  if (payload.requestedRole === "controller") {
+    return response.role === "controller" && response.requestedControllerGranted
+      ? "Control granted"
+      : "Controller already exists; joined as viewer";
+  }
+
+  return response.role === "controller" ? "Control granted" : "Joined as viewer";
+}
+
 export function App() {
   const route = useWebRoute();
   const [loginNotice, setLoginNotice] = useState("");
@@ -275,6 +285,7 @@ export function App() {
     return (
       <RoomApp
         initialSession={storedSession}
+        initialNotice={loginNotice}
         onLeaveComplete={(message) => {
           setLoginNotice(message);
           navigateToWebRoute("/login", { replace: true });
@@ -314,7 +325,7 @@ function LoginPage({
       clientSessionId: getOrCreateClientSessionId()
     });
     saveStoredSession(response);
-    onJoined(response.role === "controller" ? "Control granted" : "Joined as viewer");
+    onJoined(getJoinNotice(payload, response));
   }
 
   useEffect(() => {
@@ -388,14 +399,16 @@ function MobileRoomActions({
 
 function RoomApp({
   initialSession,
+  initialNotice,
   onLeaveComplete
 }: {
   initialSession: JoinRoomResponse;
+  initialNotice: string;
   onLeaveComplete: (message: string) => void;
 }) {
   const [session, setSession] = useState<JoinRoomResponse | null>(initialSession);
   const [actionPending, setActionPending] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(initialNotice);
   const [activeFloatingPanel, setActiveFloatingPanel] = useState<"chat" | "control" | null>(null);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [locallyMutedAudio, setLocallyMutedAudio] = useState<Record<string, boolean>>({});

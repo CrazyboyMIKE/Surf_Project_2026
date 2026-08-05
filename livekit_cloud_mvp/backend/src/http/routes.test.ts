@@ -207,8 +207,26 @@ try {
     })
   });
   assert.equal(controllerJoin.status, 201);
+  assert.equal(controllerJoin.body.role, "controller");
+  assert.equal(controllerJoin.body.requestedControllerGranted, true);
   const controllerId = controllerJoin.body.participantId as string;
   server.roomStore.markParticipantConnected("control-route-room", controllerId);
+
+  const secondControllerJoin = await requestJson(server.baseUrl, "/api/rooms/join", {
+    method: "POST",
+    body: JSON.stringify({
+      roomName: "control-route-room",
+      participantName: "Second Controller",
+      requestedRole: "controller",
+      clientSessionId: "second-controller-session"
+    })
+  });
+  assert.equal(secondControllerJoin.status, 201);
+  assert.equal(secondControllerJoin.body.role, "viewer");
+  assert.equal(secondControllerJoin.body.requestedControllerGranted, false);
+  assert.equal(secondControllerJoin.body.currentControllerId, controllerId);
+  assert.equal(server.roomStore.getRoom("control-route-room")?.currentControllerId, controllerId);
+  server.roomStore.markParticipantConnected("control-route-room", secondControllerJoin.body.participantId as string);
 
   const viewerJoin = await requestJson(server.baseUrl, "/api/rooms/join", {
     method: "POST",
