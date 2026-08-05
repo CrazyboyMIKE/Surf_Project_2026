@@ -841,9 +841,8 @@ function RoomApp({
   const selectedStageVideoTrack = robotStageSelected ? liveKitRoom.robotVideoTrack : selectedRemoteVideoTrack;
   const selectedStageRole: Role | "unknown" = robotStageSelected
     ? "robot"
-    : selectedMediaParticipant?.role !== "unknown" && selectedMediaParticipant?.role
-      ? selectedMediaParticipant.role
-      : (selectedRoomParticipant?.role ?? "unknown");
+    : (selectedRoomParticipant?.role ??
+      (selectedMediaParticipant?.role !== "unknown" && selectedMediaParticipant?.role ? selectedMediaParticipant.role : "unknown"));
   const selectedStageParticipantName = robotStageSelected
     ? (liveKitRoom.robotVideoTrack?.participantName ?? liveKitRoom.robotAudioTrack?.participantName ?? robotRoomParticipant?.name ?? "Robot")
     : (selectedRoomParticipant?.name ?? selectedMediaParticipant?.name ?? selectedStageId);

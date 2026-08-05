@@ -217,7 +217,7 @@ function LocalVideoPreview({
 
 function getParticipantRole(participant: RemoteParticipantMediaInfo, roomParticipants: ParticipantSummary[]): Role | "unknown" {
   const roomParticipant = roomParticipants.find((candidate) => candidate.id === participant.identity);
-  return participant.role !== "unknown" ? participant.role : (roomParticipant?.role ?? "unknown");
+  return roomParticipant?.role ?? (participant.role !== "unknown" ? participant.role : "unknown");
 }
 
 function getParticipantName(participant: RemoteParticipantMediaInfo, roomParticipants: ParticipantSummary[]): string {
