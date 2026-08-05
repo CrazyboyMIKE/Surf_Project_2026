@@ -187,8 +187,12 @@ function controlQueueIds(store: RoomStore): string[] {
 
   const release = store.releaseControl("robot-room-001", controller.id);
   assert.equal(release.ok, true);
-  assert.equal(store.getRoomSnapshot("robot-room-001")?.currentControllerId, undefined);
-  assert.deepEqual(controlQueueIds(store), [viewerA.id, viewerB.id]);
+  if (release.ok) {
+    assert.equal(release.nextController?.id, viewerA.id);
+    assert.equal(release.message, `Control released to ${viewerA.name}`);
+  }
+  assert.equal(store.getRoomSnapshot("robot-room-001")?.currentControllerId, viewerA.id);
+  assert.deepEqual(controlQueueIds(store), [viewerB.id]);
 
   const renewedRequest = store.requestControl("robot-room-001", viewerA.id);
   assert.equal(renewedRequest.ok, true);
@@ -220,6 +224,7 @@ function controlQueueIds(store: RoomStore): string[] {
   const { store, controller, viewerA } = createRoomWithControllerViewers();
   const release = store.releaseControl("robot-room-001", controller.id);
   assert.equal(release.ok, true);
+  assert.equal(store.getRoomSnapshot("robot-room-001")?.currentControllerId, undefined);
   const staleController = store.getRoom("robot-room-001")?.participants.get(controller.id);
   if (staleController) {
     staleController.role = "controller";

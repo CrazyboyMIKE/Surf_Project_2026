@@ -177,7 +177,7 @@ try {
   });
 
   roomStore.requestControl(roomName, viewerB.id);
-  roomStore.transferControl(roomName, controller.id, viewerA.id);
+  roomStore.releaseControl(roomName, controller.id);
   webSocketHub.broadcastRoleUpdate(roomName);
   const transferredUpdate = await socketA.waitForNewMessage((message) => {
     const queue = message.queue as Array<Record<string, unknown>> | undefined;

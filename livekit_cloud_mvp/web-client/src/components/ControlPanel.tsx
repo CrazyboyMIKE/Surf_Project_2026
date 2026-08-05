@@ -85,9 +85,12 @@ export function ControlPanel({
             <p className="empty-state">No pending control requests</p>
           ) : (
             <div className="transfer-list">
-              {pendingControlRequests.map((requester) => (
+              {pendingControlRequests.map((requester, index) => (
                 <div className="transfer-row" key={requester.id}>
-                  <span>{requester.name}</span>
+                  <span className="transfer-requester">
+                    <strong>{index + 1}</strong>
+                    {requester.name}
+                  </span>
                   <button
                     type="button"
                     className="transfer-button"

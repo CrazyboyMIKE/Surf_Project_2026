@@ -55,6 +55,7 @@ export type ControlReleaseResult =
       ok: true;
       room: RoomState;
       released: boolean;
+      nextController?: Participant;
       message: string;
     }
   | {
@@ -468,6 +469,7 @@ export class RoomStore {
       };
     }
 
+    const now = Date.now();
     const released = room.currentControllerId === participantId;
     const canceled = !released && (room.controllerRequestQueue ?? []).includes(participantId);
     if (released) {
@@ -476,21 +478,50 @@ export class RoomStore {
     this.removeControlRequest(room, participantId);
     participant.role = "viewer";
     this.normalizeControllerRoleState(room);
+    this.normalizeControllerRequestQueue(room);
+    let nextController: Participant | undefined;
+    if (released) {
+      const nextControllerId = room.controllerRequestQueue.shift();
+      nextController = nextControllerId ? room.participants.get(nextControllerId) : undefined;
+      if (nextController && nextController.role === "viewer" && nextController.connected) {
+        nextController.role = "controller";
+        nextController.lastSeenAt = now;
+        room.currentControllerId = nextController.id;
+      } else {
+        nextController = undefined;
+      }
+    }
+    this.normalizeControllerRoleState(room);
     this.normalizeSpeakerState(room);
     this.normalizeControllerRequestQueue(room);
-    participant.lastSeenAt = Date.now();
-    this.touchRoom(room);
-    this.persistParticipant(room, participant, released ? "controller_changed" : undefined, participant.lastSeenAt, {
+    participant.lastSeenAt = now;
+    this.touchRoom(room, now);
+    this.persistParticipant(room, participant, released ? "controller_changed" : undefined, now, {
       participantId,
       participantName: participant.name,
       role: participant.role
     });
+    if (nextController) {
+      this.persistParticipant(room, nextController, "controller_changed", now, {
+        previousControllerId: participant.id,
+        participantId: nextController.id,
+        participantName: nextController.name,
+        role: nextController.role
+      });
+    }
 
     return {
       ok: true,
       room,
       released,
-      message: released ? "Control released" : canceled ? "Control request canceled" : "Participant was not the active controller"
+      nextController,
+      message: released
+        ? nextController
+          ? `Control released to ${nextController.name}`
+          : "Control released"
+        : canceled
+          ? "Control request canceled"
+          : "Participant was not the active controller"
     };
   }
 
