@@ -27,7 +27,7 @@ function createConfig(overrides: Partial<KeyboardControlConfig> = {}): KeyboardC
     sendIntervalMs: 300,
     deadmanTimeoutMs: 900,
     maxSessionMs: 0,
-    maxLinearSpeed: 500,
+    maxLinearSpeed: 400,
     maxAngularSpeed: 30,
     defaultLinearSpeed: 200,
     defaultAngularSpeed: 15,
@@ -161,13 +161,13 @@ function sleep(ms: number): Promise<void> {
     roomName: "robot-room-001",
     senderId: controller.id,
     direction: "forward",
-    linearSpeed: 501,
+    linearSpeed: 401,
     angularSpeed: 15
   });
 
   assert.equal(result.ok, false);
   if (!result.ok) {
-    assert.equal(result.message, "linearSpeed must be greater than 0 and no more than 500");
+    assert.equal(result.message, "linearSpeed must be greater than 0 and no more than 400");
   }
 }
 

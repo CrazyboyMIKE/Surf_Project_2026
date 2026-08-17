@@ -28,7 +28,7 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 export function readKeyboardControlConfig(env: NodeJS.ProcessEnv = process.env): KeyboardControlConfig {
-  const maxLinearSpeed = positiveInteger(readInteger(env.ROBOT_KEYBOARD_MAX_LINEAR_SPEED, 500), 500);
+  const maxLinearSpeed = positiveInteger(readInteger(env.ROBOT_KEYBOARD_MAX_LINEAR_SPEED, 400), 400);
   const maxAngularSpeed = positiveInteger(readInteger(env.ROBOT_KEYBOARD_MAX_ANGULAR_SPEED, 30), 30);
   const defaultLinearSpeed = clamp(
     positiveInteger(readInteger(env.ROBOT_KEYBOARD_DEFAULT_LINEAR_SPEED, 200), 200),
