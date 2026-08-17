@@ -129,7 +129,7 @@ function sleep(ms: number): Promise<void> {
     roomName: "robot-room-001",
     senderId: controller.id,
     direction: "forward",
-    linearSpeed: 80,
+    linearSpeed: 400,
     angularSpeed: 15
   });
   const result = await manager.keepalive({
@@ -143,6 +143,39 @@ function sleep(ms: number): Promise<void> {
   assert.equal(result.ok, true);
   assert.equal(adapter.requests.at(-1)?.command, "1001");
   assert.deepEqual(adapter.requests.at(-1)?.parameters, { lv: 200, av: 0, direction: "forward" });
+  await manager.forceStop("robot-room-001", "test_cleanup");
+}
+
+{
+  const { manager, adapter, controller } = createFixture(createConfig({ sendIntervalMs: 100, deadmanTimeoutMs: 1_000 }));
+  await manager.start({
+    roomName: "robot-room-001",
+    senderId: controller.id,
+    direction: "forward",
+    linearSpeed: 200,
+    angularSpeed: 15
+  });
+  await sleep(80);
+
+  assert.equal(adapter.requests.at(-1)?.command, "1000");
+  assert.deepEqual(adapter.requests.at(-1)?.parameters, { stopReason: "speed_pulse" });
+  assert.equal(manager.getStatus("robot-room-001").active, true);
+  await manager.forceStop("robot-room-001", "test_cleanup");
+}
+
+{
+  const { manager, adapter, controller } = createFixture(createConfig({ sendIntervalMs: 50, deadmanTimeoutMs: 1_000 }));
+  await manager.start({
+    roomName: "robot-room-001",
+    senderId: controller.id,
+    direction: "forward",
+    linearSpeed: 400,
+    angularSpeed: 15
+  });
+  await sleep(80);
+
+  assert.equal(adapter.requests.at(-1)?.command, "1001");
+  assert.deepEqual(adapter.requests.at(-1)?.parameters, { lv: 400, av: 0, direction: "forward" });
   await manager.forceStop("robot-room-001", "test_cleanup");
 }
 
@@ -236,7 +269,7 @@ function sleep(ms: number): Promise<void> {
     roomName: "robot-room-001",
     senderId: controller.id,
     direction: "forward",
-    linearSpeed: 80,
+    linearSpeed: 400,
     angularSpeed: 15
   });
   await sleep(60);
@@ -251,7 +284,7 @@ function sleep(ms: number): Promise<void> {
     roomName: "robot-room-001",
     senderId: controller.id,
     direction: "forward",
-    linearSpeed: 80,
+    linearSpeed: 400,
     angularSpeed: 15
   });
   await sleep(60);
@@ -266,7 +299,7 @@ function sleep(ms: number): Promise<void> {
     roomName: "robot-room-001",
     senderId: controller.id,
     direction: "forward",
-    linearSpeed: 80,
+    linearSpeed: 400,
     angularSpeed: 15
   });
   await sleep(60);

@@ -82,6 +82,8 @@ ArrowDown + ArrowRight -> backward_right -> { lv: -linearSpeed, av: -angularSpee
 Space                  -> stop           -> 1000
 ```
 
+实际发送到 backend 的 `linearSpeed` / `angularSpeed` 仍会写入 `1001` 的 `lv` / `av`。如果 PadBot 固件对 `1001` 数值幅度不敏感，backend 会对低于最大速度的连续控制插入很短的 `1000 speed_pulse`，用占空比降低实际平均速度。满速时不插入脉冲 stop。
+
 聊天输入框、文本框、下拉框或可编辑区域聚焦时，前端不会拦截 `W/A/S/D`，避免用户打字时触发机器人运动。
 
 ## 已移除的头部控制
