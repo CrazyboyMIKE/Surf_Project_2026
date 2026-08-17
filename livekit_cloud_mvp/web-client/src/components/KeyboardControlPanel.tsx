@@ -110,6 +110,9 @@ export function KeyboardControlPanel({
             max={config.maxLinearSpeed}
             value={control.linearSpeed}
             onChange={(event) => control.setLinearSpeed(Number(event.target.value))}
+            onMouseUp={(event) => event.currentTarget.blur()}
+            onPointerUp={(event) => event.currentTarget.blur()}
+            onTouchEnd={(event) => event.currentTarget.blur()}
           />
         </label>
         <label>
@@ -120,6 +123,9 @@ export function KeyboardControlPanel({
             max={config.maxAngularSpeed}
             value={control.angularSpeed}
             onChange={(event) => control.setAngularSpeed(Number(event.target.value))}
+            onMouseUp={(event) => event.currentTarget.blur()}
+            onPointerUp={(event) => event.currentTarget.blur()}
+            onTouchEnd={(event) => event.currentTarget.blur()}
           />
         </label>
       </div>

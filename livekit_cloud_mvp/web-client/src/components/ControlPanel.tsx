@@ -44,11 +44,11 @@ export function ControlPanel({
       </div>
 
       <div className="control-pad">
-        <button type="button" disabled={disabled} onClick={() => onControl("1002", { distanceCm: 20 })}>
+        <button type="button" disabled={disabled} onClick={() => onControl("1002", { distanceCm: 20, speed: keyboardControl.linearSpeed })}>
           ↑
           <span>Forward</span>
         </button>
-        <button type="button" disabled={disabled} onClick={() => onControl("1003", { angleDeg: 15 })}>
+        <button type="button" disabled={disabled} onClick={() => onControl("1003", { angleDeg: 15, speed: keyboardControl.angularSpeed })}>
           ↺
           <span>Left</span>
         </button>
@@ -56,11 +56,11 @@ export function ControlPanel({
           ■
           <span>Stop</span>
         </button>
-        <button type="button" disabled={disabled} onClick={() => onControl("1003", { angleDeg: -15 })}>
+        <button type="button" disabled={disabled} onClick={() => onControl("1003", { angleDeg: -15, speed: keyboardControl.angularSpeed })}>
           ↻
           <span>Right</span>
         </button>
-        <button type="button" disabled={disabled} onClick={() => onControl("1002", { distanceCm: -20 })}>
+        <button type="button" disabled={disabled} onClick={() => onControl("1002", { distanceCm: -20, speed: keyboardControl.linearSpeed })}>
           ↓
           <span>Back</span>
         </button>

@@ -137,6 +137,34 @@ export function useKeyboardDirectionControl({
   const canUseKeyboard = enabled && backendEnabled && role === "controller" && robotOnline && connectionState === "connected";
   const activeDirection = localDirection ?? (status?.active ? (status.direction ?? null) : null);
 
+  const updateLinearSpeed = useCallback(
+    (speed: number) => {
+      const nextLinearSpeed = clampSpeed(speed, config.maxLinearSpeed);
+      latestLinearSpeedRef.current = nextLinearSpeed;
+      setLinearSpeed(nextLinearSpeed);
+
+      const direction = activeDirectionRef.current;
+      if (canUseKeyboard && direction) {
+        onKeepalive(direction, nextLinearSpeed, latestAngularSpeedRef.current);
+      }
+    },
+    [canUseKeyboard, config.maxLinearSpeed, onKeepalive]
+  );
+
+  const updateAngularSpeed = useCallback(
+    (speed: number) => {
+      const nextAngularSpeed = clampSpeed(speed, config.maxAngularSpeed);
+      latestAngularSpeedRef.current = nextAngularSpeed;
+      setAngularSpeed(nextAngularSpeed);
+
+      const direction = activeDirectionRef.current;
+      if (canUseKeyboard && direction) {
+        onKeepalive(direction, latestLinearSpeedRef.current, nextAngularSpeed);
+      }
+    },
+    [canUseKeyboard, config.maxAngularSpeed, onKeepalive]
+  );
+
   useEffect(() => {
     setLinearSpeed((current) => clampSpeed(current, config.maxLinearSpeed));
     setAngularSpeed((current) => clampSpeed(current, config.maxAngularSpeed));
@@ -295,9 +323,9 @@ export function useKeyboardDirectionControl({
       enabled,
       setEnabled,
       linearSpeed,
-      setLinearSpeed,
+      setLinearSpeed: updateLinearSpeed,
       angularSpeed,
-      setAngularSpeed,
+      setAngularSpeed: updateAngularSpeed,
       localDirection,
       activeDirection,
       backendEnabled,
@@ -314,7 +342,9 @@ export function useKeyboardDirectionControl({
       keyboardStateText,
       linearSpeed,
       localDirection,
-      sendStop
+      sendStop,
+      updateAngularSpeed,
+      updateLinearSpeed
     ]
   );
 }

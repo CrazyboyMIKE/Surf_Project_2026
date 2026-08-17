@@ -124,6 +124,29 @@ function sleep(ms: number): Promise<void> {
 }
 
 {
+  const { manager, adapter, controller } = createFixture();
+  await manager.start({
+    roomName: "robot-room-001",
+    senderId: controller.id,
+    direction: "forward",
+    linearSpeed: 80,
+    angularSpeed: 15
+  });
+  const result = await manager.keepalive({
+    roomName: "robot-room-001",
+    senderId: controller.id,
+    direction: "forward",
+    linearSpeed: 200,
+    angularSpeed: 15
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(adapter.requests.at(-1)?.command, "1001");
+  assert.deepEqual(adapter.requests.at(-1)?.parameters, { lv: 200, av: 0, direction: "forward" });
+  await manager.forceStop("robot-room-001", "test_cleanup");
+}
+
+{
   const { manager, viewer } = createFixture();
   const result = await manager.start({
     roomName: "robot-room-001",
