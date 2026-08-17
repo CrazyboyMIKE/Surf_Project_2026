@@ -1682,19 +1682,24 @@ button:focus-visible {
 }
 
 .chat-panel-stack {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 
 .floating-panel-body .chat-panel {
-  grid-template-rows: auto auto auto;
-  height: auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
 .floating-panel-chat .chat-log {
-  max-height: 180px;
-  min-height: 110px;
+  max-height: none;
+  min-height: 0;
   background: rgba(248, 251, 250, 0.5);
+}
+
+.floating-panel-chat .chat-panel {
+  height: clamp(360px, 52dvh, 520px);
+  flex: 0 0 auto;
 }
 
 .floating-panel-chat .private-chat-layout {
@@ -1707,8 +1712,8 @@ button:focus-visible {
 }
 
 .floating-panel-chat .private-chat-log {
-  max-height: 150px;
-  min-height: 96px;
+  max-height: none;
+  min-height: 220px;
   background: rgba(248, 251, 250, 0.5);
 }
 
@@ -1724,6 +1729,7 @@ button:focus-visible {
 
 .floating-panel-body .private-chat-panel {
   max-height: none;
+  min-height: clamp(420px, 58dvh, 560px);
 }
 
 .floating-panel-control .panel-heading {

@@ -30,9 +30,9 @@ const FALLBACK_KEYBOARD_CONTROL_CONFIG: KeyboardControlConfig = {
   sendIntervalMs: 300,
   deadmanTimeoutMs: 900,
   maxSessionMs: 0,
-  maxLinearSpeed: 120,
-  maxAngularSpeed: 20,
-  defaultLinearSpeed: 80,
+  maxLinearSpeed: 500,
+  maxAngularSpeed: 30,
+  defaultLinearSpeed: 200,
   defaultAngularSpeed: 15,
   requireFocus: true
 };
