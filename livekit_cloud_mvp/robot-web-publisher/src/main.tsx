@@ -192,6 +192,8 @@ const EMPTY_SPEAKER_STATE: SpeakerState = {
   queue: []
 };
 const REMOTE_VIDEO_SYNC_DELAY_MS = 160;
+const ROBOT_SOCKET_RECONNECT_BASE_MS = 1_000;
+const ROBOT_SOCKET_RECONNECT_MAX_MS = 10_000;
 const MIN_ROBOT_VIEWPORT_HEIGHT = 280;
 const MIN_ROBOT_TOP_STRIP_HEIGHT = 88;
 const MAX_ROBOT_TOP_STRIP_HEIGHT = 230;
@@ -1663,14 +1665,19 @@ function App() {
 
   const roomRef = useRef<Room | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
+  const socketReconnectTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const socketReconnectAttemptRef = useRef(0);
+  const socketReconnectSuppressedRef = useRef(false);
   const localTrackRef = useRef<LocalVideoTrack | null>(null);
   const localAudioTrackRef = useRef<LocalAudioTrack | null>(null);
   const participantsByIdRef = useRef<Map<string, ParticipantPresence>>(new Map());
   const sessionRef = useRef<RoomSession | null>(null);
+  const routeRef = useRef(route);
   const restoringSessionRef = useRef(false);
   const remoteVideosRef = useRef<RemoteVideoInfo[]>([]);
   const localSpeakingRef = useRef<ParticipantSpeakingInfo>(EMPTY_SPEAKING);
   const remoteVideoSyncTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  routeRef.current = route;
 
   function clearRemoteVideoSyncTimer() {
     if (remoteVideoSyncTimerRef.current) {
@@ -1721,8 +1728,18 @@ function App() {
     }, REMOTE_VIDEO_SYNC_DELAY_MS);
   }
 
+  function clearSocketReconnectTimer() {
+    if (socketReconnectTimerRef.current) {
+      window.clearTimeout(socketReconnectTimerRef.current);
+      socketReconnectTimerRef.current = null;
+    }
+  }
+
   function resetConnections() {
     clearRemoteVideoSyncTimer();
+    clearSocketReconnectTimer();
+    socketReconnectSuppressedRef.current = true;
+    socketReconnectAttemptRef.current = 0;
     socketRef.current?.close();
     socketRef.current = null;
 
@@ -1751,6 +1768,185 @@ function App() {
     setLiveKitState("disconnected");
     setPublishState("stopped");
     setMicrophoneState("idle");
+  }
+
+  function handleRobotSocketMessage(event: MessageEvent) {
+    let message: unknown;
+    try {
+      message = JSON.parse(event.data as string) as unknown;
+    } catch {
+      setError("WebSocket received an invalid message");
+      return;
+    }
+
+    if (isRoleUpdateMessage(message)) {
+      participantsByIdRef.current = new Map(message.participants.map((participant) => [participant.id, participant]));
+      scheduleRemoteVideosSync();
+      return;
+    }
+
+    if (isServerErrorMessage(message)) {
+      if (message.code === "PARTICIPANT_KICKED" || message.code === "ROOM_CLOSED") {
+        forceExit(`${message.code}: ${message.message}`);
+        return;
+      }
+
+      if (message.code === "PARTICIPANT_NOT_FOUND" || message.code === "ROOM_NOT_FOUND") {
+        setError("Robot backend presence expired. Reconnecting the control channel...");
+        socketRef.current?.close();
+        socketRef.current = null;
+        scheduleRobotSocketReconnect();
+        return;
+      }
+
+      setError(`${message.code}: ${message.message}`);
+      return;
+    }
+
+    if (isKeyboardControlStatusMessage(message)) {
+      setKeyboardStatus(message);
+      return;
+    }
+
+    if (isSpeakerUpdateMessage(message)) {
+      const nextSpeaker = {
+        currentSpeaker: message.currentSpeaker,
+        currentSpeakerId: message.currentSpeakerId,
+        currentSpeakerName: message.currentSpeakerName,
+        currentSpeakerStartedAt: message.currentSpeakerStartedAt,
+        queue: message.queue
+      };
+      setSpeaker((current) => (areSpeakerStatesEqual(current, nextSpeaker) ? current : nextSpeaker));
+      return;
+    }
+
+    if (isRobotControlMessage(message)) {
+      setLastRobotControl(message);
+    }
+  }
+
+  async function refreshBackendRobotPresence(currentSession: RoomSession): Promise<RoomSession> {
+    const clientSessionId = currentSession.clientSessionId ?? getOrCreateRobotClientSessionId();
+    const joinResponse = await joinRobot(currentSession.roomName, currentSession.robotName, {
+      previousParticipantId: currentSession.participantId,
+      clientSessionId
+    });
+    const nextSession: RoomSession = {
+      ...currentSession,
+      ...joinResponse,
+      robotName: currentSession.robotName,
+      publishMicrophone: currentSession.publishMicrophone,
+      publishAudio: currentSession.publishAudio,
+      microphoneDeviceId: currentSession.microphoneDeviceId,
+      selectedMicrophoneDeviceId: currentSession.selectedMicrophoneDeviceId
+    };
+
+    sessionRef.current = nextSession;
+    setSession(nextSession);
+    saveStoredRobotSession(nextSession);
+    setBackendState(joinResponse.online ? "robot online" : "joined");
+    setTokenMode(joinResponse.tokenMode);
+    return nextSession;
+  }
+
+  async function connectRobotWebSocket(
+    currentSession: RoomSession,
+    options: { refreshBackend: boolean; reconnecting?: boolean }
+  ): Promise<void> {
+    if (socketRef.current) {
+      return;
+    }
+
+    const socketSession = options.refreshBackend ? await refreshBackendRobotPresence(currentSession) : currentSession;
+    if (routeRef.current !== "/room" || !sessionRef.current) {
+      return;
+    }
+
+    socketReconnectSuppressedRef.current = false;
+    const socket = new WebSocket(WS_URL);
+    socketRef.current = socket;
+    setWebSocketState(options.reconnecting ? "reconnecting" : "connecting");
+
+    socket.addEventListener("open", () => {
+      if (socketRef.current !== socket) {
+        return;
+      }
+
+      socketReconnectAttemptRef.current = 0;
+      setWebSocketState("connected");
+      setError((currentError) =>
+        currentError.startsWith("Robot backend presence expired") ||
+        currentError.startsWith("Robot backend control channel")
+          ? ""
+          : currentError
+      );
+      const helloSession = sessionRef.current ?? socketSession;
+      socket.send(
+        JSON.stringify({
+          type: "hello",
+          roomName: helloSession.roomName,
+          participantId: helloSession.participantId
+        })
+      );
+    });
+    socket.addEventListener("message", handleRobotSocketMessage);
+    socket.addEventListener("close", () => {
+      if (socketRef.current === socket) {
+        socketRef.current = null;
+      }
+
+      if (socketReconnectSuppressedRef.current || routeRef.current !== "/room" || !sessionRef.current) {
+        return;
+      }
+
+      setWebSocketState("closed");
+      scheduleRobotSocketReconnect();
+    });
+    socket.addEventListener("error", () => {
+      if (socketRef.current !== socket || socketReconnectSuppressedRef.current) {
+        return;
+      }
+
+      setWebSocketState("error");
+      setError("Robot backend control channel disconnected. Reconnecting...");
+    });
+  }
+
+  function scheduleRobotSocketReconnect() {
+    if (
+      socketReconnectTimerRef.current ||
+      socketRef.current ||
+      socketReconnectSuppressedRef.current ||
+      routeRef.current !== "/room" ||
+      !sessionRef.current
+    ) {
+      return;
+    }
+
+    const attempt = socketReconnectAttemptRef.current + 1;
+    socketReconnectAttemptRef.current = attempt;
+    const delayMs = Math.min(ROBOT_SOCKET_RECONNECT_MAX_MS, ROBOT_SOCKET_RECONNECT_BASE_MS * 2 ** (attempt - 1));
+    setWebSocketState("reconnecting");
+    setBackendState("refreshing robot presence");
+    socketReconnectTimerRef.current = window.setTimeout(() => {
+      socketReconnectTimerRef.current = null;
+      void reconnectRobotWebSocket();
+    }, delayMs);
+  }
+
+  async function reconnectRobotWebSocket() {
+    const currentSession = sessionRef.current;
+    if (!currentSession || routeRef.current !== "/room") {
+      return;
+    }
+
+    try {
+      await connectRobotWebSocket(currentSession, { refreshBackend: true, reconnecting: true });
+    } catch (error) {
+      setWebSocketState("error");
+      setError(`Robot backend control channel reconnect failed. Retrying... ${describeUnknownError(error)}`);
+      scheduleRobotSocketReconnect();
+    }
   }
 
   function updateStoredMicrophonePreference(nextPublishMicrophone: boolean) {
@@ -1990,71 +2186,7 @@ function App() {
       navigateToRobotRoute("/room");
       setBackendState(joinResponse.online ? "robot online" : "joined");
       setTokenMode(joinResponse.tokenMode);
-
-      const socket = new WebSocket(WS_URL);
-      socketRef.current = socket;
-      setWebSocketState("connecting");
-      socket.addEventListener("open", () => {
-        setWebSocketState("connected");
-        socket.send(
-          JSON.stringify({
-            type: "hello",
-            roomName: joinResponse.roomName,
-            participantId: joinResponse.participantId
-          })
-        );
-      });
-      socket.addEventListener("message", (event) => {
-        let message: unknown;
-        try {
-          message = JSON.parse(event.data as string) as unknown;
-        } catch {
-          setError("WebSocket received an invalid message");
-          return;
-        }
-
-        if (isRoleUpdateMessage(message)) {
-          participantsByIdRef.current = new Map(message.participants.map((participant) => [participant.id, participant]));
-          scheduleRemoteVideosSync();
-          return;
-        }
-
-        if (isServerErrorMessage(message)) {
-          if (message.code === "PARTICIPANT_KICKED" || message.code === "ROOM_CLOSED") {
-            forceExit(`${message.code}: ${message.message}`);
-            return;
-          }
-
-          setError(`${message.code}: ${message.message}`);
-          return;
-        }
-
-        if (isKeyboardControlStatusMessage(message)) {
-          setKeyboardStatus(message);
-          return;
-        }
-
-        if (isSpeakerUpdateMessage(message)) {
-          const nextSpeaker = {
-            currentSpeaker: message.currentSpeaker,
-            currentSpeakerId: message.currentSpeakerId,
-            currentSpeakerName: message.currentSpeakerName,
-            currentSpeakerStartedAt: message.currentSpeakerStartedAt,
-            queue: message.queue
-          };
-          setSpeaker((current) => (areSpeakerStatesEqual(current, nextSpeaker) ? current : nextSpeaker));
-          return;
-        }
-
-        if (isRobotControlMessage(message)) {
-          setLastRobotControl(message);
-        }
-      });
-      socket.addEventListener("close", () => setWebSocketState("closed"));
-      socket.addEventListener("error", () => {
-        setWebSocketState("error");
-        setError(`WebSocket connection failed. Check VITE_WS_BASE_URL, backend WSS /ws proxy, and HTTPS certificate: ${WS_URL}`);
-      });
+      await connectRobotWebSocket(nextSession, { refreshBackend: false });
 
       if (joinResponse.tokenMode === "mock" || joinResponse.liveKitUrl.startsWith("mock://")) {
         setLiveKitState("mock token");
