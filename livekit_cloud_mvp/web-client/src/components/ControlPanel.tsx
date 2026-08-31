@@ -88,7 +88,7 @@ export function ControlPanel({
               {pendingControlRequests.map((requester, index) => (
                 <div className="transfer-row" key={requester.id}>
                   <span className="transfer-requester">
-                    <strong>{index + 1}</strong>
+                    <strong className="transfer-order">#{index + 1}</strong>
                     {requester.name}
                   </span>
                   <button

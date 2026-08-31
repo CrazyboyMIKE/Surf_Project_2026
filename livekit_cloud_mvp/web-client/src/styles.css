@@ -1003,15 +1003,16 @@ button:focus-visible {
   align-items: center;
 }
 
-.transfer-requester strong {
+.transfer-requester .transfer-order {
   display: inline-grid;
-  flex: 0 0 24px;
-  width: 24px;
+  flex: 0 0 auto;
+  min-width: 28px;
   height: 24px;
   place-items: center;
   border-radius: 999px;
   color: #1d545d;
   background: #e7f1ee;
+  padding: 0 6px;
   font-size: 0.76rem;
 }
 

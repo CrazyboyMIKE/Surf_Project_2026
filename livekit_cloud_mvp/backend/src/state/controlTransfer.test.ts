@@ -59,6 +59,23 @@ function controlQueueIds(store: RoomStore): string[] {
 }
 
 {
+  const { store, controller } = createRoomWithControllerViewers();
+
+  const result = store.requestControl("robot-room-001", controller.id);
+
+  assert.deepEqual(result, {
+    ok: false,
+    room: store.getRoom("robot-room-001"),
+    status: 409,
+    code: "FORBIDDEN",
+    role: "controller",
+    message: "Current controller must release control before requesting again"
+  });
+  assert.equal(store.getRoomSnapshot("robot-room-001")?.currentControllerId, controller.id);
+  assert.deepEqual(controlQueueIds(store), []);
+}
+
+{
   const { store, controller, viewerA } = createRoomWithControllerViewers();
   const request = store.requestControl("robot-room-001", viewerA.id);
   assert.equal(request.ok, true);
@@ -72,6 +89,24 @@ function controlQueueIds(store: RoomStore): string[] {
   }
   assert.equal(store.getRoomSnapshot("robot-room-001")?.currentControllerId, controller.id);
   assert.deepEqual(controlQueueIds(store), []);
+}
+
+{
+  const { store, viewerA, viewerB } = createRoomWithControllerViewers();
+  store.requestControl("robot-room-001", viewerA.id);
+  store.requestControl("robot-room-001", viewerB.id);
+
+  const cancel = store.releaseControl("robot-room-001", viewerA.id);
+  assert.equal(cancel.ok, true);
+  if (cancel.ok) {
+    assert.equal(cancel.released, false);
+    assert.equal(cancel.message, "Control request canceled");
+  }
+  assert.deepEqual(controlQueueIds(store), [viewerB.id]);
+
+  const reRequest = store.requestControl("robot-room-001", viewerA.id);
+  assert.equal(reRequest.ok, true);
+  assert.deepEqual(controlQueueIds(store), [viewerB.id, viewerA.id]);
 }
 
 {
@@ -195,11 +230,9 @@ function controlQueueIds(store: RoomStore): string[] {
   assert.deepEqual(controlQueueIds(store), [viewerB.id]);
 
   const renewedRequest = store.requestControl("robot-room-001", viewerA.id);
-  assert.equal(renewedRequest.ok, true);
-  if (renewedRequest.ok) {
-    assert.equal(renewedRequest.granted, true);
-    assert.equal(renewedRequest.queued, false);
-  }
+  assert.equal(renewedRequest.ok, false);
+  assert.equal(renewedRequest.code, "FORBIDDEN");
+  assert.equal(renewedRequest.role, "controller");
   assert.equal(store.getRoomSnapshot("robot-room-001")?.currentControllerId, viewerA.id);
   assert.deepEqual(controlQueueIds(store), [viewerB.id]);
 }

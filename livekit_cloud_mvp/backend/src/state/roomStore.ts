@@ -416,12 +416,12 @@ export class RoomStore {
       participant.lastSeenAt = Date.now();
       this.touchRoom(room, participant.lastSeenAt);
       return {
-        ok: true,
+        ok: false,
         room,
-        participant,
-        granted: true,
-        queued: false,
-        message: "Already controller"
+        status: 409,
+        code: "FORBIDDEN",
+        role: "controller",
+        message: "Current controller must release control before requesting again"
       };
     }
 
