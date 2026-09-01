@@ -130,6 +130,7 @@ const roomStore = new RoomStore({ mockRobotOnline: false });
 const controller = roomStore.joinWebParticipant(roomName, "Controller", "controller").participant;
 const viewerA = roomStore.joinWebParticipant(roomName, "Viewer A", "viewer").participant;
 const viewerB = roomStore.joinWebParticipant(roomName, "Viewer B", "viewer").participant;
+const robot = roomStore.joinRobot(roomName, "robot-001").participant;
 const server = createServer();
 const webSocketHub: WebSocketHub = attachWebSocketServer(server, roomStore, fakeRobotControlAdapter, readKeyboardControlConfig({}));
 const port = await listen(server);
@@ -140,10 +141,29 @@ try {
   const socketController = await connectSocket(wsUrl, roomName, controller.id);
   const socketA = await connectSocket(wsUrl, roomName, viewerA.id);
   const socketB = await connectSocket(wsUrl, roomName, viewerB.id);
-  sockets.push(socketController, socketA, socketB);
+  const socketRobot = await connectSocket(wsUrl, roomName, robot.id);
+  sockets.push(socketController, socketA, socketB, socketRobot);
 
   const initialUpdate = await socketController.waitForMessage((message) => message.type === "control_request_update");
   assert.deepEqual(initialUpdate.queue, []);
+
+  const room = roomStore.getRoom(roomName);
+  assert.notEqual(room, undefined);
+  if (room) {
+    room.robotOnline = false;
+  }
+  socketRobot.socket.send(
+    JSON.stringify({
+      type: "robot_presence",
+      roomName
+    })
+  );
+  const robotPresenceUpdate = await socketController.waitForNewMessage(
+    (message) =>
+      message.type === "robot_status" && message.online === true && roomStore.getRoom(roomName)?.robotOnline === true
+  );
+  assert.equal(robotPresenceUpdate.robotId, "robot-001");
+  assert.equal(roomStore.getRoom(roomName)?.robotOnline, true);
 
   roomStore.requestControl(roomName, viewerA.id);
   webSocketHub.broadcastRoleUpdate(roomName);

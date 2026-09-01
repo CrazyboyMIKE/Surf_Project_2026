@@ -14,6 +14,7 @@ type SocketContext = {
 
 const WEBSOCKET_HEARTBEAT_INTERVAL_MS = 25_000;
 const WEBSOCKET_RECONNECT_GRACE_MS = 30_000;
+const QUIET_KEYBOARD_RESULT_CODES = new Set<ApiErrorCode>(["KEYBOARD_CONTROL_INACTIVE"]);
 
 type WebSocketMessage = {
   type?: unknown;
@@ -368,7 +369,9 @@ export function attachWebSocketServer(
         message: result.message,
         timestamp: Date.now()
       });
-      sendError(socket, result.code, result.message);
+      if (!QUIET_KEYBOARD_RESULT_CODES.has(result.code)) {
+        sendError(socket, result.code, result.message);
+      }
       return;
     }
 
@@ -434,6 +437,39 @@ export function attachWebSocketServer(
           timestamp: Date.now()
         });
         broadcastRoleUpdate(roomName);
+        broadcastRobotStatus(roomName);
+        return;
+      }
+
+      if (message.type === "robot_presence") {
+        if (!hasOnlyKeys(message, ["type", "roomName"])) {
+          sendError(socket, "INVALID_REQUEST", "Robot presence message contains unsupported fields");
+          return;
+        }
+
+        const roomName = readString(message.roomName);
+        if (!roomName || !context || context.roomName !== roomName) {
+          sendError(socket, context ? "SENDER_MISMATCH" : "SOCKET_NOT_IDENTIFIED", "WebSocket room does not match hello");
+          return;
+        }
+
+        const roomBeforeRefresh = roomStore.getRoom(roomName);
+        const participantBeforeRefresh = roomBeforeRefresh?.participants.get(context.participantId);
+        if (!participantBeforeRefresh) {
+          sendError(socket, "PARTICIPANT_NOT_FOUND", "Participant must join the room before refreshing robot presence");
+          return;
+        }
+        if (participantBeforeRefresh.role !== "robot") {
+          sendError(socket, "FORBIDDEN", "Only robot participants can refresh robot presence");
+          return;
+        }
+
+        const wasConnected = participantBeforeRefresh.connected;
+        clearPendingRemoval(roomName, context.participantId);
+        roomStore.markParticipantConnected(roomName, context.participantId);
+        if (!wasConnected) {
+          broadcastRoleUpdate(roomName);
+        }
         broadcastRobotStatus(roomName);
         return;
       }

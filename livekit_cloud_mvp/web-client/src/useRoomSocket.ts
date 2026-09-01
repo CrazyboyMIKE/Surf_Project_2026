@@ -20,6 +20,7 @@ import type {
 type ConnectionState = "idle" | "connecting" | "connected" | "reconnecting" | "closed" | "error";
 
 const MAX_RECONNECT_DELAY_MS = 10_000;
+const STALE_KEYBOARD_CONTROL_INACTIVE_CODE = "KEYBOARD_CONTROL_INACTIVE";
 const EMPTY_SPEAKER_STATE: SpeakerState = {
   queue: []
 };
@@ -209,18 +210,39 @@ export function useRoomSocket(session: JoinRoomResponse | null, onForcedDisconne
         }
 
         if (message.type === "keyboard_control_result") {
-          setLastKeyboardResult(message.ok ? message.message : `${message.code ?? "KEYBOARD_CONTROL_FAILED"}: ${message.message}`);
-          if (!message.ok) {
-            setLastError(`${message.code ?? "KEYBOARD_CONTROL_FAILED"}: ${message.message}`);
-          }
+          const keyboardResultText = message.ok
+            ? message.message
+            : `${message.code ?? "KEYBOARD_CONTROL_FAILED"}: ${message.message}`;
+          setLastKeyboardResult(
+            !message.ok && message.code === STALE_KEYBOARD_CONTROL_INACTIVE_CODE
+              ? "Keyboard control stopped"
+              : keyboardResultText
+          );
           if (message.status) {
             setKeyboardStatus(message.status);
+          }
+          if (!message.ok) {
+            if (message.code === STALE_KEYBOARD_CONTROL_INACTIVE_CODE) {
+              setLastError((currentError) =>
+                currentError.startsWith(STALE_KEYBOARD_CONTROL_INACTIVE_CODE) ? "" : currentError
+              );
+              return;
+            }
+
+            setLastError(keyboardResultText);
           }
           return;
         }
 
         if (message.type === "error") {
           const errorText = `${message.code}: ${message.message}`;
+          if (message.code === STALE_KEYBOARD_CONTROL_INACTIVE_CODE) {
+            setLastError((currentError) =>
+              currentError.startsWith(STALE_KEYBOARD_CONTROL_INACTIVE_CODE) ? "" : currentError
+            );
+            return;
+          }
+
           setLastError(errorText);
           if (message.code === "PARTICIPANT_KICKED" || message.code === "ROOM_CLOSED") {
             onForcedDisconnectRef.current?.(errorText);

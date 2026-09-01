@@ -194,6 +194,7 @@ const EMPTY_SPEAKER_STATE: SpeakerState = {
 const REMOTE_VIDEO_SYNC_DELAY_MS = 160;
 const ROBOT_SOCKET_RECONNECT_BASE_MS = 1_000;
 const ROBOT_SOCKET_RECONNECT_MAX_MS = 10_000;
+const ROBOT_BACKEND_PRESENCE_INTERVAL_MS = 10_000;
 const MIN_ROBOT_VIEWPORT_HEIGHT = 280;
 const MIN_ROBOT_TOP_STRIP_HEIGHT = 88;
 const MAX_ROBOT_TOP_STRIP_HEIGHT = 230;
@@ -1934,6 +1935,29 @@ function App() {
     }, delayMs);
   }
 
+  function sendRobotPresenceHeartbeat() {
+    const currentSession = sessionRef.current;
+    if (!currentSession || routeRef.current !== "/room") {
+      return;
+    }
+
+    const socket = socketRef.current;
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(
+        JSON.stringify({
+          type: "robot_presence",
+          roomName: currentSession.roomName
+        })
+      );
+      return;
+    }
+
+    if (socket && (socket.readyState === WebSocket.CLOSING || socket.readyState === WebSocket.CLOSED)) {
+      socketRef.current = null;
+    }
+    scheduleRobotSocketReconnect();
+  }
+
   async function reconnectRobotWebSocket() {
     const currentSession = sessionRef.current;
     if (!currentSession || routeRef.current !== "/room") {
@@ -2322,6 +2346,16 @@ function App() {
       restoringSessionRef.current = false;
     });
   }, [pending, route]);
+
+  useEffect(() => {
+    if (route !== "/room" || !session) {
+      return;
+    }
+
+    sendRobotPresenceHeartbeat();
+    const intervalId = window.setInterval(sendRobotPresenceHeartbeat, ROBOT_BACKEND_PRESENCE_INTERVAL_MS);
+    return () => window.clearInterval(intervalId);
+  }, [route, session?.participantId]);
 
   useEffect(() => {
     if (route === "/room" || !sessionRef.current) {
