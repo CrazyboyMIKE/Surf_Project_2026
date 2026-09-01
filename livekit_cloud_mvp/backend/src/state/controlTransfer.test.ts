@@ -238,6 +238,42 @@ function controlQueueIds(store: RoomStore): string[] {
 }
 
 {
+  const { store, controller, viewerA, viewerB } = createRoomWithControllerViewers();
+
+  const release = store.releaseControl("robot-room-001", controller.id);
+  assert.equal(release.ok, true);
+  if (release.ok) {
+    assert.equal(release.released, true);
+    assert.equal(release.nextController, undefined);
+  }
+
+  let snapshot = store.getRoomSnapshot("robot-room-001");
+  assert.equal(snapshot?.currentControllerId, undefined);
+  assert.equal(snapshot?.participants.find((participant) => participant.id === controller.id)?.role, "viewer");
+  assert.deepEqual(controlQueueIds(store), []);
+
+  const renewedRequest = store.requestControl("robot-room-001", controller.id);
+  assert.equal(renewedRequest.ok, true);
+  if (renewedRequest.ok) {
+    assert.equal(renewedRequest.granted, true);
+    assert.equal(renewedRequest.queued, false);
+    assert.equal(renewedRequest.participant.role, "controller");
+  }
+  snapshot = store.getRoomSnapshot("robot-room-001");
+  assert.equal(snapshot?.currentControllerId, controller.id);
+
+  const viewerARequest = store.requestControl("robot-room-001", viewerA.id);
+  const viewerBRequest = store.requestControl("robot-room-001", viewerB.id);
+  assert.equal(viewerARequest.ok, true);
+  assert.equal(viewerBRequest.ok, true);
+  if (viewerARequest.ok && viewerBRequest.ok) {
+    assert.equal(viewerARequest.queued, true);
+    assert.equal(viewerBRequest.queued, true);
+  }
+  assert.deepEqual(controlQueueIds(store), [viewerA.id, viewerB.id]);
+}
+
+{
   const { store, controller, viewerA } = createRoomWithControllerViewers();
   const room = store.getRoom("robot-room-001");
   const staleParticipant = room?.participants.get(viewerA.id);

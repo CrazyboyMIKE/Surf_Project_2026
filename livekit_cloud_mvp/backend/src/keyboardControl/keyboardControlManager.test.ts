@@ -155,10 +155,12 @@ function sleep(ms: number): Promise<void> {
     linearSpeed: 200,
     angularSpeed: 15
   });
+  const requestCount = adapter.requests.length;
   await sleep(80);
 
-  assert.equal(adapter.requests.at(-1)?.command, "1000");
-  assert.deepEqual(adapter.requests.at(-1)?.parameters, { stopReason: "speed_pulse" });
+  assert.equal(adapter.requests.length, requestCount);
+  assert.equal(adapter.requests.at(-1)?.command, "1001");
+  assert.deepEqual(adapter.requests.at(-1)?.parameters, { lv: 200, av: 0, direction: "forward" });
   assert.equal(manager.getStatus("robot-room-001").active, true);
   await manager.forceStop("robot-room-001", "test_cleanup");
 }

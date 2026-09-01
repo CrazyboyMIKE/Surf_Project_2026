@@ -49,7 +49,6 @@ type KeyboardSession = {
   lastSeenAt: number;
   deadmanTimer?: NodeJS.Timeout;
   maxSessionTimer?: NodeJS.Timeout;
-  pulseStopTimer?: NodeJS.Timeout;
 };
 
 type KeyboardControlCallbacks = {
@@ -73,11 +72,6 @@ const DIRECTIONS = [
   "backward_left",
   "backward_right"
 ] as const satisfies KeyboardDirection[];
-const FULL_SPEED_DUTY_THRESHOLD = 0.98;
-const MIN_PULSE_ACTIVE_MS = 25;
-const PULSE_STOP_MARGIN_MS = 25;
-const SPEED_PULSE_STOP_REASON = "speed_pulse";
-
 function isKeyboardDirection(value: unknown): value is KeyboardDirection {
   return typeof value === "string" && DIRECTIONS.includes(value as KeyboardDirection);
 }
@@ -94,30 +88,6 @@ function toVelocity(
   const lv = direction.includes("forward") ? linearSpeed : direction.includes("backward") ? -linearSpeed : 0;
   const av = direction.includes("left") ? angularSpeed : direction.includes("right") ? -angularSpeed : 0;
   return { lv, av };
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
-}
-
-function hasLinearMotion(direction: KeyboardDirection): boolean {
-  return direction.includes("forward") || direction.includes("backward");
-}
-
-function hasAngularMotion(direction: KeyboardDirection): boolean {
-  return direction.includes("left") || direction.includes("right");
-}
-
-function speedDutyCycle(session: KeyboardSession, config: KeyboardControlConfig): number {
-  const linearDuty = hasLinearMotion(session.direction) ? session.linearSpeed / config.maxLinearSpeed : 0;
-  const angularDuty = hasAngularMotion(session.direction) ? session.angularSpeed / config.maxAngularSpeed : 0;
-  return clamp(Math.max(linearDuty, angularDuty), 0, 1);
-}
-
-function pulseActiveMs(dutyCycle: number, sendIntervalMs: number): number {
-  const interval = Math.max(1, sendIntervalMs);
-  const maxActiveMs = Math.max(1, interval - PULSE_STOP_MARGIN_MS);
-  return clamp(Math.round(interval * dutyCycle), MIN_PULSE_ACTIVE_MS, maxActiveMs);
 }
 
 function sanitizeReason(reason: string): string {
@@ -227,7 +197,6 @@ export class KeyboardControlManager {
     session.angularSpeed = validation.angularSpeed;
     session.lastSeenAt = timestamp;
     this.scheduleDeadmanTimer(session);
-    this.schedulePulseStopTimer(session);
     const status = this.statusFromSession(session, true);
     this.saveAndBroadcastStatus(status);
 
@@ -479,7 +448,6 @@ export class KeyboardControlManager {
     this.sessions.set(session.roomName, session);
     this.scheduleDeadmanTimer(session);
     this.scheduleMaxSessionTimer(session);
-    this.schedulePulseStopTimer(session);
   }
 
   private scheduleDeadmanTimer(session: KeyboardSession): void {
@@ -509,44 +477,12 @@ export class KeyboardControlManager {
     }, remainingMs);
   }
 
-  private schedulePulseStopTimer(session: KeyboardSession): void {
-    if (session.pulseStopTimer) {
-      clearTimeout(session.pulseStopTimer);
-    }
-
-    const dutyCycle = speedDutyCycle(session, this.config);
-    if (dutyCycle >= FULL_SPEED_DUTY_THRESHOLD) {
-      session.pulseStopTimer = undefined;
-      return;
-    }
-
-    const activeMs = pulseActiveMs(dutyCycle, this.config.sendIntervalMs);
-    session.pulseStopTimer = setTimeout(() => {
-      session.pulseStopTimer = undefined;
-      if (this.sessions.get(session.roomName) !== session) {
-        return;
-      }
-
-      void this.sendPulseStop(session);
-    }, activeMs);
-  }
-
-  private async sendPulseStop(session: KeyboardSession): Promise<void> {
-    const stopFailure = await this.sendStop(session, SPEED_PULSE_STOP_REASON, Date.now());
-    if (stopFailure) {
-      await this.forceStop(session.roomName, "pulse_stop_failed");
-    }
-  }
-
   private clearTimers(session: KeyboardSession): void {
     if (session.deadmanTimer) {
       clearTimeout(session.deadmanTimer);
     }
     if (session.maxSessionTimer) {
       clearTimeout(session.maxSessionTimer);
-    }
-    if (session.pulseStopTimer) {
-      clearTimeout(session.pulseStopTimer);
     }
   }
 
